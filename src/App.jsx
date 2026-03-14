@@ -1,9 +1,9 @@
 import Header from './components/header'
 
-function App() {
+function App() { 
   return (
     <>
-      <Header />
+      <Header  />
     </>
   )
 }

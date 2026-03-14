@@ -3,4 +3,42 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+	body {
+		font-family: 'Inter', sans-serif;
+		background-color: #FAF7F2;
+	}
+
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		font-family: 'Merriweather', serif;
+	}
+
+	button {
+		font-family: 'Inter', sans-serif;
+		font-weight: 500;
+	}
+}
+
+@layer components {
+	.verse-text {
+		font-family: 'Merriweather', serif;
+		font-style: italic;
+	}
+}
+
+@layer utilities {
+	.font-heading {
+		font-family: 'Merriweather', serif;
+	}
+
+	.font-body {
+		font-family: 'Inter', sans-serif;
+	}
+}
+
 
