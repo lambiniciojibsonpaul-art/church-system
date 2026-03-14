@@ -1,17 +1,16 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ChurchLandingPage from './components/ChurchLandingPage';
 import AboutUsPage from './components/AboutUsPage';
+import ServicesPage from './components/ServicesPage'; // <--- Import the new page
 
 function App() {
   return (
     <Router>
-      <div className="App text-left"> {/* Ensures default text alignment */}
+      <div className="App text-left">
         <Routes>
-          {/* When the URL is '/', show the Landing Page */}
           <Route path="/" element={<ChurchLandingPage />} />
-          
-          {/* When the URL is '/about', show the About Us Page */}
           <Route path="/about" element={<AboutUsPage />} />
+          <Route path="/services" element={<ServicesPage />} /> {/* <--- Add the route */}
         </Routes>
       </div>
     </Router>

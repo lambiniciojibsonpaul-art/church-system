@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom'; // Added this import
-import ServicesDropdown from './ServicesDropdown';
+import { Link } from 'react-router-dom'; 
+// Note: We completely removed the ServicesDropdown import!
 
 function Header() {
     const [isOpen, setIsOpen] = useState(false);
     const [scrolled, setScrolled] = useState(false);
-    const [isServicesOpen, setIsServicesOpen] = useState(false);
 
-    // Track scroll position to change header styling
+    // Track scroll position
     useEffect(() => {
         const handleScroll = () => {
             if (window.scrollY > 50) {
@@ -30,7 +29,7 @@ function Header() {
             <div className="px-6 py-6 md:py-8">
                 <nav aria-label="Main navigation" className="mx-auto max-w-7xl relative">
                     <div className="flex items-center justify-between md:justify-center">
-                        {/* Replaced <a> with <Link> for the mobile logo */}
+                        
                         <Link to="/" className="text-lg font-bold tracking-wide md:hidden">
                             San Pedro Bautista
                         </Link>
@@ -50,19 +49,11 @@ function Header() {
                         </button>
 
                         <ul className="hidden items-center gap-10 text-md italic font-medium font-serif md:flex">
-                            {/* Replaced <a> with <Link> for routing */}
                             <li><Link className="hover:opacity-70 transition cursor-pointer" to="/">Home</Link></li>
                             <li><Link className="hover:opacity-70 transition cursor-pointer" to="/about">About Us</Link></li>
                             
-                            {/* Services Toggle Button */}
-                            <li>
-                                <button 
-                                    className="hover:opacity-70 transition italic font-medium font-serif focus:outline-none cursor-pointer" 
-                                    onClick={() => setIsServicesOpen(!isServicesOpen)}
-                                >
-                                    Services
-                                </button>
-                            </li>
+                            {/* NEW SERVICES LINK */}
+                            <li><Link className="hover:opacity-70 transition cursor-pointer" to="/services">Services</Link></li>
                             
                             <li><a className="hover:opacity-70 transition cursor-pointer" href="#sermons">Sermons</a></li>
                             <li><a className="hover:opacity-70 transition cursor-pointer" href="#events">Events</a></li>
@@ -76,28 +67,17 @@ function Header() {
                         <ul className={`mt-4 flex flex-col gap-4 p-6 rounded-lg md:hidden ${
                             scrolled ? 'bg-gray-50' : 'bg-black/80'
                         }`}>
-                            {/* Replaced <a> with <Link> for routing on mobile */}
                             <li><Link to="/" onClick={() => setIsOpen(false)}>Home</Link></li>
                             <li><Link to="/about" onClick={() => setIsOpen(false)}>About Us</Link></li>
-                            <li>
-                                <button 
-                                    className="text-left w-full focus:outline-none" 
-                                    onClick={() => {
-                                        setIsServicesOpen(!isServicesOpen);
-                                        setIsOpen(false); // Close mobile menu when opening services
-                                    }}
-                                >
-                                    Services
-                                </button>
-                            </li>
+                            
+                            {/* NEW MOBILE SERVICES LINK */}
+                            <li><Link to="/services" onClick={() => setIsOpen(false)}>Services</Link></li>
+                            
                             <li><a href="#sermons" onClick={() => setIsOpen(false)}>Sermons</a></li>
                         </ul>
                     )}
                 </nav>
             </div>
-
-            {/* Render Services Dropdown if open */}
-            {isServicesOpen && <ServicesDropdown onClose={() => setIsServicesOpen(false)} />}
         </header>
     );
 }
