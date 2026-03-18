@@ -4,11 +4,15 @@ import Header from './Header';
 import BaptismFormModal from './Forms/BaptismFormModal';
 import HolyCommunionFormModal from './Forms/HolyCommunionFormModal';
 import WeddingRegistryFormModal from './Forms/WeddingRegistryFormModal';
+import SacramentsLiturgicalFormModal from './Forms/SacramentsLiturgicalFormModal';
+import MassIntentionFormModal from './Forms/MassIntentionFormModal';
 
 function ServicesPage() {
     const [isBaptismModalOpen, setIsBaptismModalOpen] = useState(false);
     const [isCommunionModalOpen, setIsCommunionModalOpen] = useState(false);
     const [isWeddingModalOpen, setIsWeddingModalOpen] = useState(false);
+    const [isLiturgicalModalOpen, setIsLiturgicalModalOpen] = useState(false);
+    const [isMassIntentionModalOpen, setIsMassIntentionModalOpen] = useState(false);
 
     const backgroundStyle = {
         backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('src/assets/Images/church3.jpg')`,
@@ -82,13 +86,17 @@ function ServicesPage() {
                                 <ServiceCard title="Confirmation" tempIcon="🕊️" />
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 md:w-2/3 mx-auto w-full">
-                                {/* 👇 Wedding Registry Click Handler Added Here 👇 */}
                                 <ServiceCard 
                                     title="Wedding Registry" 
                                     tempIcon="💍" 
                                     onClick={() => setIsWeddingModalOpen(true)}
                                 />
-                                <ServiceCard title="Sacraments & Liturgical Request" tempIcon="⛪" />
+                                <ServiceCard 
+                                    title="Sacraments & Liturgical Request" 
+                                    tempIcon="⛪" 
+                                    onClick={() => setIsLiturgicalModalOpen(true)}
+                                />
+                                {/* Removed the extra Mass Intention from here! */}
                             </div>
                         </div>
                     </div>
@@ -104,7 +112,12 @@ function ServicesPage() {
                             </p>
                         </div>
                         <div className="lg:w-2/3 grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 w-full">
-                            <ServiceCard title="Mass Intention" tempIcon="🕯️" />
+                            {/* Correctly placed and wired Mass Intention card */}
+                            <ServiceCard 
+                                title="Mass Intention" 
+                                tempIcon="🕯️" 
+                                onClick={() => setIsMassIntentionModalOpen(true)}
+                            />
                             <ServiceCard title="Facilities Booking" tempIcon="📅" />
                             <ServiceCard title="Certification Request" tempIcon="📜" />
                         </div>
@@ -115,10 +128,10 @@ function ServicesPage() {
             {/* --- RENDER THE MODAL COMPONENTS --- */}
             {isBaptismModalOpen && <BaptismFormModal onClose={() => setIsBaptismModalOpen(false)} />}
             {isCommunionModalOpen && <HolyCommunionFormModal onClose={() => setIsCommunionModalOpen(false)} />}
-            {/* 👇 Wedding Registry Component Rendered Here 👇 */}
             {isWeddingModalOpen && <WeddingRegistryFormModal onClose={() => setIsWeddingModalOpen(false)} />}
+            {isLiturgicalModalOpen && <SacramentsLiturgicalFormModal onClose={() => setIsLiturgicalModalOpen(false)} />}
+            {isMassIntentionModalOpen && <MassIntentionFormModal onClose={() => setIsMassIntentionModalOpen(false)} />}
 
-            {/* Floating Chat Button */}
         </div>
     );
 }

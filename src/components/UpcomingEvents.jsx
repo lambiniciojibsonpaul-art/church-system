@@ -12,7 +12,7 @@ function UpcomingEvents() {
         <div className="flex flex-col md:flex-row w-full mb-6 shadow-lg hover:shadow-2xl transition-shadow duration-300">
             
             {/* Dark Blue Date Block */}
-            <div className="bg-[#243E6E] w-full md:w-32 flex flex-col justify-center items-center py-6 text-white shrink-0">
+            <div className="bg-[#B59E74] w-full md:w-32 flex flex-col justify-center items-center py-6 text-white shrink-0">
                 <span className="text-4xl md:text-5xl font-bold leading-none mb-1">{day}</span>
                 <span className="text-sm md:text-base font-bold tracking-widest uppercase">{month}</span>
             </div>
