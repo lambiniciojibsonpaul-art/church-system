@@ -56,7 +56,7 @@ function Header() {
                             <li><Link className="hover:opacity-70 transition cursor-pointer" to="/services">Services</Link></li>
                             
                             <li><a className="hover:opacity-70 transition cursor-pointer" href="#sermons">Sermons</a></li>
-                            <li><a className="hover:opacity-70 transition cursor-pointer" href="#events">Events</a></li>
+                            <li><Link className="hover:opacity-70 transition cursor-pointer" to="/events">Events</Link></li>
                             <li><a className="hover:opacity-70 transition cursor-pointer" href="#ministries">Ministries</a></li>
                             <li><a className="hover:opacity-70 transition cursor-pointer" href="#give">Give</a></li>
                             <li><a className="hover:opacity-70 transition cursor-pointer" href="#visit">Visit Us</a></li>
@@ -72,6 +72,9 @@ function Header() {
                             
                             {/* NEW MOBILE SERVICES LINK */}
                             <li><Link to="/services" onClick={() => setIsOpen(false)}>Services</Link></li>
+                            
+                            {/* NEW MOBILE EVENTS LINK */}
+                            <li><Link to="/events" onClick={() => setIsOpen(false)}>Events</Link></li>
                             
                             <li><a href="#sermons" onClick={() => setIsOpen(false)}>Sermons</a></li>
                         </ul>
