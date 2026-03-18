@@ -55,9 +55,9 @@ function Header() {
                             {/* NEW SERVICES LINK */}
                             <li><Link className="hover:opacity-70 transition cursor-pointer" to="/services">Services</Link></li>
                             
-                            <li><a className="hover:opacity-70 transition cursor-pointer" href="#sermons">Sermons</a></li>
+                            
                             <li><Link className="hover:opacity-70 transition cursor-pointer" to="/events">Events</Link></li>
-                            <li><a className="hover:opacity-70 transition cursor-pointer" href="#ministries">Ministries</a></li>
+                            
                             <li><a className="hover:opacity-70 transition cursor-pointer" href="#give">Give</a></li>
                             <li><a className="hover:opacity-70 transition cursor-pointer" href="#visit">Visit Us</a></li>
                         </ul>
