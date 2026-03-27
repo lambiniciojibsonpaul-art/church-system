@@ -2,7 +2,9 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ChurchLandingPage from './components/ChurchLandingPage';
 import AboutUsPage from './components/AboutUsPage';
 import ServicesPage from './components/ServicesPage';
-import EventsPage from './components/EventsPage'; // <--- 1. Import it
+import EventsPage from './components/EventsPage';
+import LoginPage from './components/LoginPage';
+import AdminDashboard from './components/AdminDashboard';
 
 function App() {
   return (
@@ -13,6 +15,8 @@ function App() {
           <Route path="/about" element={<AboutUsPage />} />
           <Route path="/services" element={<ServicesPage />} />
           <Route path="/events" element={<EventsPage />} /> {/* <--- 2. Add route */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/admin" element={<AdminDashboard />} />
         </Routes>
       </div>
     </Router>

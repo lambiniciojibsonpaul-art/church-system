@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-function HolyCommunionFormModal({ onClose }) {
+function ConfirmationFormModal({ onClose }) {
     
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 h-screen w-screen">
@@ -9,15 +9,15 @@ function HolyCommunionFormModal({ onClose }) {
                 {/* Modal Header */}
                 <div className="sticky top-0 bg-[#F6F5ED] px-8 py-6 z-10 flex justify-between items-center border-b border-gray-200 shadow-sm">
                     <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-full flex items-center justify-center border-2 border-[#B59E74] text-xl font-medium text-[#B59E74]">
+                        <div className="w-16 h-16 rounded-full flex items-center justify-center border-2 border-[#B59E74] text-xl font-medium text-[#B59E74] shrink-0">
                             ⛪
                         </div>
                         <div>
                             <h2 className="text-xl md:text-2xl font-sans font-medium text-gray-800 uppercase tracking-wide">
                                 Basilica Minore de <span className="font-serif">San Pedro Bautista</span>
                             </h2>
-                            <h1 className="text-2xl md:text-3xl text-[#B59E74] font-serif font-medium mt-1">
-                                REGISTRATION FORM FOR HOLY COMMUNION
+                            <h1 className="text-2xl md:text-3xl text-[#B59E74] font-serif font-medium mt-1 uppercase">
+                                Registration Form for Confirmation
                             </h1>
                         </div>
                     </div>
@@ -36,7 +36,7 @@ function HolyCommunionFormModal({ onClose }) {
                     {/* TOP DETAILS */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-white rounded-xl border border-gray-100">
                         <div className="flex flex-col gap-1">
-                            <label className="text-sm font-bold text-gray-600">Date of Holy Communion:</label>
+                            <label className="text-sm font-bold text-gray-600">Date of Confirmation:</label>
                             <input type="date" className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                         </div>
                         <div className="flex flex-col gap-1">
@@ -52,11 +52,11 @@ function HolyCommunionFormModal({ onClose }) {
                     {/* 1. Student Information */}
                     <div>
                         <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                            Student Information <span className="text-[11px] text-gray-400 normal-case">(Pangalan ng Unang Pakikinabang)</span>
+                            Student Information <span className="text-[11px] text-gray-400 normal-case">(Pangalan ng Kukumpilan)</span>
                         </h3>
                         <div className="grid grid-cols-1 gap-6">
                             <div className="flex flex-col gap-1">
-                                <label className="text-xs font-bold text-gray-600">Name of Child <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Unang Pakikinabang)</span></label>
+                                <label className="text-xs font-bold text-gray-600">Name of Child <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Kukumpilan)</span></label>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <input type="text" className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" placeholder="First Name" />
                                     <input type="text" className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" placeholder="Middle Name" />
@@ -80,10 +80,10 @@ function HolyCommunionFormModal({ onClose }) {
                                     <label className="text-xs font-bold text-gray-600">Gender <span className="text-[11px] text-gray-400 normal-case font-normal">(Kasarian)</span></label>
                                     <div className="flex items-center gap-6 mt-1">
                                         <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                                            <input type="radio" name="gender" className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74] rounded border-gray-300" /> Male <span className="text-gray-400">(Lalake)</span>
+                                            <input type="radio" name="gender" className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74] rounded border-gray-300" /> Male
                                         </label>
                                         <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                                            <input type="radio" name="gender" className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74] rounded border-gray-300" /> Female <span className="text-gray-400">(Babae)</span>
+                                            <input type="radio" name="gender" className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74] rounded border-gray-300" /> Female
                                         </label>
                                     </div>
                                 </div>
@@ -114,22 +114,13 @@ function HolyCommunionFormModal({ onClose }) {
                     <div>
                         <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Parents & Guardian Information</h3>
                         <div className="grid grid-cols-1 gap-6">
-                            
-                            {/* Father's Name */}
                             <div className="flex flex-col gap-1">
                                 <label className="text-xs font-bold text-gray-600">Father's Full Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ama)</span></label>
                                 <input type="text" className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" placeholder="Full Name" />
                             </div>
-
-                            {/* Mother's Name */}
                             <div className="flex flex-col gap-1">
                                 <label className="text-xs font-bold text-gray-600">Mother's Full Maiden Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ina sa Pagkadalaga)</span></label>
                                 <input type="text" className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" placeholder="Full Maiden Name" />
-                            </div>
-
-                            <div className="flex flex-col gap-1">
-                                <label className="text-xs font-bold text-gray-600">Other Guardian Information</label>
-                                <input type="text" className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" placeholder="If applicable" />
                             </div>
                         </div>
                     </div>
@@ -147,16 +138,37 @@ function HolyCommunionFormModal({ onClose }) {
                                 <input type="text" className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                             </div>
                             <div className="flex flex-col gap-1 md:col-span-2 mt-2">
-                                <label className="text-xs font-bold text-gray-600 mb-2">Contact Numbers <span className="text-[11px] text-gray-400 normal-case font-normal">(Provide up to two)</span></label>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <input type="tel" className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" placeholder="Primary Contact Number" />
-                                    <input type="tel" className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" placeholder="Secondary Contact Number" />
-                                </div>
+                                <label className="text-xs font-bold text-gray-600">Contact Nos.:</label>
+                                <input type="tel" className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 md:w-1/2" placeholder="Primary Contact Number" />
                             </div>
                         </div>
                     </div>
 
-                    {/* 5. CHECKLIST OF REQUIREMENTS */}
+                    {/* 5. Sponsors Info */}
+                    <div>
+                        <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Sponsors Information <span className="text-[11px] text-gray-400 normal-case">(Ninong at Ninang)</span></h3>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                            {/* Primary Sponsors */}
+                            <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-xl">
+                                <label className="text-xs font-bold text-[#B59E74]">Primary Sponsor 1</label>
+                                <input type="text" className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" placeholder="Full Name" />
+                                <input type="text" className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm mt-1" placeholder="Address (Tirahan)" />
+                            </div>
+                            <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-xl">
+                                <label className="text-xs font-bold text-[#B59E74]">Primary Sponsor 2</label>
+                                <input type="text" className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" placeholder="Full Name" />
+                                <input type="text" className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm mt-1" placeholder="Address (Tirahan)" />
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs font-bold text-gray-600">Additional Sponsors <span className="text-[11px] text-gray-400 normal-case font-normal">(Karagdagang Ninong at Ninang)</span></label>
+                            <textarea rows="3" className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 resize-none" placeholder="List additional sponsors here..."></textarea>
+                        </div>
+                    </div>
+
+                    {/* 6. CHECKLIST OF REQUIREMENTS */}
                     <div className="bg-[#B59E74]/10 p-6 rounded-xl border border-[#B59E74]/30 shadow-sm mt-8">
                         <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-4 flex items-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
@@ -167,31 +179,13 @@ function HolyCommunionFormModal({ onClose }) {
                         <ul className="flex flex-col gap-3 text-sm text-gray-700 font-serif">
                             <li className="flex items-start gap-3">
                                 <span className="text-[#B59E74] mt-0.5">•</span> 
-                                Baptismal Cert. original with annotation for 1st communion purposes
+                                Certificate of Baptism
                             </li>
                             <li className="flex items-start gap-3">
                                 <span className="text-[#B59E74] mt-0.5">•</span> 
-                                Parents seminar (no parents seminar no 1st communion)
-                            </li>
-                            <li className="flex items-start gap-3">
-                                <span className="text-[#B59E74] mt-0.5">•</span> 
-                                Practices
-                            </li>
-                            <li className="flex items-start gap-3">
-                                <span className="text-[#B59E74] mt-0.5">•</span> 
-                                Confession
-                            </li>
-                            <li className="flex items-start gap-3">
-                                <span className="text-[#B59E74] mt-0.5">•</span> 
-                                <div className="flex items-center gap-2 w-full md:w-1/2">
-                                    <span>Others:</span>
-                                    <input type="text" className="flex-1 bg-transparent border-b border-gray-400 focus:outline-none focus:border-[#B59E74] text-sm" />
-                                </div>
+                                Attendance to Pre-Sacramental Seminar
                             </li>
                         </ul>
-                        <p className="text-xs text-gray-500 italic mt-5 border-t border-[#B59E74]/20 pt-3">
-                            * Please prepare and bring the necessary requirements to the Parish Office as indicated.
-                        </p>
                     </div>
 
                     {/* SUBMITTER'S DETAILS */}
@@ -213,12 +207,61 @@ function HolyCommunionFormModal({ onClose }) {
                     {/* ADMIN USE ONLY */}
                     <div className="pt-8 border-t border-gray-200 text-left">
                         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">FOR OFFICE USE ONLY (Church Admin)</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm font-serif p-4 bg-gray-100 rounded-lg border border-gray-200">
-                            <div className="border-b md:border-b-0 md:border-r border-gray-200 pb-2 md:pb-0 md:pr-4">Book No: ______</div>
-                            <div className="border-b md:border-b-0 md:border-r border-gray-200 pb-2 md:pb-0 md:pr-4">Page No: ______</div>
-                            <div className="border-b md:border-b-0 md:border-r border-gray-200 pb-2 md:pb-0 md:pr-4">Line No: ______</div>
-                            <div className="pt-2 md:pt-0">Signature of Catechist: ______</div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-8 text-sm font-serif p-6 bg-gray-100 rounded-lg border border-gray-200">
+                            {/* Left Column Admin */}
+                            <div className="flex flex-col gap-4">
+                                <div className="flex flex-col">
+                                    <span className="text-xs text-gray-500 uppercase tracking-wider">Date:</span>
+                                    <div className="border-b border-gray-400 h-6"></div>
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-xs text-gray-500 uppercase tracking-wider">Signature of Catechist:</span>
+                                    <div className="border-b border-gray-400 h-6"></div>
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-xs text-gray-500 uppercase tracking-wider">Notes:</span>
+                                    <div className="border-b border-gray-400 h-6"></div>
+                                </div>
+                            </div>
+                            
+                            {/* Middle Column Admin */}
+                            <div className="flex flex-col gap-4">
+                                <div className="flex flex-col">
+                                    <span className="text-xs text-gray-500 uppercase tracking-wider">Received By:</span>
+                                    <div className="border-b border-gray-400 h-6"></div>
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-xs text-gray-500 uppercase tracking-wider">Date Registered:</span>
+                                    <div className="border-b border-gray-400 h-6"></div>
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-xs text-gray-500 uppercase tracking-wider">Minister of Confirmation:</span>
+                                    <div className="border-b border-gray-400 h-6"></div>
+                                </div>
+                            </div>
+
+                            {/* Right Column Admin (Log book details) */}
+                            <div className="flex flex-col gap-4">
+                                <div className="flex items-end gap-2">
+                                    <span className="text-xs text-gray-500 uppercase tracking-wider">Book No:</span>
+                                    <div className="border-b border-gray-400 flex-1 h-6"></div>
+                                </div>
+                                <div className="flex items-end gap-2">
+                                    <span className="text-xs text-gray-500 uppercase tracking-wider">Page No:</span>
+                                    <div className="border-b border-gray-400 flex-1 h-6"></div>
+                                </div>
+                                <div className="flex items-end gap-2">
+                                    <span className="text-xs text-gray-500 uppercase tracking-wider">Line No:</span>
+                                    <div className="border-b border-gray-400 flex-1 h-6"></div>
+                                </div>
+                                <div className="flex items-end gap-2">
+                                    <span className="text-xs text-gray-500 uppercase tracking-wider">Amount:</span>
+                                    <div className="border-b border-gray-400 flex-1 h-6"></div>
+                                </div>
+                            </div>
                         </div>
+
                     </div>
 
                 </form>
@@ -228,4 +271,4 @@ function HolyCommunionFormModal({ onClose }) {
     );
 }
 
-export default HolyCommunionFormModal;
+export default ConfirmationFormModal;

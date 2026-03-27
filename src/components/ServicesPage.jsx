@@ -1,18 +1,22 @@
 import { useState } from 'react';
 import Header from './Header';
+
 // Import your shiny new components!
 import BaptismFormModal from './Forms/BaptismFormModal';
 import HolyCommunionFormModal from './Forms/HolyCommunionFormModal';
 import WeddingRegistryFormModal from './Forms/WeddingRegistryFormModal';
 import SacramentsLiturgicalFormModal from './Forms/SacramentsLiturgicalFormModal';
 import MassIntentionFormModal from './Forms/MassIntentionFormModal';
+import ConfirmationFormModal from './Forms/ConfirmationFormModal';
 
 function ServicesPage() {
+    // States for the Modals
     const [isBaptismModalOpen, setIsBaptismModalOpen] = useState(false);
     const [isCommunionModalOpen, setIsCommunionModalOpen] = useState(false);
     const [isWeddingModalOpen, setIsWeddingModalOpen] = useState(false);
     const [isLiturgicalModalOpen, setIsLiturgicalModalOpen] = useState(false);
     const [isMassIntentionModalOpen, setIsMassIntentionModalOpen] = useState(false);
+    const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
 
     const backgroundStyle = {
         backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('src/assets/Images/church3.jpg')`,
@@ -62,7 +66,7 @@ function ServicesPage() {
 
                     <hr className="border-gray-300 border-t w-full max-w-5xl mx-auto mb-16" />
 
-                    {/* Sacramental Services */}
+                    {/* --- SACRAMENTAL SERVICES SECTION --- */}
                     <div className="flex flex-col lg:flex-row gap-12 lg:gap-16 mb-20 items-center">
                         <div className="lg:w-1/3 flex flex-col gap-4 text-center lg:text-left">
                             <h3 className="text-3xl text-[#B59E74] font-serif">Sacramental Services</h3>
@@ -72,6 +76,8 @@ function ServicesPage() {
                         </div>
 
                         <div className="lg:w-2/3 flex flex-col gap-4 md:gap-6 w-full">
+                            
+                            {/* Top Row: 3 Cards */}
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
                                 <ServiceCard 
                                     title="Baptism Form" 
@@ -83,8 +89,14 @@ function ServicesPage() {
                                     tempIcon="🍞" 
                                     onClick={() => setIsCommunionModalOpen(true)}
                                 />
-                                <ServiceCard title="Confirmation" tempIcon="🕊️" />
+                                <ServiceCard 
+                                    title="Confirmation" 
+                                    tempIcon="🕊️" 
+                                    onClick={() => setIsConfirmationModalOpen(true)}
+                                />
                             </div>
+                            
+                            {/* Bottom Row: 2 Cards */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 md:w-2/3 mx-auto w-full">
                                 <ServiceCard 
                                     title="Wedding Registry" 
@@ -96,14 +108,13 @@ function ServicesPage() {
                                     tempIcon="⛪" 
                                     onClick={() => setIsLiturgicalModalOpen(true)}
                                 />
-                                {/* Removed the extra Mass Intention from here! */}
                             </div>
                         </div>
                     </div>
 
                     <hr className="border-gray-300 border-t w-full max-w-5xl mx-auto mb-16" />
 
-                    {/* General Requests */}
+                    {/* --- GENERAL REQUESTS SECTION --- */}
                     <div className="flex flex-col lg:flex-row-reverse gap-12 lg:gap-16 items-center">
                         <div className="lg:w-1/3 flex flex-col gap-4 text-center lg:text-left">
                             <h3 className="text-3xl text-[#B59E74] font-serif">General Requests</h3>
@@ -112,7 +123,6 @@ function ServicesPage() {
                             </p>
                         </div>
                         <div className="lg:w-2/3 grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 w-full">
-                            {/* Correctly placed and wired Mass Intention card */}
                             <ServiceCard 
                                 title="Mass Intention" 
                                 tempIcon="🕯️" 
@@ -125,12 +135,13 @@ function ServicesPage() {
                 </div>
             </section>
 
-            {/* --- RENDER THE MODAL COMPONENTS --- */}
+            {/* --- RENDER ALL MODAL COMPONENTS --- */}
             {isBaptismModalOpen && <BaptismFormModal onClose={() => setIsBaptismModalOpen(false)} />}
             {isCommunionModalOpen && <HolyCommunionFormModal onClose={() => setIsCommunionModalOpen(false)} />}
             {isWeddingModalOpen && <WeddingRegistryFormModal onClose={() => setIsWeddingModalOpen(false)} />}
             {isLiturgicalModalOpen && <SacramentsLiturgicalFormModal onClose={() => setIsLiturgicalModalOpen(false)} />}
             {isMassIntentionModalOpen && <MassIntentionFormModal onClose={() => setIsMassIntentionModalOpen(false)} />}
+            {isConfirmationModalOpen && <ConfirmationFormModal onClose={() => setIsConfirmationModalOpen(false)} />}
 
         </div>
     );
