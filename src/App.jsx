@@ -5,6 +5,7 @@ import ServicesPage from './components/ServicesPage';
 import EventsPage from './components/EventsPage';
 import LoginPage from './components/LoginPage';
 import AdminDashboard from './components/AdminDashboard';
+import AdminSchedules from './components/AdminSchedules';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="/events" element={<EventsPage />} /> {/* <--- 2. Add route */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/schedules" element={<AdminSchedules />} />
         </Routes>
       </div>
     </Router>
