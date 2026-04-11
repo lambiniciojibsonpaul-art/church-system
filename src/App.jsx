@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import ChurchLandingPage from './components/ChurchLandingPage';
 import AboutUsPage from './components/AboutUsPage';
 import ServicesPage from './components/ServicesPage';
@@ -15,7 +15,7 @@ function App() {
           <Route path="/" element={<ChurchLandingPage />} />
           <Route path="/about" element={<AboutUsPage />} />
           <Route path="/services" element={<ServicesPage />} />
-          <Route path="/events" element={<EventsPage />} /> {/* <--- 2. Add route */}
+          <Route path="/events" element={<EventsPage />} /> 
           <Route path="/login" element={<LoginPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/schedules" element={<AdminSchedules />} />
