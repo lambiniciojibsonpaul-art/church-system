@@ -1,35 +1,40 @@
-import Header from './Header.jsx';
-import FloatingFeatures from './FloatingFeatures.jsx';
-import UpcomingEvents from './UpcomingEvents.jsx';
+import Header from "./Header.jsx";
+import FloatingFeatures from "./FloatingFeatures.jsx";
+import UpcomingEvents from "./UpcomingEvents.jsx";
+
+const church1 = new URL("../assets/Images/church1.jpg", import.meta.url).href;
+const church2 = new URL("../assets/Images/church2.jpg", import.meta.url).href;
+const church3 = new URL("../assets/Images/church3.jpg", import.meta.url).href;
 
 function ChurchLandingPage() {
-    const backgroundStyle = {
-        backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('src/assets/Images/church1.jpg')`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundAttachment: 'fixed', // Essential for the scrolling 'float' effect
-    };
+  const backgroundStyle = {
+    backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('${church1}')`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundAttachment: "fixed", // Essential for the scrolling 'float' effect
+  };
 
-    return (
-        <div className="relative min-h-screen w-full flex flex-col font-sans">
-            
-            <Header />
+  return (
+    <div className="relative min-h-screen w-full flex flex-col font-sans">
+      <Header />
 
-            {/* Hero Section */}
-            <main style={backgroundStyle} className="relative h-screen flex flex-col items-center justify-center text-center px-4 text-white">
-                <h1 className="text-6xl md:text-8xl font-bold tracking-tight leading-tight max-w-4xl z-10 mt-16">
-                    Welcome to <br /> San Pedro Bautista Church
-                </h1>
-            </main>
+      {/* Hero Section */}
+      <main
+        style={backgroundStyle}
+        className="relative h-screen flex flex-col items-center justify-center text-center px-4 text-white"
+      >
+        <h1 className="text-6xl md:text-8xl font-bold tracking-tight leading-tight max-w-4xl z-10 mt-16">
+          Welcome to <br /> San Pedro Bautista Church
+        </h1>
+      </main>
 
-            <FloatingFeatures />
+      <FloatingFeatures />
 
-            <UpcomingEvents />
+      <UpcomingEvents />
 
-            {/* Floating Chat Button */}
-            
-        </div>
-    );
+      {/* Floating Chat Button */}
+    </div>
+  );
 }
 
 export default ChurchLandingPage;
