@@ -1,6 +1,6 @@
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import ChurchLandingPage from './components/ChurchLandingPage';
-import AboutUsPage from './components/AboutUsPage';
+import AboutUsPage from './components/TempPage';
 import ServicesPage from './components/ServicesPage';
 import EventsPage from './components/EventsPage';
 import LoginPage from './components/LoginPage';
