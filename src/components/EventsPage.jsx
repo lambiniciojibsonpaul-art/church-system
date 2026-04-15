@@ -1,44 +1,110 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from './Header';
+import { supabase } from '../supabaseClient'; 
 
 function EventsPage() {
-    // --- CALENDAR LOGIC & STATE ---
+    // --- STATE MANAGEMENT ---
     const today = new Date();
     const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
     const [selectedDate, setSelectedDate] = useState(today);
-
-    // Dynamic Dummy Events (Automatically places events in the current month so you can test them!)
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth();
     
-    const events = [
-        {
-            id: 1,
-            date: new Date(currentYear, currentMonth, 13).toDateString(),
-            title: "Community Day",
-            time: "9:00 AM - 3:00 PM",
-            location: "500 Terry Francine St, San Francisco",
-            description: "Join us for a day of fellowship, food, and fun. All families and friends of the parish are welcome as we celebrate our vibrant community!"
-        },
-        {
-            id: 2,
-            date: new Date(currentYear, currentMonth, 20).toDateString(),
-            title: "Easter Warm Up Sermon",
-            time: "9:00 AM - 11:00 AM",
-            location: "Main Sanctuary",
-            description: "A special morning sermon to prepare our hearts and minds for the upcoming Easter celebrations. Guest speaker will be announced soon."
-        },
-        {
-            id: 3,
-            date: new Date(currentYear, currentMonth + 1, 2).toDateString(), // Next month!
-            title: "The Light Project",
-            time: "6:00 PM - 8:00 PM",
-            location: "Parish Hall",
-            description: "An evening of worship, acoustic music, and testimony aimed at the youth and young adults of our parish."
-        }
-    ];
+    // Database Events & Admin State
+    const [events, setEvents] = useState([]);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
 
-    // Calendar Helpers
+    // Modal & Form State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [formData, setFormData] = useState({
+        title: '',
+        eventClass: 'Mass',
+        priestName: 'Fr. Default Priest',
+        eventDate: '', // <-- NEW: Added eventDate state
+        eventTime: '',
+        location: '',
+        description: '',
+        isInside: true
+    });
+
+    // --- FETCH DATA & CHECK ADMIN ON LOAD ---
+    useEffect(() => {
+        const checkAdminAndFetch = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                setUser(session.user);
+                const { data: roleData } = await supabase
+                    .from('user_roles')
+                    .select('role')
+                    .eq('user_id', session.user.id)
+                    .single();
+                
+                if (roleData && roleData.role === 'admin') {
+                    setIsAdmin(true);
+                }
+            }
+            fetchEvents();
+        };
+        checkAdminAndFetch();
+    }, []);
+
+    const fetchEvents = async () => {
+        const { data, error } = await supabase
+            .from('events')
+            .select('*')
+            .order('event_time', { ascending: true }); 
+
+        if (data) setEvents(data);
+        setLoading(false);
+    };
+
+    // --- FORM SUBMISSION HANDLERS ---
+    const handleChange = (e) => {
+        const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+        setFormData({ ...formData, [e.target.name]: value });
+    };
+
+    // NEW: Function to open modal and pre-fill the selected date
+    const handleOpenModal = () => {
+        const yyyy = selectedDate.getFullYear();
+        const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
+        const dd = String(selectedDate.getDate()).padStart(2, '0');
+        
+        setFormData({
+            ...formData,
+            eventDate: `${yyyy}-${mm}-${dd}` // Automatically sets the form date to what you clicked!
+        });
+        setIsModalOpen(true);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setSubmitting(true);
+
+        const { error } = await supabase.from('events').insert([{
+            creator_id: user.id,
+            title: formData.title,
+            event_class: formData.eventClass,
+            priest_name: formData.priestName,
+            event_date: formData.eventDate, // <-- NEW: Now pulls directly from the form field
+            event_time: formData.eventTime,
+            location: formData.location,
+            description: formData.description,
+            is_inside: formData.isInside
+        }]);
+
+        if (!error) {
+            setIsModalOpen(false);
+            fetchEvents(); 
+            setFormData({ ...formData, title: '', eventDate: '', eventTime: '', location: '', description: '' });
+        } else {
+            alert("Error saving event: " + error.message);
+        }
+        setSubmitting(false);
+    };
+
+    // --- CALENDAR HELPERS ---
     const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -48,28 +114,37 @@ function EventsPage() {
     const daysInMonth = getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
     const firstDay = getFirstDayOfMonth(currentDate.getFullYear(), currentDate.getMonth());
 
-    // Generate the array of days for the grid
     const blanks = Array.from({ length: firstDay }, (_, i) => null);
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
     const calendarGrid = [...blanks, ...days];
 
-    // Handlers
     const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
     const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+    
     const handleDayClick = (day) => {
         if (day) setSelectedDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
     };
 
-    // Check if a specific day has an event
     const getEventsForDate = (dateToMatch) => {
-        return events.filter(e => e.date === dateToMatch.toDateString());
+        return events.filter(e => {
+            const eventDate = new Date(e.event_date + 'T00:00:00'); 
+            return eventDate.toDateString() === dateToMatch.toDateString();
+        });
     };
 
     const selectedEvents = getEventsForDate(selectedDate);
 
-    // Parallax background style
+    const formatTime = (timeStr) => {
+        if (!timeStr) return '';
+        const [h, m] = timeStr.split(':');
+        let hours = parseInt(h, 10);
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+        return `${hours}:${m} ${ampm}`;
+    };
+
     const backgroundStyle = {
-        backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('src/assets/Images/church1.jpg')`, // You can change this image!
+        backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('src/assets/Images/church1.jpg')`, 
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundAttachment: 'fixed',
@@ -80,18 +155,15 @@ function EventsPage() {
             
             <Header />
 
-            {/* Hero Section */}
             <main style={backgroundStyle} className="relative h-[60vh] md:h-screen flex flex-col items-center justify-center text-center px-4 text-white">
                 <h1 className="text-5xl md:text-7xl font-bold tracking-tight mt-16">
                     Events
                 </h1>
             </main>
 
-            {/* Floating Content Section */}
             <section className="relative w-full z-20 -mt-24 pb-32 px-6">
                 <div className="bg-[#F6F5ED] rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-7xl mx-auto py-12 px-6 md:px-12 text-left">
                     
-                    {/* Intro */}
                     <div className="text-center max-w-3xl mx-auto mb-12">
                         <h2 className="text-3xl md:text-4xl text-[#B59E74] font-serif uppercase tracking-widest mb-6 font-medium">
                             Church Calendar
@@ -103,13 +175,10 @@ function EventsPage() {
 
                     <hr className="border-gray-300 border-t w-full max-w-5xl mx-auto mb-12" />
 
-                    {/* --- TWO-COLUMN CALENDAR LAYOUT --- */}
                     <div className="flex flex-col lg:flex-row gap-12 max-w-6xl mx-auto">
                         
-                        {/* LEFT PANE: The Calendar */}
                         <div className="flex-1 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-[#B59E74]/20 h-fit">
                             
-                            {/* Calendar Header */}
                             <div className="flex justify-between items-center mb-6">
                                 <button onClick={prevMonth} className="p-2 hover:bg-[#F6F5ED] rounded-full transition-colors text-[#B59E74]">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
@@ -122,7 +191,6 @@ function EventsPage() {
                                 </button>
                             </div>
 
-                            {/* Days of Week */}
                             <div className="grid grid-cols-7 gap-2 text-center mb-4">
                                 {daysOfWeek.map(day => (
                                     <div key={day} className="text-xs font-bold uppercase tracking-widest text-gray-400">
@@ -131,7 +199,6 @@ function EventsPage() {
                                 ))}
                             </div>
 
-                            {/* Calendar Grid */}
                             <div className="grid grid-cols-7 gap-2 text-center">
                                 {calendarGrid.map((day, index) => {
                                     if (!day) return <div key={`blank-${index}`} className="h-12 w-12"></div>;
@@ -151,7 +218,6 @@ function EventsPage() {
                                             `}
                                         >
                                             {day}
-                                            {/* The Gold Event Dot! */}
                                             {hasEvent && (
                                                 <span className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-[#B59E74]'}`}></span>
                                             )}
@@ -161,44 +227,53 @@ function EventsPage() {
                             </div>
                         </div>
 
-                        {/* RIGHT PANE: Event Details */}
                         <div className="flex-1 flex flex-col gap-6">
                             
-                            {/* Selected Date Header */}
-                            <div className="bg-[#B59E74] p-6 rounded-2xl shadow-sm text-white flex flex-col justify-center items-center md:items-start">
-                                <span className="text-sm font-bold tracking-widest uppercase opacity-80 mb-1">Schedule For</span>
-                                <h3 className="text-3xl font-serif font-medium">
-                                    {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                                </h3>
+                            <div className="bg-[#B59E74] p-6 rounded-2xl shadow-sm text-white flex flex-col md:flex-row justify-between items-center md:items-start relative overflow-hidden">
+                                <div className="z-10 text-center md:text-left">
+                                    <span className="text-sm font-bold tracking-widest uppercase opacity-80 mb-1 block">Schedule For</span>
+                                    <h3 className="text-2xl lg:text-3xl font-serif font-medium">
+                                        {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                    </h3>
+                                </div>
+                                
+                                {isAdmin && (
+                                    <button 
+                                        onClick={handleOpenModal} // <-- NEW: Calls our updated function
+                                        className="mt-4 md:mt-0 z-10 bg-white text-[#B59E74] hover:bg-gray-50 px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-widest shadow-sm transition-transform hover:scale-105 flex items-center gap-2"
+                                    >
+                                        <span className="text-lg leading-none">+</span> Add Event
+                                    </button>
+                                )}
+                                <div className="absolute -right-10 -top-10 w-40 h-40 bg-white opacity-10 rounded-full blur-2xl"></div>
                             </div>
 
-                            {/* Event Cards or Empty State */}
                             <div className="flex flex-col gap-4">
-                                {selectedEvents.length > 0 ? (
+                                {loading ? (
+                                     <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B59E74]"></div></div>
+                                ) : selectedEvents.length > 0 ? (
                                     selectedEvents.map(event => (
-                                        <div key={event.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4 animate-fade-in-up">
-                                            <h4 className="text-2xl font-bold text-gray-800">{event.title}</h4>
+                                        <div key={event.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4 animate-fade-in-up relative overflow-hidden group">
+                                            <div className="absolute top-4 right-4">
+                                                <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${event.event_class === 'Mass' ? 'bg-[#B59E74]/10 text-[#B59E74]' : 'bg-gray-100 text-gray-600'}`}>
+                                                    {event.event_class}
+                                                </span>
+                                            </div>
+
+                                            <h4 className="text-2xl font-bold text-gray-800 pr-16">{event.title}</h4>
                                             
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-4 text-sm text-gray-600 font-serif italic">
                                                 <div className="flex items-center gap-2">
-                                                    <svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                    </svg>
-                                                    {event.time}
+                                                    <svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                    {formatTime(event.event_time)}
                                                 </div>
                                                 <div className="hidden sm:block w-1 h-1 bg-gray-300 rounded-full"></div>
                                                 <div className="flex items-center gap-2">
-                                                    <svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                    </svg>
+                                                    <svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                                                     {event.location}
                                                 </div>
                                             </div>
-
-                                            <p className="text-gray-700 leading-relaxed mt-2">
-                                                {event.description}
-                                            </p>
+                                            <p className="text-gray-700 leading-relaxed mt-2 text-sm">{event.description}</p>
                                         </div>
                                     ))
                                 ) : (
@@ -216,6 +291,85 @@ function EventsPage() {
                     </div>
                 </div>
             </section>
+
+            {/* --- ADMIN CREATE EVENT MODAL --- */}
+            {isAdmin && isModalOpen && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
+                    <div className="bg-[#F6F5ED] w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">
+                        
+                        <div className="sticky top-0 bg-[#F6F5ED] px-8 py-6 z-10 flex justify-between items-center border-b border-gray-200 shadow-sm">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-[#B59E74]/10 border border-[#B59E74]/30 flex items-center justify-center text-xl">📅</div>
+                                <div>
+                                    <h2 className="text-xl font-serif text-[#B59E74] font-medium uppercase tracking-widest leading-none">Create Event</h2>
+                                </div>
+                            </div>
+                            <button onClick={() => setIsModalOpen(false)} className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100 text-gray-500 transition-colors">✕</button>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                            
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Event Title *</label>
+                                <input type="text" name="title" required value={formData.title} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none" placeholder="e.g., Youth Ministry Assembly" />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Class *</label>
+                                    <select name="eventClass" value={formData.eventClass} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none">
+                                        <option value="Mass">Mass</option>
+                                        <option value="Custom">Custom Event</option>
+                                    </select>
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Priest *</label>
+                                    <select name="priestName" value={formData.priestName} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none">
+                                        <option value="Fr. Default Priest">Fr. Default Priest</option>
+                                        <option value="Fr. Guest">Guest Priest</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* NEW: Date and Time Side-by-Side */}
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Date *</label>
+                                    <input type="date" name="eventDate" required value={formData.eventDate} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none" />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Time *</label>
+                                    <input type="time" name="eventTime" required value={formData.eventTime} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none" />
+                                </div>
+                            </div>
+
+                            {/* NEW: Location and Setting Side-by-Side */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="flex flex-col gap-1 md:col-span-2">
+                                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Location *</label>
+                                    <input type="text" name="location" required value={formData.location} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none" placeholder="e.g., Main Altar" />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Setting</label>
+                                    <div className="flex items-center gap-4 mt-2 h-full">
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="isInside" checked={formData.isInside === true} onChange={() => setFormData({...formData, isInside: true})} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" /> Sa Loob</label>
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="isInside" checked={formData.isInside === false} onChange={() => setFormData({...formData, isInside: false})} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" /> Sa Labas</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Description</label>
+                                <textarea name="description" value={formData.description} onChange={handleChange} rows="3" className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none resize-none" placeholder="Optional details..."></textarea>
+                            </div>
+
+                            <button type="submit" disabled={submitting} className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-xl uppercase tracking-widest mt-4 shadow-md disabled:opacity-70 transition-colors">
+                                {submitting ? 'Saving...' : 'Post Schedule'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
