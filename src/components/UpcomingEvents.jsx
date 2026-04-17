@@ -1,9 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
-
-const church1 = new URL("../assets/Images/church1.jpg", import.meta.url).href;
-const church2 = new URL("../assets/Images/church2.jpg", import.meta.url).href;
-const church3 = new URL("../assets/Images/church3.jpg", import.meta.url).href;
+import church2 from "../assets/Images/church2.jpg";
 
 function UpcomingEvents() {
   const [events, setEvents] = useState([]);
@@ -39,7 +36,7 @@ function UpcomingEvents() {
 
   // Parallax background
   const backgroundStyle = {
-    backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.6)), url('src/assets/Images/church2.jpg')`,
+    backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.6)), url('${church2}')`,
     backgroundSize: "cover",
     backgroundPosition: "center",
     backgroundAttachment: "fixed",

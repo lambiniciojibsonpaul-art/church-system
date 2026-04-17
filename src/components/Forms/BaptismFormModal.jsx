@@ -1,13 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../../supabaseClient";
 
-const church1 = new URL("../../assets/Images/church1.jpg", import.meta.url)
-  .href;
-const church2 = new URL("../../assets/Images/church2.jpg", import.meta.url)
-  .href;
-const church3 = new URL("../../assets/Images/church3.jpg", import.meta.url)
-  .href;
-
 function BaptismFormModal({ onClose }) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);

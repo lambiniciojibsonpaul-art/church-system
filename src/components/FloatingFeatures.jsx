@@ -1,7 +1,3 @@
-const church1 = new URL("../assets/Images/church1.jpg", import.meta.url).href;
-const church2 = new URL("../assets/Images/church2.jpg", import.meta.url).href;
-const church3 = new URL("../assets/Images/church3.jpg", import.meta.url).href;
-
 function FloatingFeatures() {
   return (
     <section className="relative w-full z-20 -mt-24 pb-24 px-6">

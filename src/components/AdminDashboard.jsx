@@ -3,10 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Header from "./Header";
 
-const church1 = new URL("../assets/Images/church1.jpg", import.meta.url).href;
-const church2 = new URL("../assets/Images/church2.jpg", import.meta.url).href;
-const church3 = new URL("../assets/Images/church3.jpg", import.meta.url).href;
-
 function AdminDashboard() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);

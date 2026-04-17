@@ -1,10 +1,7 @@
 import Header from "./Header.jsx";
 import FloatingFeatures from "./FloatingFeatures.jsx";
 import UpcomingEvents from "./UpcomingEvents.jsx";
-
-const church1 = new URL("../assets/Images/church1.jpg", import.meta.url).href;
-const church2 = new URL("../assets/Images/church2.jpg", import.meta.url).href;
-const church3 = new URL("../assets/Images/church3.jpg", import.meta.url).href;
+import church1 from "../assets/Images/church1.jpg";
 
 function ChurchLandingPage() {
   const backgroundStyle = {
