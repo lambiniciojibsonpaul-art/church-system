@@ -7,6 +7,10 @@ import LoginPage from './components/LoginPage';
 import AdminDashboard from './components/AdminDashboard';
 import AdminSchedules from './components/AdminSchedules';
 
+// --- New Auth Imports ---
+import AdminManageUsers from './components/Auth/AdminManageUsers';
+import UpdatePassword from './components/Auth/UpdatePassword';
+
 function App() {
   return (
     <Router>
@@ -17,8 +21,14 @@ function App() {
           <Route path="/services" element={<ServicesPage />} />
           <Route path="/events" element={<EventsPage />} /> 
           <Route path="/login" element={<LoginPage />} />
+          
+          {/* Admin Routes */}
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/schedules" element={<AdminSchedules />} />
+          <Route path="/admin/manage-users" element={<AdminManageUsers />} />
+          
+          {/* Auth Security Route */}
+          <Route path="/update-password" element={<UpdatePassword />} />
         </Routes>
       </div>
     </Router>
