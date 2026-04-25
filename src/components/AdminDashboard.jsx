@@ -9,12 +9,9 @@ function AdminDashboard() {
   const [baptisms, setBaptisms] = useState([]);
   const [selectedBaptism, setSelectedBaptism] = useState(null);
 
-  // NEW: State to track which tab the admin is currently viewing
   const [activeTab, setActiveTab] = useState("Baptisms");
-
   const navigate = useNavigate();
 
-  // The list of tabs we want to show
   const tabs = [
     "Baptisms",
     "Holy Communion",
@@ -50,7 +47,6 @@ function AdminDashboard() {
 
       setUser(session.user);
 
-      // Fetch Baptisms (We will add the fetch code for the others later!)
       const { data: baptismData } = await supabase
         .from("baptisms")
         .select("*")
@@ -81,14 +77,26 @@ function AdminDashboard() {
       <Header forceSolidBg={true} />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-32 pb-12">
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] mb-2 uppercase tracking-wide">
-            Parish Dashboard
-          </h1>
-          <p className="text-gray-500 font-serif italic">
-            Welcome back. You are logged in as{" "}
-            <span className="font-semibold not-italic">{user?.email}</span>
-          </p>
+        
+        {/* --- UPDATED HEADER SECTION --- */}
+        <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] mb-2 uppercase tracking-wide">
+              Parish Dashboard
+            </h1>
+            <p className="text-gray-500 font-serif italic">
+              Welcome back. You are logged in as{" "}
+              <span className="font-semibold not-italic">{user?.email}</span>
+            </p>
+          </div>
+          
+          {/* Manage Staff Button */}
+          <button 
+            onClick={() => navigate("/admin/manage-users")}
+            className="flex items-center justify-center gap-2 bg-[#B59E74] hover:bg-[#9c8760] text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-md hover:shadow-lg active:scale-95"
+          >
+            <span>👤</span> Manage Staff
+          </button>
         </div>
 
         {/* Stats Overview Grid */}
@@ -120,9 +128,8 @@ function AdminDashboard() {
           </div>
         </div>
 
-        {/* --- NEW TABBED INTERFACE --- */}
+        {/* --- TABBED INTERFACE --- */}
         <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px]">
-          {/* Tab Navigation Bar */}
           <div className="flex overflow-x-auto border-b border-gray-100 bg-gray-50/50 scrollbar-hidden">
             {tabs.map((tab) => (
               <button
@@ -135,7 +142,6 @@ function AdminDashboard() {
                 }`}
               >
                 {tab}
-                {/* Add a tiny notification dot if there are pending baptisms and this is the baptism tab */}
                 {tab === "Baptisms" && pendingBaptismsCount > 0 && (
                   <span className="ml-2 inline-flex items-center justify-center w-5 h-5 text-[10px] text-white bg-red-500 rounded-full">
                     {pendingBaptismsCount}
@@ -145,9 +151,7 @@ function AdminDashboard() {
             ))}
           </div>
 
-          {/* Tab Content Area */}
           <div className="p-8">
-            {/* 1. BAPTISMS TAB CONTENT */}
             {activeTab === "Baptisms" && (
               <>
                 {baptisms.length === 0 ? (
@@ -183,9 +187,7 @@ function AdminDashboard() {
                               {bap.baptism_type}
                             </td>
                             <td className="p-4 text-sm text-gray-600">
-                              {new Date(
-                                bap.preferred_date,
-                              ).toLocaleDateString()}
+                              {new Date(bap.preferred_date).toLocaleDateString()}
                             </td>
                             <td className="p-4 text-sm text-gray-500 italic">
                               {bap.submitter_name}
@@ -218,7 +220,6 @@ function AdminDashboard() {
               </>
             )}
 
-            {/* 2. ALL OTHER TABS CONTENT (Placeholders for now) */}
             {activeTab !== "Baptisms" && (
               <div className="text-center text-gray-400 mt-16 animate-fade-in">
                 <div className="text-4xl mb-4">⏳</div>
@@ -235,7 +236,6 @@ function AdminDashboard() {
         </div>
       </main>
 
-      {/* Baptism Details Modal (Unchanged) */}
       {selectedBaptism && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">
@@ -280,9 +280,7 @@ function AdminDashboard() {
                   </p>
                   <p className="text-lg font-serif text-gray-800 mt-1">
                     {selectedBaptism.baptism_type} —{" "}
-                    {new Date(
-                      selectedBaptism.preferred_date,
-                    ).toLocaleDateString()}
+                    {new Date(selectedBaptism.preferred_date).toLocaleDateString()}
                   </p>
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { supabase } from "../../supabaseClient"; // Path updated: goes up two levels to src/
-import Header from "../Header"; // Path updated: goes up one level to components/
+import { useNavigate } from "react-router-dom";
+import { supabase } from "../../supabaseClient"; 
+import Header from "../Header"; 
 
 function AdminManageUsers() {
   const [formData, setFormData] = useState({ 
@@ -11,13 +12,14 @@ function AdminManageUsers() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
 
+  const navigate = useNavigate();
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage({ type: "", text: "" });
 
     try {
-      // This calls the Supabase Edge Function we deployed earlier
       const { data, error } = await supabase.functions.invoke("create-user", {
         body: formData,
       });
@@ -29,12 +31,11 @@ function AdminManageUsers() {
         text: "Account created successfully! The user must change their password on first login." 
       });
       
-      // Reset the form after success
       setFormData({ email: "", password: "", role: "Priest" });
     } catch (err) {
       setMessage({ 
         type: "error", 
-        text: err.message || "An unexpected error occurred while creating the account." 
+        text: err.message || "An unexpected error occurred." 
       });
     } finally {
       setLoading(false);
@@ -43,93 +44,130 @@ function AdminManageUsers() {
 
   return (
     <div className="relative min-h-screen w-full flex flex-col font-sans bg-[#F6F5ED]">
-      <Header />
+      {/* 1. HEADER: Added a z-index wrapper to ensure it stays on top */}
+      <div className="relative z-50">
+        <Header />
+      </div>
       
-      <main className="flex-1 flex items-center justify-center p-6 mt-16 lg:mt-0">
-        <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up border border-gray-200">
+      {/* 2. MAIN: Changed mt-16 lg:mt-0 to pt-24 lg:pt-32 to create a permanent gap */}
+      <main className="flex-1 flex items-center justify-center p-6 pt-24 lg:pt-32 pb-12">
+        
+        {/* LANDSCAPE CONTAINER */}
+        <div className="bg-white w-full max-w-5xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-fade-in-up border border-gray-100 flex flex-col md:flex-row">
           
-          {/* Header Section */}
-          <div className="bg-white px-8 py-8 text-center border-b border-gray-200">
-            <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center border-2 border-[#B59E74] text-2xl mb-4">
-              👤
+          {/* LEFT PANEL */}
+          <div className="md:w-2/5 bg-[#B59E74] p-12 text-white flex flex-col justify-center items-center text-center relative overflow-hidden">
+            <div className="absolute -top-20 -left-20 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
+            <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-black/10 rounded-full blur-3xl"></div>
+
+            <div className="relative z-10">
+              <div className="w-24 h-24 mx-auto rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border-2 border-white/30 text-4xl mb-8 shadow-xl">
+                👤
+              </div>
+              <h2 className="text-3xl font-serif font-medium uppercase tracking-[0.2em] mb-4 leading-tight">
+                Staff <br /> Management
+              </h2>
+              <div className="w-12 h-1 bg-white/40 mx-auto mb-6"></div>
+              <p className="text-white/80 font-serif italic text-lg leading-relaxed max-w-xs mx-auto">
+                "Empowering our church leadership through secure digital access."
+              </p>
             </div>
-            <h2 className="text-2xl font-serif text-[#B59E74] font-medium uppercase tracking-widest">
-              Manage Parish Staff
-            </h2>
-            <p className="text-sm text-gray-500 mt-2 font-serif italic">
-              Create secure accounts for Priests and Ministers.
-            </p>
           </div>
 
-          {/* Form Section */}
-          <form onSubmit={handleSubmit} className="p-8 space-y-5">
-            {message.text && (
-              <div className={`p-3 rounded-lg text-center text-sm animate-pulse ${
-                message.type === 'success' 
-                ? 'bg-green-50 text-green-700 border border-green-200' 
-                : 'bg-red-50 text-red-600 border border-red-200'
-              }`}>
-                {message.text}
-              </div>
-            )}
-
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                Email Address
-              </label>
-              <input 
-                type="email" 
-                required 
-                placeholder="priest@church.com"
-                className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full transition-shadow"
-                value={formData.email} 
-                onChange={(e) => setFormData({...formData, email: e.target.value})} 
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                Temporary Password
-              </label>
-              <input 
-                type="password" 
-                required 
-                placeholder="••••••••"
-                className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full transition-shadow"
-                value={formData.password} 
-                onChange={(e) => setFormData({...formData, password: e.target.value})} 
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                Assign Role
-              </label>
-              <select 
-                className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full transition-shadow"
-                value={formData.role} 
-                onChange={(e) => setFormData({...formData, role: e.target.value})}
+          {/* RIGHT PANEL */}
+          <div className="md:w-3/5 flex flex-col relative">
+            
+            {/* TOP NAV BAR */}
+            <div className="flex items-center px-8 py-5 bg-gray-50/50 border-b border-gray-100">
+              <button 
+                onClick={() => navigate("/admin")}
+                className="flex items-center gap-2 text-gray-400 hover:text-[#B59E74] transition-all text-xs font-bold uppercase tracking-widest group"
               >
-                <option value="Priest">Priest</option>
-                <option value="Minister">Minister</option>
-                <option value="admin">Admin</option>
-                <option value="staff">Staff</option>
-              </select>
+                <span className="group-hover:-translate-x-1 transition-transform duration-200">←</span> 
+                Back to Dashboard
+              </button>
             </div>
 
-            <button 
-              type="submit" 
-              disabled={loading}
-              className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-base py-4 rounded-xl transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed uppercase tracking-widest"
-            >
-              {loading ? "Creating Account..." : "Create Staff Account"}
-            </button>
-          </form>
+            <div className="p-10 md:p-16">
+              <div className="mb-10">
+                <h3 className="text-2xl font-serif text-[#B59E74] font-medium uppercase tracking-widest mb-2">
+                  Create New Account
+                </h3>
+                <p className="text-sm text-gray-400 italic">Fill in the details to grant system access.</p>
+              </div>
 
-          <div className="bg-gray-50 border-t border-gray-200 p-6 text-center">
-            <p className="text-xs text-gray-500 italic">
-              Note: Users will be forced to change this password upon their first login.
-            </p>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {message.text && (
+                  <div className={`p-4 rounded-2xl text-center text-sm font-medium transition-all ${
+                    message.type === 'success' 
+                    ? 'bg-green-50 text-green-700 border border-green-100' 
+                    : 'bg-red-50 text-red-600 border border-red-100'
+                  }`}>
+                    {message.text}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                      Email Address
+                    </label>
+                    <input 
+                      type="email" 
+                      required 
+                      placeholder="priest@church.com"
+                      className="w-full p-4 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74]/50 focus:border-[#B59E74] bg-gray-50/30 text-gray-700 transition-all"
+                      value={formData.email} 
+                      onChange={(e) => setFormData({...formData, email: e.target.value})} 
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                      Temporary Password
+                    </label>
+                    <input 
+                      type="password" 
+                      required 
+                      placeholder="••••••••"
+                      className="w-full p-4 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74]/50 focus:border-[#B59E74] bg-gray-50/30 text-gray-700 transition-all"
+                      value={formData.password} 
+                      onChange={(e) => setFormData({...formData, password: e.target.value})} 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                    Assign Role
+                  </label>
+                  <select 
+                    className="w-full p-4 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74]/50 focus:border-[#B59E74] bg-gray-50/30 text-gray-700 transition-all appearance-none"
+                    value={formData.role} 
+                    onChange={(e) => setFormData({...formData, role: e.target.value})}
+                  >
+                    <option value="Priest">Priest</option>
+                    <option value="Minister">Minister</option>
+                    <option value="admin">Admin</option>
+                    <option value="staff">Staff</option>
+                  </select>
+                </div>
+
+                <button 
+                  type="submit" 
+                  disabled={loading}
+                  className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-sm py-4 rounded-2xl transition-all shadow-lg shadow-[#B59E74]/20 disabled:opacity-70 disabled:cursor-not-allowed uppercase tracking-[0.15em] active:scale-[0.98] mt-4"
+                >
+                  {loading ? "Creating Account..." : "Create Staff Account"}
+                </button>
+              </form>
+            </div>
+
+            <div className="mt-auto bg-gray-50 border-t border-gray-100 p-6 text-center">
+              <p className="text-[11px] text-gray-400 italic leading-relaxed">
+                Security Protocol: Users will be required to set a new password <br className="hidden md:block" /> immediately upon their first successful login.
+              </p>
+            </div>
           </div>
         </div>
       </main>
