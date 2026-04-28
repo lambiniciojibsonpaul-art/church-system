@@ -6,6 +6,7 @@ import EventsPage from './components/EventsPage';
 import LoginPage from './components/LoginPage';
 import AdminDashboard from './components/AdminDashboard';
 import AdminSchedules from './components/AdminSchedules';
+import AdminReports from './components/AdminReports';
 
 // --- New Auth Imports ---
 import AdminManageUsers from './components/Auth/AdminManageUsers';
@@ -26,6 +27,7 @@ function App() {
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/schedules" element={<AdminSchedules />} />
           <Route path="/admin/manage-users" element={<AdminManageUsers />} />
+          <Route path="/admin/reports" element={<AdminReports />} />
           
           {/* Auth Security Route */}
           <Route path="/update-password" element={<UpdatePassword />} />

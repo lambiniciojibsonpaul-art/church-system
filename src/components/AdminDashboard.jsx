@@ -99,6 +99,12 @@ function AdminDashboard() {
           </button>
         </div>
 
+        <button 
+          onClick={() => navigate("/admin/reports")}
+            className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95">
+          <span>📊</span> View Reports
+        </button>
+
         {/* Stats Overview Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-2 relative overflow-hidden">
