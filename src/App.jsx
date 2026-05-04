@@ -7,6 +7,7 @@ import LoginPage from './components/LoginPage';
 import AdminDashboard from './components/AdminDashboard';
 import AdminSchedules from './components/AdminSchedules';
 import AdminReports from './components/AdminReports';
+import MinistriesPage from './components/MinistriesPage';
 
 // --- New Auth Imports ---
 import AdminManageUsers from './components/Auth/AdminManageUsers';
@@ -22,6 +23,7 @@ function App() {
           <Route path="/services" element={<ServicesPage />} />
           <Route path="/events" element={<EventsPage />} /> 
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/ministries" element={<MinistriesPage />} />
           
           {/* Admin Routes */}
           <Route path="/admin" element={<AdminDashboard />} />
