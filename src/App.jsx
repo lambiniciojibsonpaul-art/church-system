@@ -9,6 +9,7 @@ import AdminSchedules from './components/AdminSchedules';
 import AdminReports from './components/AdminReports';
 import MinistriesPage from './components/MinistriesPage';
 import AdminAttendanceList from './components/AdminAttendanceList';
+import AdminQRCenter from './components/AdminQRCenter';
 
 // --- Auth Folder Imports ---
 // All these files must be inside src/components/Auth/
@@ -38,6 +39,7 @@ function App() {
           <Route path="/admin/manage-users" element={<AdminManageUsers />} />
           <Route path="/admin/reports" element={<AdminReports />} />
           <Route path="/admin/attendance-list" element={<AdminAttendanceList />} />
+          <Route path="/admin/qr-generator" element={<AdminQRCenter />} />
           
           {/* Auth Security Route */}
           <Route path="/update-password" element={<UpdatePassword />} />

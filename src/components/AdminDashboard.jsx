@@ -112,6 +112,14 @@ function AdminDashboard() {
             >
               <span>👥</span> Attendance
             </button>
+
+            {/* --- NEW QR CODES BUTTON --- */}
+            <button 
+              onClick={() => navigate("/admin/qr-generator")}
+              className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"
+            >
+              <span>🔳</span> QR Codes
+            </button>
           </div>
         </div>
 
