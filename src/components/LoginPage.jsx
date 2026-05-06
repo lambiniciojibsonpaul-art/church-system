@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Header from "./Header";
@@ -7,11 +7,10 @@ import church3 from "../assets/Images/church3.jpg";
 function LoginPage() {
   const navigate = useNavigate();
 
-  const [isRegistering, setIsRegistering] = useState(false);
+  // 1. CLEANED STATE: Removed isRegistering and confirmPassword
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-    confirmPassword: "",
   });
   const [uiState, setUiState] = useState({
     loading: false,
@@ -25,29 +24,6 @@ function LoginPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const toggleMode = () => {
-    setIsRegistering((prev) => !prev);
-    setUiState({ loading: false, error: null, successMsg: null, showSuccessOverlay: false });
-    setFormData({ email: "", password: "", confirmPassword: "" });
-  };
-
-  const handleSignUp = async () => {
-    if (formData.password !== formData.confirmPassword) {
-      throw new Error("Passwords do not match!");
-    }
-
-    const { error } = await supabase.auth.signUp({
-      email: formData.email,
-      password: formData.password,
-    });
-
-    if (error) throw error;
-    
-    setUiState(prev => ({ ...prev, successMsg: "Account created! You can now sign in." }));
-    setIsRegistering(false);
-    setFormData({ email: "", password: "", confirmPassword: "" });
-  };
-
   const handleSignIn = async () => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: formData.email,
@@ -56,22 +32,18 @@ function LoginPage() {
 
     if (error) throw error;
 
-    // --- SECURITY INTERCEPT START ---
-    // 1. Fetch both the role AND the password change flag
     const { data: roleData } = await supabase
       .from("user_roles")
-      .select("role, requires_password_change") 
+      .select("role, requires_password_change")
       .eq("user_id", data.user.id)
       .single();
 
-    // 2. If the user is flagged for a password change, redirect them immediately
+    // Intercept for first-time login password change
     if (roleData?.requires_password_change) {
       navigate("/update-password");
-      return; // Exit the function here so they don't reach the dashboard
+      return;
     }
-    // --- SECURITY INTERCEPT END ---
 
-    // Normal role-based redirect
     if (roleData?.role === "admin") {
       setUiState(prev => ({ ...prev, showSuccessOverlay: true }));
       setTimeout(() => navigate("/admin"), 1500);
@@ -85,7 +57,7 @@ function LoginPage() {
     setUiState({ loading: true, error: null, successMsg: null, showSuccessOverlay: false });
 
     try {
-      isRegistering ? await handleSignUp() : await handleSignIn();
+      await handleSignIn();
     } catch (err) {
       setUiState(prev => ({ ...prev, error: err.message }));
     } finally {
@@ -127,10 +99,10 @@ function LoginPage() {
               ⛪
             </div>
             <h2 className="text-2xl font-serif text-[#B59E74] font-medium uppercase tracking-widest">
-              {isRegistering ? "Create Account" : "Parish Portal"}
+              Parish Portal
             </h2>
             <p className="text-sm text-gray-500 mt-2 font-serif italic">
-              {isRegistering ? "Join our parish community online." : "Please sign in to access your account."}
+              Please sign in to access your account.
             </p>
           </div>
 
@@ -149,7 +121,7 @@ function LoginPage() {
             <div className="flex flex-col gap-2">
               <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Email Address</label>
               <input
-                name="email" 
+                name="email"
                 type="email"
                 required
                 value={formData.email}
@@ -173,41 +145,23 @@ function LoginPage() {
               />
             </div>
 
-            {isRegistering && (
-              <div className="flex flex-col gap-2 animate-fade-in-up">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Confirm Password</label>
-                <input
-                  name="confirmPassword"
-                  type="password"
-                  required
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
-                  minLength={6}
-                  className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full transition-shadow"
-                  placeholder="••••••••"
-                />
-              </div>
-            )}
-
             <button
               type="submit"
               disabled={uiState.loading}
               className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-base py-4 rounded-xl transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed mt-2 uppercase tracking-widest"
             >
-              {uiState.loading ? "Processing..." : isRegistering ? "Sign Up" : "Sign In"}
+              {uiState.loading ? "Processing..." : "Sign In"}
             </button>
           </form>
 
+          {/* --- UPDATED FOOTER SECTION --- */}
           <div className="bg-gray-50 border-t border-gray-200 p-6 text-center">
-            <p className="text-sm text-gray-600">
-              {isRegistering ? "Already have an account? " : "Don't have an account? "}
-              <button
-                type="button"
-                onClick={toggleMode}
-                className="font-bold text-[#B59E74] hover:underline focus:outline-none uppercase tracking-wide text-xs"
-              >
-                {isRegistering ? "Sign In Here" : "Register Here"}
-              </button>
+            <p className="text-xs text-gray-500 font-serif italic leading-relaxed">
+              Need an account? Please contact the <br className="block sm:hidden" /> 
+              <span className="text-[#B59E74] font-bold not-italic uppercase tracking-tighter">
+                Parish Administrator
+              </span> 
+              to request system access.
             </p>
           </div>
         </div>
