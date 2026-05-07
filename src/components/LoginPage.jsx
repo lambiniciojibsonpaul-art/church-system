@@ -25,18 +25,27 @@ function LoginPage() {
   };
 
   const handleSignIn = async () => {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    // 1. Verify Credentials
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
       email: formData.email,
       password: formData.password,
     });
 
-    if (error) throw error;
+    if (signInError) throw signInError;
 
-    const { data: roleData } = await supabase
+    // 2. SNAPPIER FEEDBACK: Show overlay immediately while we check roles in background
+    setUiState(prev => ({ ...prev, showSuccessOverlay: true, loading: false }));
+
+    // 3. Fetch role safely (using * to prevent column-missing crashes)
+    const { data: roleData, error: roleError } = await supabase
       .from("user_roles")
-      .select("role, requires_password_change")
+      .select("*") 
       .eq("user_id", data.user.id)
       .single();
+
+    if (roleError && roleError.code !== 'PGRST116') {
+      console.error("Role Fetch Error:", roleError.message);
+    }
 
     // Intercept for first-time login password change
     if (roleData?.requires_password_change) {
@@ -44,12 +53,14 @@ function LoginPage() {
       return;
     }
 
-    if (roleData?.role === "admin") {
-      setUiState(prev => ({ ...prev, showSuccessOverlay: true }));
-      setTimeout(() => navigate("/admin"), 1500);
-    } else {
-      navigate("/");
-    }
+    // 4. Shortened transition (800ms) for a professional feel
+    setTimeout(() => {
+      if (roleData?.role === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/");
+      }
+    }, 800);
   };
 
   const handleSubmit = async (e) => {
@@ -59,8 +70,10 @@ function LoginPage() {
     try {
       await handleSignIn();
     } catch (err) {
-      setUiState(prev => ({ ...prev, error: err.message }));
+      // If sign in fails, error shows and loading turns off immediately
+      setUiState(prev => ({ ...prev, error: err.message, loading: false }));
     } finally {
+      // ensures spinner never gets stuck
       setUiState(prev => ({ ...prev, loading: false }));
     }
   };

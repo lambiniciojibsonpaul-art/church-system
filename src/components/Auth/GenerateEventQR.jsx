@@ -2,9 +2,10 @@ import React from "react";
 import { QRCodeCanvas } from "qrcode.react";
 
 function GenerateEventQR({ eventId, eventTitle }) {
-  // Construct the HashRouter compatible URL
-  // Example: http://localhost:5173/#/check-in/uuid-123-abc
-  const checkInUrl = `${window.location.origin}/#/check-in/${eventId}`;
+  // Dynamically capture the base URL (including the GitHub Pages repo name)
+  // This splits the URL at the hash, removes any trailing slash, and ensures a perfect route
+  const baseUrl = window.location.href.split('#')[0].replace(/\/$/, "");
+  const checkInUrl = `${baseUrl}/#/check-in/${eventId}`;
 
   const handlePrint = () => {
     window.print();
