@@ -94,12 +94,18 @@ function Header({ forceSolidBg = false }) {
     // Explicitly reset admin state before logging out
     setIsAdmin(false); 
     
-    await supabase.auth.signOut();
-
-    setTimeout(() => {
-      navigate("/");
-      setIsLoggingOut(false);
-    }, 1200);
+    try {
+      // Actual logout call
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error("Logout Error:", error.message);
+    } finally {
+      // Speed up wait time to 600ms and use clean navigation (no full reload)
+      setTimeout(() => {
+        setIsLoggingOut(false);
+        navigate("/", { replace: true });
+      }, 600);
+    }
   };
 
   const isSolid = scrolled || forceSolidBg;

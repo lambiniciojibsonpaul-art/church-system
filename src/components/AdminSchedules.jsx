@@ -68,37 +68,50 @@ function AdminSchedules() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // 1. Turn loading ON
     setSubmitting(true);
 
-    const { error } = await supabase.from("events").insert([
-      {
-        creator_id: user.id,
-        title: formData.title,
-        event_class: formData.eventClass,
-        priest_name: formData.priestName,
-        event_date: formData.eventDate,
-        event_time: formData.eventTime,
-        location: formData.location,
-        description: formData.description,
-        is_inside: formData.isInside,
-      },
-    ]);
+    try {
+      // 2. Try the dangerous Supabase insert
+      const { error } = await supabase.from("events").insert([
+        {
+          creator_id: user.id,
+          title: formData.title,
+          event_class: formData.eventClass,
+          priest_name: formData.priestName,
+          event_date: formData.eventDate, 
+          event_time: formData.eventTime,
+          location: formData.location,
+          description: formData.description,
+          is_inside: formData.isInside,
+        },
+      ]);
 
-    if (!error) {
+      // If Supabase complains, throw the error to the catch block!
+      if (error) throw error; 
+
+      // 3. If successful, clean up the UI
       setIsModalOpen(false);
-      fetchEvents(); // Refresh the list
-      // Reset form
+      fetchEvents(); 
       setFormData({
         ...formData,
         title: "",
         eventDate: "",
         eventTime: "",
+        location: "Main Altar", // Reset to default location
         description: "",
       });
-    } else {
-      alert("Error saving event: " + error.message);
+      
+    } catch (error) {
+      // Catch any crash so the app survives
+      console.error("Database Error:", error.message);
+      alert("Failed to create schedule. The system said: " + error.message);
+      
+    } finally {
+      // 4. ALWAYS turn the loading spinner OFF, no matter what happens
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   if (loading)
