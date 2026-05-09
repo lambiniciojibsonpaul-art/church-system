@@ -3,6 +3,7 @@ import { restInsert } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
+import { DeclarationBlock, SuccessPanel } from "./formHelpers";
 
 function BaptismFormModal({ onClose }) {
   // All hooks declared up-front (Rules of Hooks). The auth gate happens
@@ -29,6 +30,8 @@ function BaptismFormModal({ onClose }) {
     godmotherName: "",
     additionalSponsors: "",
     submitterName: "",
+    submitter_signature: "",
+    declaration_consent: false,
   });
 
   // Guest visitors must sign in/register before submitting a request.
@@ -36,15 +39,20 @@ function BaptismFormModal({ onClose }) {
     return <SignInPrompt onClose={onClose} serviceName="a baptism" />;
   }
 
-  // Helper to handle input changes
+  // Helper to handle input changes (handles checkboxes too).
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, type, checked, value } = e.target;
+    setFormData({ ...formData, [name]: type === "checkbox" ? checked : value });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    if (!formData.declaration_consent) {
+      setError("Please confirm the declaration before submitting.");
+      return;
+    }
+    setLoading(true);
 
     try {
       // Build the row. We include user_id, submitter_email, submitter_phone
@@ -68,7 +76,8 @@ function BaptismFormModal({ onClose }) {
         godfather_name: formData.godfatherName,
         godmother_name: formData.godmotherName,
         additional_sponsors: formData.additionalSponsors,
-        submitter_name: formData.submitterName,
+        // The typed digital signature now serves as the submitter's name.
+        submitter_name: formData.submitter_signature,
         user_id: user.id,
         submitter_email: user.email || null,
         // Email-OTP signups store the contact number in user_metadata; older
@@ -156,19 +165,8 @@ function BaptismFormModal({ onClose }) {
           </button>
         </div>
 
-        {/* Success Overlay */}
         {success ? (
-          <div className="p-16 flex flex-col items-center justify-center text-center min-h-[50vh]">
-            <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-5xl mb-6 animate-bounce">
-              ✓
-            </div>
-            <h2 className="text-3xl font-serif text-[#B59E74]">
-              Registration Submitted!
-            </h2>
-            <p className="text-gray-600 mt-2">
-              The parish office will review your request shortly.
-            </p>
-          </div>
+          <SuccessPanel />
         ) : (
           <form onSubmit={handleSubmit} className="p-8 space-y-10">
             {/* Error Message */}
@@ -540,27 +538,13 @@ function BaptismFormModal({ onClose }) {
               </div>
             </div>
 
-            {/* SUBMITTER'S DETAILS */}
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-              <div className="flex flex-col gap-1 flex-1 max-w-lg">
-                <label className="text-sm font-bold text-gray-600">
-                  Submitter's Name & Digital Signature *
-                </label>
-                <input
-                  type="text"
-                  name="submitterName"
-                  value={formData.submitterName}
-                  onChange={handleChange}
-                  required
-                  placeholder="Enter full name as digital signature"
-                  className="p-3 border-b-2 border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 font-serif italic"
-                />
-                <span className="text-[11px] text-gray-400 mt-1">
-                  I declare that all the information provided above is true and
-                  correct, and I acknowledge the fees and dress code required.
-                </span>
-              </div>
-            </div>
+            {/* DECLARATION & SIGNATURE */}
+            <DeclarationBlock
+              declaration="I declare that the information provided above is true and correct, and I respectfully request the Sacrament of Baptism for the child named above. I also acknowledge the fees and dress code required."
+              consent={formData.declaration_consent}
+              signature={formData.submitter_signature}
+              onChange={handleChange}
+            />
 
             <div className="pt-2 pb-4">
               <button

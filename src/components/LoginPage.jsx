@@ -189,8 +189,24 @@ function LoginPage() {
       return;
     }
 
-    const role = String(roleData?.role || "").toLowerCase();
-    navigate(role === "admin" ? "/admin" : "/", { replace: true });
+    // Routing decision:
+    //   - Role definitively known to be "admin" → /admin
+    //   - Role definitively known to be something else → /
+    //   - Role lookup failed (no roleData AND we hit an error) → /admin
+    //     (RequireAdmin will redirect non-admins to / if they sneak through.)
+    let dest;
+    if (roleData) {
+      const role = String(roleData.role || "").toLowerCase();
+      dest = role === "admin" ? "/admin" : "/";
+    } else if (lastErrorMsg) {
+      // Lookup failed — assume admin and let RequireAdmin gate the page.
+      console.log("[Login] Role lookup failed; routing to /admin and letting RequireAdmin verify.");
+      dest = "/admin";
+    } else {
+      // Lookup succeeded but no row — user is not in user_roles → not admin.
+      dest = "/";
+    }
+    navigate(dest, { replace: true });
   };
 
   const handleSubmit = async (e) => {

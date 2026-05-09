@@ -3,8 +3,15 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
 
 // Routes whose hero is not a full-bleed image. Header forces a solid
-// background on these so it isn't transparent against a flat page.
-const SOLID_BG_PREFIXES = ["/admin", "/login", "/check-in", "/update-password"];
+// background on these so it isn't transparent against a flat page
+// (white nav text would be invisible on a light/cream background).
+const SOLID_BG_PREFIXES = [
+  "/admin",
+  "/login",
+  "/check-in",
+  "/update-password",
+  "/ministries",
+];
 
 function Header({ forceSolidBg = false }) {
   const [isOpen, setIsOpen] = useState(false);
