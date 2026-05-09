@@ -1,8 +1,12 @@
 import { useState } from "react";
+import { useAuth } from "../../contexts/useAuth";
+import SignInPrompt from "../SignInPrompt";
 
 function SacramentsLiturgicalFormModal({ onClose }) {
-  // State to track the radio button selection
+  const { user } = useAuth();
   const [requestType, setRequestType] = useState("");
+
+  if (!user) return <SignInPrompt onClose={onClose} serviceName="this sacrament request" />;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 h-screen w-screen">

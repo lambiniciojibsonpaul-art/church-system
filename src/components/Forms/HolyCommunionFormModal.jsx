@@ -1,6 +1,10 @@
-import { useState } from "react";
+import { useAuth } from "../../contexts/useAuth";
+import SignInPrompt from "../SignInPrompt";
 
 function HolyCommunionFormModal({ onClose }) {
+  const { user } = useAuth();
+  if (!user) return <SignInPrompt onClose={onClose} serviceName="holy communion" />;
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 h-screen w-screen">
       <div className="bg-[#F6F5ED] w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">

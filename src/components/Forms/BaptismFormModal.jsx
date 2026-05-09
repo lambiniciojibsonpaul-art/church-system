@@ -1,12 +1,16 @@
 import { useState } from "react";
-import { supabase } from "../../supabaseClient";
+import { restInsert } from "../../supabaseRest";
+import { useAuth } from "../../contexts/useAuth";
+import { sendRequestEmail } from "../../emailNotifications";
+import SignInPrompt from "../SignInPrompt";
 
 function BaptismFormModal({ onClose }) {
+  // All hooks declared up-front (Rules of Hooks). The auth gate happens
+  // *after* the hook section to keep call order consistent across renders.
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
-
-  // State to hold all form data
   const [formData, setFormData] = useState({
     baptismType: "Sunday",
     preferredDate: "",
@@ -27,6 +31,11 @@ function BaptismFormModal({ onClose }) {
     submitterName: "",
   });
 
+  // Guest visitors must sign in/register before submitting a request.
+  if (!user) {
+    return <SignInPrompt onClose={onClose} serviceName="a baptism" />;
+  }
+
   // Helper to handle input changes
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -38,32 +47,76 @@ function BaptismFormModal({ onClose }) {
     setError(null);
 
     try {
-      // Send data to Supabase
-      const { error: supabaseError } = await supabase.from("baptisms").insert([
-        {
-          baptism_type: formData.baptismType,
-          preferred_date: formData.preferredDate,
-          child_first_name: formData.childFirstName,
-          child_middle_name: formData.childMiddleName,
-          child_last_name: formData.childLastName,
-          child_dob: formData.childDob,
-          child_birthplace: formData.childBirthplace,
-          child_gender: formData.childGender,
-          father_name: formData.fatherName,
-          mother_maiden_name: formData.motherMaidenName,
-          address: formData.address,
-          contact_numbers: formData.contactNumbers,
-          parents_marriage_status: formData.parentsMarriageStatus,
-          godfather_name: formData.godfatherName,
-          godmother_name: formData.godmotherName,
-          additional_sponsors: formData.additionalSponsors,
-          submitter_name: formData.submitterName,
-        },
-      ]);
+      // Build the row. We include user_id, submitter_email, submitter_phone
+      // so admins know who submitted the request and can contact them.
+      // These columns must exist in the `baptisms` table — see the SQL
+      // migration in the project README/setup notes.
+      const payload = {
+        baptism_type: formData.baptismType,
+        preferred_date: formData.preferredDate,
+        child_first_name: formData.childFirstName,
+        child_middle_name: formData.childMiddleName,
+        child_last_name: formData.childLastName,
+        child_dob: formData.childDob,
+        child_birthplace: formData.childBirthplace,
+        child_gender: formData.childGender,
+        father_name: formData.fatherName,
+        mother_maiden_name: formData.motherMaidenName,
+        address: formData.address,
+        contact_numbers: formData.contactNumbers,
+        parents_marriage_status: formData.parentsMarriageStatus,
+        godfather_name: formData.godfatherName,
+        godmother_name: formData.godmotherName,
+        additional_sponsors: formData.additionalSponsors,
+        submitter_name: formData.submitterName,
+        user_id: user.id,
+        submitter_email: user.email || null,
+        // Email-OTP signups store the contact number in user_metadata; older
+        // phone-OTP signups put it on user.phone. Fall back so both work.
+        submitter_phone:
+          user.user_metadata?.contact_number || user.phone || null,
+      };
 
-      if (supabaseError) throw supabaseError;
+      // Strategy: try with the new optional metadata columns first. On ANY
+      // failure, retry once with those columns stripped. If the second
+      // attempt also fails, that's a real problem and we surface it.
+      const first = await restInsert("baptisms", [payload]);
+
+      if (first.error) {
+        console.warn(
+          "[Baptism] first insert attempt failed — retrying without optional metadata columns:",
+          first.error
+        );
+        const fallbackPayload = { ...payload };
+        delete fallbackPayload.user_id;
+        delete fallbackPayload.submitter_email;
+        delete fallbackPayload.submitter_phone;
+
+        const retry = await restInsert("baptisms", [fallbackPayload]);
+        if (retry.error) {
+          console.error("[Baptism] retry also failed:", retry.error);
+          throw new Error(retry.error.message);
+        }
+        console.log(
+          "[Baptism] retry succeeded. To capture submitter email/phone in admin, add user_id, submitter_email, submitter_phone columns to the baptisms table."
+        );
+      }
 
       setSuccess(true);
+
+      // Fire-and-forget email notification. No-op if email is not yet
+      // configured on the Supabase project.
+      const childName = [
+        formData.childFirstName,
+        formData.childLastName,
+      ].filter(Boolean).join(" ").trim();
+      sendRequestEmail({
+        to: user.email,
+        serviceName: "baptism",
+        summary: childName
+          ? `Baptism request for ${childName} on ${formData.preferredDate || "(date pending)"}.`
+          : undefined,
+      });
 
       // Close modal after 2.5 seconds showing success
       setTimeout(() => {

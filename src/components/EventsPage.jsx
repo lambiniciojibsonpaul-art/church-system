@@ -222,30 +222,63 @@ function EventsPage() {
   };
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col font-sans bg-white">
-      <main
-        style={backgroundStyle}
-        className="relative h-[60vh] md:h-screen flex flex-col items-center justify-center text-center px-4 text-white"
+    <div
+      className={`relative min-h-screen w-full flex flex-col font-sans ${
+        isAdmin ? "bg-gray-50" : "bg-white"
+      }`}
+    >
+      {/* Public hero image — hidden for admins (cleaner dashboard look). */}
+      {!isAdmin && (
+        <main
+          style={backgroundStyle}
+          className="relative h-[60vh] md:h-screen flex flex-col items-center justify-center text-center px-4 text-white"
+        >
+          <h1 className="text-5xl md:text-7xl font-bold tracking-tight mt-16">
+            Events
+          </h1>
+        </main>
+      )}
+
+      <section
+        className={
+          isAdmin
+            ? "w-full px-6 pt-32 pb-12"
+            : "relative w-full z-20 -mt-24 pb-32 px-6"
+        }
       >
-        <h1 className="text-5xl md:text-7xl font-bold tracking-tight mt-16">
-          Events
-        </h1>
-      </main>
+        <div
+          className={
+            isAdmin
+              ? "max-w-7xl mx-auto"
+              : "bg-[#F6F5ED] rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-7xl mx-auto py-12 px-6 md:px-12 text-left"
+          }
+        >
+          {isAdmin ? (
+            <div className="mb-8">
+              <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] mb-2 uppercase tracking-wide">
+                Parish Events
+              </h1>
+              <p className="text-gray-500 font-serif italic">
+                Manage and review parish events. Select a date to see what's
+                scheduled.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="text-center max-w-3xl mx-auto mb-12">
+                <h2 className="text-3xl md:text-4xl text-[#B59E74] font-serif uppercase tracking-widest mb-6 font-medium">
+                  Church Calendar
+                </h2>
+                <p className="text-gray-600 font-serif italic text-lg">
+                  Stay connected with our parish family. Select a date on the
+                  calendar below to view upcoming masses, community gatherings,
+                  and special ceremonies.
+                </p>
+              </div>
 
-      <section className="relative w-full z-20 -mt-24 pb-32 px-6">
-        <div className="bg-[#F6F5ED] rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-7xl mx-auto py-12 px-6 md:px-12 text-left">
-          <div className="text-center max-w-3xl mx-auto mb-12">
-            <h2 className="text-3xl md:text-4xl text-[#B59E74] font-serif uppercase tracking-widest mb-6 font-medium">
-              Church Calendar
-            </h2>
-            <p className="text-gray-600 font-serif italic text-lg">
-              Stay connected with our parish family. Select a date on the
-              calendar below to view upcoming masses, community gatherings, and
-              special ceremonies.
-            </p>
-          </div>
-
-          <hr className="border-gray-300 border-t w-full max-w-5xl mx-auto mb-12" />
+              <hr className="border-gray-300 border-t w-full max-w-5xl mx-auto mb-12" />
+            </>
+          )}
 
           <div className="flex flex-col lg:flex-row gap-12 max-w-6xl mx-auto">
             <div className="flex-1 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-[#B59E74]/20 h-fit">
@@ -333,11 +366,18 @@ function EventsPage() {
                                             `}
                     >
                       {day}
-                      {hasEvent && (
-                        <span
-                          className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${isSelected ? "bg-white" : "bg-[#B59E74]"}`}
-                        ></span>
-                      )}
+                      {/* Status indicator: red = has event (scheduled),
+                          green = available. White when the day is selected
+                          so it stays visible on the gold background. */}
+                      <span
+                        className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${
+                          isSelected
+                            ? "bg-white"
+                            : hasEvent
+                              ? "bg-[#B9554A]"
+                              : "bg-[#86efac]"
+                        }`}
+                      ></span>
                     </button>
                   );
                 })}

@@ -18,7 +18,8 @@ function Header({ forceSolidBg = false }) {
   const routeForcesSolid = SOLID_BG_PREFIXES.some((p) =>
     location.pathname.startsWith(p),
   );
-  const isSolid = scrolled || forceSolidBg || routeForcesSolid;
+  // Admins always see a solid header — they're working, not browsing.
+  const isSolid = scrolled || forceSolidBg || routeForcesSolid || isAdmin;
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
@@ -79,58 +80,70 @@ function Header({ forceSolidBg = false }) {
             </div>
           </div>
 
-          <nav className="hidden lg:flex gap-6 xl:gap-8 font-serif italic text-lg justify-center absolute left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-            <Link to="/" className="hover:text-[#B59E74] transition-colors">
-              Home
-            </Link>
-            <Link
-              to="/about"
-              className="hover:text-[#B59E74] transition-colors"
-            >
-              About Us
-            </Link>
-            <Link
-              to="/services"
-              className="hover:text-[#B59E74] transition-colors"
-            >
-              Services
-            </Link>
-            <Link
-              to="/events"
-              className="hover:text-[#B59E74] transition-colors"
-            >
-              Events
-            </Link>
-            <Link
-              to="/ministries"
-              className="hover:text-[#B59E74] transition-colors"
-            >
-              Ministries
-            </Link>
-            <Link to="/give" className="hover:text-[#B59E74] transition-colors">
-              Give
-            </Link>
-            <a
-              href="https://www.google.com/maps/dir/?api=1&destination=69+San+Pedro+Bautista+St.%2C+San+Francisco+del+Monte%2C+Quezon+City%2C+Philippines%2C+1104"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-[#B59E74] transition-colors"
-            >
-              Visit Us
-            </a>
-          </nav>
+          {/* Public nav — hidden for admins (they only need Events + Dashboard,
+              shown on the right side). */}
+          {!isAdmin && (
+            <nav className="hidden lg:flex gap-6 xl:gap-8 font-serif italic text-lg justify-center absolute left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+              <Link to="/" className="hover:text-[#B59E74] transition-colors">
+                Home
+              </Link>
+              <Link
+                to="/about"
+                className="hover:text-[#B59E74] transition-colors"
+              >
+                About Us
+              </Link>
+              <Link
+                to="/services"
+                className="hover:text-[#B59E74] transition-colors"
+              >
+                Services
+              </Link>
+              <Link
+                to="/events"
+                className="hover:text-[#B59E74] transition-colors"
+              >
+                Events
+              </Link>
+              <Link
+                to="/ministries"
+                className="hover:text-[#B59E74] transition-colors"
+              >
+                Ministries
+              </Link>
+              <Link to="/give" className="hover:text-[#B59E74] transition-colors">
+                Give
+              </Link>
+              <a
+                href="https://www.google.com/maps/dir/?api=1&destination=69+San+Pedro+Bautista+St.%2C+San+Francisco+del+Monte%2C+Quezon+City%2C+Philippines%2C+1104"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-[#B59E74] transition-colors"
+              >
+                Visit Us
+              </a>
+            </nav>
+          )}
 
           <div className="flex items-center gap-4 min-w-[120px] justify-end ml-auto lg:ml-0">
             <div className="hidden lg:flex items-center gap-3">
               {user ? (
                 <>
                   {isAdmin && (
-                    <Link
-                      to="/admin"
-                      className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors"
-                    >
-                      Dashboard
-                    </Link>
+                    <>
+                      <Link
+                        to="/events"
+                        className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors"
+                      >
+                        Events
+                      </Link>
+                      <Link
+                        to="/admin"
+                        className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors"
+                      >
+                        Dashboard
+                      </Link>
+                    </>
                   )}
                   <button
                     onClick={handleLogout}
@@ -194,56 +207,72 @@ function Header({ forceSolidBg = false }) {
                 isSolid ? "bg-gray-50" : "bg-black/90 text-white"
               }`}
             >
-              <li>
-                <Link to="/" onClick={() => setIsOpen(false)}>
-                  Home
-                </Link>
-              </li>
-              <li>
-                <Link to="/about" onClick={() => setIsOpen(false)}>
-                  About Us
-                </Link>
-              </li>
-              <li>
-                <Link to="/services" onClick={() => setIsOpen(false)}>
-                  Services
-                </Link>
-              </li>
-              <li>
-                <Link to="/events" onClick={() => setIsOpen(false)}>
-                  Events
-                </Link>
-              </li>
-              <li>
-                <Link to="/ministries" onClick={() => setIsOpen(false)}>
-                  Ministries
-                </Link>
-              </li>
-              <li>
-                <a
-                  href="https://www.google.com/maps/dir/?api=1&destination=69+San+Pedro+Bautista+St.%2C+San+Francisco+del+Monte%2C+Quezon+City%2C+Philippines%2C+1104"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => setIsOpen(false)}
-                >
-                  Visit Us
-                </a>
-              </li>
+              {/* Public links — hidden on admin accounts */}
+              {!isAdmin && (
+                <>
+                  <li>
+                    <Link to="/" onClick={() => setIsOpen(false)}>
+                      Home
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/about" onClick={() => setIsOpen(false)}>
+                      About Us
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/services" onClick={() => setIsOpen(false)}>
+                      Services
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/events" onClick={() => setIsOpen(false)}>
+                      Events
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/ministries" onClick={() => setIsOpen(false)}>
+                      Ministries
+                    </Link>
+                  </li>
+                  <li>
+                    <a
+                      href="https://www.google.com/maps/dir/?api=1&destination=69+San+Pedro+Bautista+St.%2C+San+Francisco+del+Monte%2C+Quezon+City%2C+Philippines%2C+1104"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      Visit Us
+                    </a>
+                  </li>
 
-              <hr className="border-gray-300/30 my-2" />
+                  <hr className="border-gray-300/30 my-2" />
+                </>
+              )}
 
               {user ? (
                 <>
                   {isAdmin && (
-                    <li>
-                      <Link
-                        to="/admin"
-                        onClick={() => setIsOpen(false)}
-                        className="block w-full text-center bg-gray-800 text-white py-3 rounded-xl font-bold tracking-widest uppercase mb-2"
-                      >
-                        Dashboard
-                      </Link>
-                    </li>
+                    <>
+                      <li>
+                        <Link
+                          to="/events"
+                          onClick={() => setIsOpen(false)}
+                          className="block w-full text-center bg-white border-2 border-gray-800 text-gray-800 py-3 rounded-xl font-bold tracking-widest uppercase mb-2"
+                        >
+                          Events
+                        </Link>
+                      </li>
+                      <li>
+                        <Link
+                          to="/admin"
+                          onClick={() => setIsOpen(false)}
+                          className="block w-full text-center bg-gray-800 text-white py-3 rounded-xl font-bold tracking-widest uppercase mb-2"
+                        >
+                          Dashboard
+                        </Link>
+                      </li>
+                    </>
                   )}
                   <li>
                     <button

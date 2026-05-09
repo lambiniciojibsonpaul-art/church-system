@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { restSelect, restUpdate, restInsert } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
+import { sendApprovalEmail } from "../emailNotifications";
 
 const BAPTISMS_CACHE_KEY = "adminDashboard:baptisms";
 const BAPTISMS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -153,7 +154,21 @@ function AdminDashboard() {
       );
     }
 
-    // Step 3 — sync local state and close.
+    // Step 3 — fire-and-forget approval email. No-op if email isn't set up.
+    if (acceptingBaptism.submitter_email) {
+      sendApprovalEmail({
+        to: acceptingBaptism.submitter_email,
+        serviceName: "baptism",
+        eventDate: acceptingBaptism.preferred_date
+          ? new Date(acceptingBaptism.preferred_date).toLocaleDateString()
+          : "",
+        eventTime: "10:00 AM",
+        location: "Main Altar",
+        priestName: assignedPriest,
+      });
+    }
+
+    // Step 4 — sync local state and close.
     setBaptisms((prev) =>
       prev.map((b) =>
         b.id === acceptingBaptism.id ? { ...b, status: "Approved" } : b
@@ -505,9 +520,52 @@ function AdminDashboard() {
                   <div className="col-span-2"><p className="text-gray-500">Additional Sponsors</p><p className="font-medium text-gray-800 whitespace-pre-wrap">{selectedBaptism.additional_sponsors || "None listed"}</p></div>
                 </div>
               </div>
-              <div className="mt-8 pt-6 border-t border-gray-100 text-xs text-gray-400 flex justify-between">
-                <p>Submitted by: {selectedBaptism.submitter_name}</p>
-                <p>Date Submitted: {new Date(selectedBaptism.created_at).toLocaleString()}</p>
+              <div className="mt-8 pt-6 border-t border-gray-100">
+                <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">
+                  Submitted By
+                </h3>
+                <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
+                  <div>
+                    <p className="text-gray-500">Name</p>
+                    <p className="font-medium text-gray-800">
+                      {selectedBaptism.submitter_name || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Date Submitted</p>
+                    <p className="font-medium text-gray-800">
+                      {selectedBaptism.created_at
+                        ? new Date(selectedBaptism.created_at).toLocaleString()
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Email</p>
+                    {selectedBaptism.submitter_email ? (
+                      <a
+                        href={`mailto:${selectedBaptism.submitter_email}`}
+                        className="font-medium text-[#B59E74] hover:underline break-all"
+                      >
+                        {selectedBaptism.submitter_email}
+                      </a>
+                    ) : (
+                      <p className="font-medium text-gray-400 italic">Not provided</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Contact Number</p>
+                    {selectedBaptism.submitter_phone ? (
+                      <a
+                        href={`tel:${selectedBaptism.submitter_phone}`}
+                        className="font-medium text-[#B59E74] hover:underline"
+                      >
+                        {selectedBaptism.submitter_phone}
+                      </a>
+                    ) : (
+                      <p className="font-medium text-gray-400 italic">Not provided</p>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
