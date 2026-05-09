@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { restSelect, restInsert } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
+import { ministryNames } from "../data/ministries";
 import church1 from "../assets/Images/church1.jpg";
 
 const EVENTS_CACHE_KEY = "eventsPage:events";
@@ -44,11 +45,12 @@ function EventsPage() {
   // Modal & Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Form state. `ministry` replaces the old `priestName` field; we map it
+  // to the existing `priest_name` DB column on insert.
   const [formData, setFormData] = useState({
     title: "",
-    eventClass: "Mass",
-    priestName: "Fr. Default Priest",
-    eventDate: "", // <-- NEW: Added eventDate state
+    ministry: "",
+    eventDate: "",
     eventTime: "",
     location: "",
     description: "",
@@ -106,8 +108,11 @@ function EventsPage() {
         {
           creator_id: user.id,
           title: formData.title,
-          event_class: formData.eventClass,
-          priest_name: formData.priestName,
+          // Class field removed from the form — keep column populated with a
+          // generic default so legacy reports/queries don't break.
+          event_class: "Event",
+          // priest_name column now stores the hosting ministry name.
+          priest_name: formData.ministry,
           event_date: formData.eventDate,
           event_time: formData.eventTime,
           location: formData.location,
@@ -118,15 +123,15 @@ function EventsPage() {
 
       if (error) throw new Error(error.message);
 
-      // 3. If successful, clean up the UI
       setIsModalOpen(false);
-      fetchEvents(); 
+      fetchEvents();
       setFormData({
         ...formData,
         title: "",
+        ministry: "",
         eventDate: "",
         eventTime: "",
-        location: "", // Reset location
+        location: "",
         description: "",
       });
       
@@ -429,9 +434,32 @@ function EventsPage() {
                           {event.location}
                         </div>
                       </div>
-                      <p className="text-gray-700 leading-relaxed mt-2 text-sm">
-                        {event.description}
-                      </p>
+
+                      {event.priest_name && (
+                        <div className="flex items-center gap-2 text-sm text-gray-700 font-medium border-t border-gray-100 pt-3">
+                          <svg
+                            className="w-5 h-5 text-[#B59E74]"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={1.5}
+                              d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 0a4 4 0 11-8 0 4 4 0 018 0z"
+                            />
+                          </svg>
+                          <span className="text-gray-500 italic mr-1">Hosted by:</span>
+                          {event.priest_name}
+                        </div>
+                      )}
+
+                      {event.description && (
+                        <p className="text-gray-700 leading-relaxed mt-1 text-sm">
+                          {event.description}
+                        </p>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -504,40 +532,29 @@ function EventsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Class *
-                  </label>
-                  <select
-                    name="eventClass"
-                    value={formData.eventClass}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none"
-                  >
-                    <option value="Mass">Mass</option>
-                    <option value="Custom">Custom Event</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Priest *
-                  </label>
-                  <select
-                    name="priestName"
-                    value={formData.priestName}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none"
-                  >
-                    <option value="Fr. Default Priest">
-                      Fr. Default Priest
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                  Hosting Ministry *
+                </label>
+                <select
+                  name="ministry"
+                  required
+                  value={formData.ministry}
+                  onChange={handleChange}
+                  className="p-3 rounded-xl border border-gray-300 outline-none"
+                >
+                  <option value="" disabled>
+                    Select a ministry…
+                  </option>
+                  {ministryNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
                     </option>
-                    <option value="Fr. Guest">Guest Priest</option>
-                  </select>
-                </div>
+                  ))}
+                </select>
               </div>
 
-              {/* NEW: Date and Time Side-by-Side */}
+              {/* Date and Time Side-by-Side */}
               <div className="grid grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
@@ -598,7 +615,7 @@ function EventsPage() {
                         }
                         className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]"
                       />{" "}
-                      Sa Loob
+                      Indoor
                     </label>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                       <input
@@ -610,7 +627,7 @@ function EventsPage() {
                         }
                         className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]"
                       />{" "}
-                      Sa Labas
+                      Outdoor
                     </label>
                   </div>
                 </div>

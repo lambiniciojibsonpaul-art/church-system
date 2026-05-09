@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { restSelect, restInsert } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
+import { ministryNames } from "../data/ministries";
 
 function AdminSchedules() {
   const { user } = useAuth();
@@ -10,11 +11,12 @@ function AdminSchedules() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Form State
+  // Form State. `ministry` replaces the old `priestName` field — the chosen
+  // ministry is what now hosts the event. We map it to the existing
+  // `priest_name` DB column on insert to avoid a schema migration.
   const [formData, setFormData] = useState({
     title: "",
-    eventClass: "Mass",
-    priestName: "Fr. Default Priest",
+    ministry: "",
     eventDate: "",
     eventTime: "",
     location: "Main Altar",
@@ -53,8 +55,12 @@ function AdminSchedules() {
         {
           creator_id: user.id,
           title: formData.title,
-          event_class: formData.eventClass,
-          priest_name: formData.priestName,
+          // event_class is no longer collected from the form. We send a
+          // generic default so the column (which may be NOT NULL) is
+          // satisfied without polluting reports/legacy queries.
+          event_class: "Event",
+          // priest_name column now stores the hosting ministry name.
+          priest_name: formData.ministry,
           event_date: formData.eventDate,
           event_time: formData.eventTime,
           location: formData.location,
@@ -65,15 +71,15 @@ function AdminSchedules() {
 
       if (error) throw new Error(error.message);
 
-      // 3. If successful, clean up the UI
       setIsModalOpen(false);
-      fetchEvents(); 
+      fetchEvents();
       setFormData({
         ...formData,
         title: "",
+        ministry: "",
         eventDate: "",
         eventTime: "",
-        location: "Main Altar", // Reset to default location
+        location: "Main Altar",
         description: "",
       });
       
@@ -161,7 +167,7 @@ function AdminSchedules() {
                     <span
                       className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${ev.is_inside ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}
                     >
-                      {ev.is_inside ? "Sa Loob" : "Sa Labas"}
+                      {ev.is_inside ? "Indoor" : "Outdoor"}
                     </span>
                   </div>
                   <h3 className="text-xl font-serif text-gray-800 font-medium leading-tight mb-1">
@@ -222,37 +228,26 @@ function AdminSchedules() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">
-                    Class *
-                  </label>
-                  <select
-                    name="eventClass"
-                    value={formData.eventClass}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none"
-                  >
-                    <option value="Mass">Mass</option>
-                    <option value="Custom">Custom Event</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">
-                    Priest *
-                  </label>
-                  <select
-                    name="priestName"
-                    value={formData.priestName}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none"
-                  >
-                    <option value="Fr. Default Priest">
-                      Fr. Default Priest
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-gray-600 uppercase">
+                  Hosting Ministry *
+                </label>
+                <select
+                  name="ministry"
+                  required
+                  value={formData.ministry}
+                  onChange={handleChange}
+                  className="p-3 rounded-xl border border-gray-300 outline-none"
+                >
+                  <option value="" disabled>
+                    Select a ministry…
+                  </option>
+                  {ministryNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
                     </option>
-                    <option value="Fr. Guest">Guest Priest</option>
-                  </select>
-                </div>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-6">
@@ -314,7 +309,7 @@ function AdminSchedules() {
                         }
                         className="text-[#B59E74] focus:ring-[#B59E74]"
                       />{" "}
-                      Sa Loob
+                      Indoor
                     </label>
                     <label className="flex items-center gap-2 text-sm">
                       <input
@@ -326,7 +321,7 @@ function AdminSchedules() {
                         }
                         className="text-[#B59E74] focus:ring-[#B59E74]"
                       />{" "}
-                      Sa Labas
+                      Outdoor
                     </label>
                   </div>
                 </div>

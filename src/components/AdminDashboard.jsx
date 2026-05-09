@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { restSelect, restUpdate } from "../supabaseRest";
+import { restSelect, restUpdate, restInsert } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
 
 const BAPTISMS_CACHE_KEY = "adminDashboard:baptisms";
 const BAPTISMS_CACHE_TTL_MS = 5 * 60 * 1000;
 const QUERY_TIMEOUT_MS = 12000;
+
+// Placeholder priest list — replace with a DB-backed list when one exists.
+const PRIEST_OPTIONS = ["Priest 1", "Priest 2", "Priest 3"];
 
 function readBaptismsCache() {
   try {
@@ -43,6 +46,13 @@ function AdminDashboard() {
   const [rejectingBaptism, setRejectingBaptism] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
 
+  // Accept-flow modal state. Admin must assign a priest before approving so
+  // the calendar event we auto-create has a valid host.
+  const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
+  const [acceptingBaptism, setAcceptingBaptism] = useState(null);
+  const [assignedPriest, setAssignedPriest] = useState("");
+  const [acceptSubmitting, setAcceptSubmitting] = useState(false);
+
   const navigate = useNavigate();
 
   const tabs = [
@@ -75,14 +85,81 @@ function AdminDashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  const handleAcceptBaptism = async (id) => {
-    if (!window.confirm("Are you sure you want to approve this request?")) return;
-    const { error } = await restUpdate("baptisms", { id }, { status: "Approved" });
-    if (error) {
-      alert("Error approving request: " + error.message);
+  const openAcceptModal = (baptism) => {
+    setAcceptingBaptism(baptism);
+    setAssignedPriest("");
+    setIsAcceptModalOpen(true);
+  };
+
+  const closeAcceptModal = () => {
+    setIsAcceptModalOpen(false);
+    setAcceptingBaptism(null);
+    setAssignedPriest("");
+    setAcceptSubmitting(false);
+  };
+
+  const confirmAcceptBaptism = async () => {
+    if (!acceptingBaptism) return;
+    if (!assignedPriest) {
+      alert("Please assign a priest before approving.");
       return;
     }
-    setBaptisms(prev => prev.map(b => b.id === id ? { ...b, status: "Approved" } : b));
+
+    setAcceptSubmitting(true);
+
+    // Step 1 — approve the baptism request itself. Must succeed.
+    const { error: updateErr } = await restUpdate(
+      "baptisms",
+      { id: acceptingBaptism.id },
+      { status: "Approved" }
+    );
+    if (updateErr) {
+      setAcceptSubmitting(false);
+      alert("Error approving request: " + updateErr.message);
+      return;
+    }
+
+    // Step 2 — create a matching calendar event so the assigned priest shows
+    // up under "Hosted by:" on the public events page. Best-effort: if this
+    // fails, the request is still approved but we surface the error so the
+    // admin can take action (e.g. add it manually via Schedules).
+    const childName = [
+      acceptingBaptism.child_first_name,
+      acceptingBaptism.child_last_name,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim() || "Baptism Candidate";
+
+    const eventPayload = {
+      creator_id: user?.id || null,
+      title: `Baptism — ${childName}`,
+      event_class: "Baptism",
+      priest_name: assignedPriest,
+      event_date: acceptingBaptism.preferred_date,
+      event_time: "10:00",
+      location: "Main Altar",
+      description: `Baptism ceremony for ${childName}.`,
+      is_inside: true,
+    };
+
+    const { error: eventErr } = await restInsert("events", [eventPayload]);
+    if (eventErr) {
+      console.warn("[AdminDashboard] calendar event creation failed:", eventErr.message);
+      alert(
+        "Baptism approved, but the calendar event could not be created: " +
+          eventErr.message +
+          "\n\nYou can add it manually from the Schedules page."
+      );
+    }
+
+    // Step 3 — sync local state and close.
+    setBaptisms((prev) =>
+      prev.map((b) =>
+        b.id === acceptingBaptism.id ? { ...b, status: "Approved" } : b
+      )
+    );
+    closeAcceptModal();
   };
 
   const handleRejectBaptism = async () => {
@@ -235,7 +312,7 @@ function AdminDashboard() {
                               <div className="flex justify-end gap-2">
                                 {bap.status === "Pending" && (
                                   <>
-                                    <button onClick={() => handleAcceptBaptism(bap.id)} className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-600 hover:text-white transition-all" title="Accept">
+                                    <button onClick={() => openAcceptModal(bap)} className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-600 hover:text-white transition-all" title="Accept">
                                       <span className="font-bold">✓</span>
                                     </button>
                                     <button onClick={() => { setRejectingBaptism(bap); setIsRejectModalOpen(true); }} className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all" title="Reject">
@@ -271,6 +348,71 @@ function AdminDashboard() {
           </div>
         </div>
       </main>
+
+      {/* ACCEPT / ASSIGN PRIEST MODAL */}
+      {isAcceptModalOpen && acceptingBaptism && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
+            <div className="bg-green-50 px-8 py-6 border-b border-green-100">
+              <h2 className="text-xl font-serif text-green-800 font-medium uppercase tracking-widest">Approve Request</h2>
+              <p className="text-sm text-green-700 italic">
+                For {acceptingBaptism.child_first_name} {acceptingBaptism.child_last_name}
+              </p>
+            </div>
+            <div className="p-8 space-y-6">
+              <div className="bg-gray-50 rounded-2xl p-4 text-sm text-gray-600 space-y-1 border border-gray-100">
+                <div>
+                  <span className="text-gray-400 uppercase text-[10px] tracking-widest mr-2">Type</span>
+                  {acceptingBaptism.baptism_type}
+                </div>
+                <div>
+                  <span className="text-gray-400 uppercase text-[10px] tracking-widest mr-2">Date</span>
+                  {acceptingBaptism.preferred_date
+                    ? new Date(acceptingBaptism.preferred_date).toLocaleDateString()
+                    : "—"}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                  Assign Priest *
+                </label>
+                <select
+                  value={assignedPriest}
+                  onChange={(e) => setAssignedPriest(e.target.value)}
+                  className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white"
+                >
+                  <option value="" disabled>Select a priest…</option>
+                  {PRIEST_OPTIONS.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400 italic mt-1">
+                  The selected priest will be added to the parish events calendar
+                  as the host of this baptism.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={closeAcceptModal}
+                  disabled={acceptSubmitting}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmAcceptBaptism}
+                  disabled={acceptSubmitting || !assignedPriest}
+                  className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {acceptSubmitting ? "Approving…" : "Approve & Schedule"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* REJECTION MODAL */}
       {isRejectModalOpen && (
