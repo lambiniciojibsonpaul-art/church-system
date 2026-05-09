@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
-import Header from "./Header";
 
 function AdminReports() {
   const navigate = useNavigate();
@@ -105,8 +104,6 @@ function AdminReports() {
 
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans print:bg-white print:p-0">
-      <Header forceSolidBg={true} />
-
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-32 pb-12 print:max-w-full print:px-0 print:pt-0">
         
         {/* PRINT-ONLY OFFICIAL LETTERHEAD */}

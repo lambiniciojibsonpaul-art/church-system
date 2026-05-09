@@ -1,113 +1,46 @@
-import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { supabase } from "../supabaseClient";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/useAuth";
+
+// Routes whose hero is not a full-bleed image. Header forces a solid
+// background on these so it isn't transparent against a flat page.
+const SOLID_BG_PREFIXES = ["/admin", "/login", "/check-in", "/update-password"];
 
 function Header({ forceSolidBg = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [user, setUser] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false); // Track admin status
-
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const { user, isAdmin, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // --- DEBUGGED ADMIN CHECK FUNCTION ---
-  const checkAdminRole = async (userId) => {
-    if (!userId) {
-      console.log("Header Debug: No userId provided, setting isAdmin to false.");
-      setIsAdmin(false);
-      return;
-    }
-
-    console.log(`Header Debug: Checking role for user ID: ${userId}`);
-
-    try {
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .single();
-
-      if (error) {
-        console.error("Header Debug: Role fetch error:", error.message);
-        setIsAdmin(false);
-        return;
-      }
-
-      console.log("Header Debug: User role found in DB:", data?.role);
-
-      if (data && data.role === "admin") {
-        console.log("Header Debug: ACCESS GRANTED - User is Admin");
-        setIsAdmin(true);
-      } else {
-        console.log("Header Debug: ACCESS DENIED - User is not an Admin");
-        setIsAdmin(false);
-      }
-    } catch (err) {
-      console.error("Header Debug: Unexpected error checking role:", err);
-      setIsAdmin(false);
-    }
-  };
+  const routeForcesSolid = SOLID_BG_PREFIXES.some((p) =>
+    location.pathname.startsWith(p),
+  );
+  const isSolid = scrolled || forceSolidBg || routeForcesSolid;
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
     window.addEventListener("scroll", handleScroll);
-
-    const checkUser = async () => {
-      const { data } = await supabase.auth.getSession();
-      const currentUser = data.session?.user || null;
-      setUser(currentUser);
-      
-      if (currentUser) {
-        await checkAdminRole(currentUser.id);
-      } else {
-        setIsAdmin(false);
-      }
-    };
-    checkUser();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log("Header Debug: Auth state changed. Event:", event);
-        const currentUser = session?.user || null;
-        setUser(currentUser);
-        
-        if (currentUser) {
-          await checkAdminRole(currentUser.id);
-        } else {
-          console.log("Header Debug: Session ended, resetting isAdmin to false.");
-          setIsAdmin(false);
-        }
-      },
-    );
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-      authListener.subscription.unsubscribe();
-    };
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     setIsOpen(false);
     setIsLoggingOut(true);
 
-    // scope: 'local' clears the session from localStorage without a network
-    // round-trip. Default 'global' can hang if the access token is already
-    // invalid or the network is slow, leaving the overlay stuck open and the
-    // session intact on refresh.
-    try {
-      await supabase.auth.signOut({ scope: "local" });
-    } catch (error) {
-      console.error("Logout Error:", error.message);
-    }
+    // signOut is synchronous from the caller's perspective — localStorage
+    // is purged immediately, the SDK call is fire-and-forget.
+    signOut();
 
-    setUser(null);
-    setIsAdmin(false);
-    setIsLoggingOut(false);
-    navigate("/", { replace: true });
+    // Hold the "Signing Out / God bless you" overlay for ~1.1s before
+    // navigating away so the farewell animation actually plays.
+    setTimeout(() => {
+      setIsLoggingOut(false);
+      navigate("/", { replace: true });
+    }, 1100);
   };
-
-  const isSolid = scrolled || forceSolidBg;
 
   return (
     <>
@@ -141,26 +74,56 @@ function Header({ forceSolidBg = false }) {
       >
         <div className="max-w-7xl mx-auto px-6 flex justify-between items-center relative">
           <div className="w-32 hidden lg:flex items-center">
-            <div className="text-sm font-serif italic opacity-70">
+            <div className="text-lg font-serif italic opacity-70 whitespace-nowrap">
               San Pedro Bautista
             </div>
           </div>
 
           <nav className="hidden lg:flex gap-6 xl:gap-8 font-serif italic text-lg justify-center absolute left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-            <Link to="/" className="hover:text-[#B59E74] transition-colors">Home</Link>
-            <Link to="/about" className="hover:text-[#B59E74] transition-colors">About Us</Link>
-            <Link to="/services" className="hover:text-[#B59E74] transition-colors">Services</Link>
-            <Link to="/events" className="hover:text-[#B59E74] transition-colors">Events</Link>
-            <Link to="/ministries" className="hover:text-[#B59E74] transition-colors">Ministries</Link>
-            <Link to="/give" className="hover:text-[#B59E74] transition-colors">Give</Link>
-            <Link to="/visit" className="hover:text-[#B59E74] transition-colors">Visit Us</Link>
+            <Link to="/" className="hover:text-[#B59E74] transition-colors">
+              Home
+            </Link>
+            <Link
+              to="/about"
+              className="hover:text-[#B59E74] transition-colors"
+            >
+              About Us
+            </Link>
+            <Link
+              to="/services"
+              className="hover:text-[#B59E74] transition-colors"
+            >
+              Services
+            </Link>
+            <Link
+              to="/events"
+              className="hover:text-[#B59E74] transition-colors"
+            >
+              Events
+            </Link>
+            <Link
+              to="/ministries"
+              className="hover:text-[#B59E74] transition-colors"
+            >
+              Ministries
+            </Link>
+            <Link to="/give" className="hover:text-[#B59E74] transition-colors">
+              Give
+            </Link>
+            <a
+              href="https://www.google.com/maps/dir/?api=1&destination=69+San+Pedro+Bautista+St.%2C+San+Francisco+del+Monte%2C+Quezon+City%2C+Philippines%2C+1104"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#B59E74] transition-colors"
+            >
+              Visit Us
+            </a>
           </nav>
 
           <div className="flex items-center gap-4 min-w-[120px] justify-end ml-auto lg:ml-0">
             <div className="hidden lg:flex items-center gap-3">
               {user ? (
                 <>
-                  {/* CONDITIONALLY RENDER DASHBOARD: Only if isAdmin is true */}
                   {isAdmin && (
                     <Link
                       to="/admin"
@@ -198,11 +161,26 @@ function Header({ forceSolidBg = false }) {
               onClick={() => setIsOpen(!isOpen)}
               className="lg:hidden focus:outline-none z-50"
             >
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg
+                className="w-8 h-8"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
                 {isOpen ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
                 )}
               </svg>
             </button>
@@ -216,17 +194,46 @@ function Header({ forceSolidBg = false }) {
                 isSolid ? "bg-gray-50" : "bg-black/90 text-white"
               }`}
             >
-              <li><Link to="/" onClick={() => setIsOpen(false)}>Home</Link></li>
-              <li><Link to="/about" onClick={() => setIsOpen(false)}>About Us</Link></li>
-              <li><Link to="/services" onClick={() => setIsOpen(false)}>Services</Link></li>
-              <li><Link to="/events" onClick={() => setIsOpen(false)}>Events</Link></li>
-              <li><Link to="/ministries" onClick={() => setIsOpen(false)}>Ministries</Link></li>
+              <li>
+                <Link to="/" onClick={() => setIsOpen(false)}>
+                  Home
+                </Link>
+              </li>
+              <li>
+                <Link to="/about" onClick={() => setIsOpen(false)}>
+                  About Us
+                </Link>
+              </li>
+              <li>
+                <Link to="/services" onClick={() => setIsOpen(false)}>
+                  Services
+                </Link>
+              </li>
+              <li>
+                <Link to="/events" onClick={() => setIsOpen(false)}>
+                  Events
+                </Link>
+              </li>
+              <li>
+                <Link to="/ministries" onClick={() => setIsOpen(false)}>
+                  Ministries
+                </Link>
+              </li>
+              <li>
+                <a
+                  href="https://www.google.com/maps/dir/?api=1&destination=69+San+Pedro+Bautista+St.%2C+San+Francisco+del+Monte%2C+Quezon+City%2C+Philippines%2C+1104"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setIsOpen(false)}
+                >
+                  Visit Us
+                </a>
+              </li>
 
               <hr className="border-gray-300/30 my-2" />
 
               {user ? (
                 <>
-                  {/* CONDITIONALLY RENDER DASHBOARD IN MOBILE MENU */}
                   {isAdmin && (
                     <li>
                       <Link

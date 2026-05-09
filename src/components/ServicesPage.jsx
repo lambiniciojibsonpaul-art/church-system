@@ -1,5 +1,4 @@
 import { useState } from "react";
-import Header from "./Header";
 import church3 from "../assets/Images/church3.jpg";
 
 // Import your shiny new components!
@@ -43,8 +42,6 @@ function ServicesPage() {
 
   return (
     <div className="relative min-h-screen w-full flex flex-col font-sans bg-white">
-      <Header />
-
       {/* Hero Section */}
       <main
         style={backgroundStyle}

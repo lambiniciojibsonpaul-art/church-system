@@ -1,22 +1,20 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Header from "./Header";
+import { Link } from "react-router-dom";
+import { restSelect, restInsert } from "../supabaseRest";
+import { useAuth } from "../contexts/useAuth";
 
 function AdminSchedules() {
-  const [user, setUser] = useState(null);
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const navigate = useNavigate();
-
   // Form State
   const [formData, setFormData] = useState({
     title: "",
     eventClass: "Mass",
-    priestName: "Fr. Default Priest", // We can make this a dropdown later!
+    priestName: "Fr. Default Priest",
     eventDate: "",
     eventTime: "",
     location: "Main Altar",
@@ -24,38 +22,16 @@ function AdminSchedules() {
     isInside: true,
   });
 
-  // Fetch User & Events on Load
+  // RequireAdmin gates the route. We just fetch events.
   useEffect(() => {
-    const checkAccessAndFetch = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
-        navigate("/login");
-        return;
-      }
-
-      const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", session.user.id)
-        .single();
-      if (!roleData || roleData.role !== "admin") {
-        navigate("/");
-        return;
-      }
-
-      setUser(session.user);
-      fetchEvents();
-    };
-    checkAccessAndFetch();
-  }, [navigate]);
+    fetchEvents();
+  }, []);
 
   const fetchEvents = async () => {
-    const { data } = await supabase
-      .from("events")
-      .select("*")
-      .order("event_date", { ascending: true });
+    const { data } = await restSelect("events", {
+      order: "event_date.asc",
+      timeoutMs: 12000,
+    });
     if (data) setEvents(data);
     setLoading(false);
   };
@@ -73,14 +49,13 @@ function AdminSchedules() {
     setSubmitting(true);
 
     try {
-      // 2. Try the dangerous Supabase insert
-      const { error } = await supabase.from("events").insert([
+      const { error } = await restInsert("events", [
         {
           creator_id: user.id,
           title: formData.title,
           event_class: formData.eventClass,
           priest_name: formData.priestName,
-          event_date: formData.eventDate, 
+          event_date: formData.eventDate,
           event_time: formData.eventTime,
           location: formData.location,
           description: formData.description,
@@ -88,8 +63,7 @@ function AdminSchedules() {
         },
       ]);
 
-      // If Supabase complains, throw the error to the catch block!
-      if (error) throw error; 
+      if (error) throw new Error(error.message);
 
       // 3. If successful, clean up the UI
       setIsModalOpen(false);
@@ -123,8 +97,6 @@ function AdminSchedules() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-      <Header forceSolidBg={true} />
-
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-32 pb-12">
         {/* Admin Sub-Navigation (Like the sidebar in your image, but horizontal for now!) */}
         <div className="flex gap-4 mb-8 border-b border-gray-200 pb-4">

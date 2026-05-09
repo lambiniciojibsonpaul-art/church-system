@@ -1,4 +1,3 @@
-import Header from "./Header";
 import church2 from "../assets/Images/church2.jpg";
 
 function AboutUsPage() {
@@ -35,8 +34,6 @@ function AboutUsPage() {
 
   return (
     <div className="relative min-h-screen w-full flex flex-col font-sans bg-white">
-      <Header />
-
       {/* Hero Section */}
       <main
         style={backgroundStyle}

@@ -1,4 +1,3 @@
-import Header from "./Header.jsx";
 import FloatingFeatures from "./FloatingFeatures.jsx";
 import UpcomingEvents from "./UpcomingEvents.jsx";
 import church1 from "../assets/Images/church1.jpg";
@@ -13,8 +12,6 @@ function ChurchLandingPage() {
 
   return (
     <div className="relative min-h-screen w-full flex flex-col font-sans">
-      <Header />
-
       {/* Hero Section */}
       <main
         style={backgroundStyle}

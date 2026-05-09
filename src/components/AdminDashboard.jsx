@@ -1,20 +1,44 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Header from "./Header";
+import { restSelect, restUpdate } from "../supabaseRest";
+import { useAuth } from "../contexts/useAuth";
+
+const BAPTISMS_CACHE_KEY = "adminDashboard:baptisms";
+const BAPTISMS_CACHE_TTL_MS = 5 * 60 * 1000;
+const QUERY_TIMEOUT_MS = 12000;
+
+function readBaptismsCache() {
+  try {
+    const raw = sessionStorage.getItem(BAPTISMS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed?.baptisms)) return null;
+    if (Date.now() - parsed.ts > BAPTISMS_CACHE_TTL_MS) return null;
+    return parsed.baptisms;
+  } catch {
+    return null;
+  }
+}
+
+function writeBaptismsCache(baptisms) {
+  try {
+    sessionStorage.setItem(
+      BAPTISMS_CACHE_KEY,
+      JSON.stringify({ baptisms, ts: Date.now() })
+    );
+  } catch { /* ignore */ }
+}
 
 function AdminDashboard() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [baptisms, setBaptisms] = useState([]);
+  const { user } = useAuth();
+  const cachedBaptisms = readBaptismsCache();
+  const [loading, setLoading] = useState(!cachedBaptisms);
+  const [baptisms, setBaptisms] = useState(cachedBaptisms || []);
   const [selectedBaptism, setSelectedBaptism] = useState(null);
 
-  // Main Tab State
   const [activeTab, setActiveTab] = useState("Baptisms");
-  // Sub-tab state for Baptisms (Pending, Approved, Rejected)
   const [activeSubTab, setActiveSubTab] = useState("Pending");
-  
-  // Rejection Modal State
+
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectingBaptism, setRejectingBaptism] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -30,55 +54,35 @@ function AdminDashboard() {
     "Certifications",
   ];
 
+  // RequireAdmin already guarantees we're a signed-in admin by the time this
+  // component renders. We only need to fetch the dashboard's data.
   useEffect(() => {
-    const checkUserAndFetchData = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        navigate("/login");
-        return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await restSelect("baptisms", {
+        order: "created_at.desc",
+        timeoutMs: QUERY_TIMEOUT_MS,
+      });
+      if (cancelled) return;
+      if (error) {
+        console.warn("[AdminDashboard] baptisms fetch failed:", error.message);
+      } else if (data) {
+        setBaptisms(data);
+        writeBaptismsCache(data);
       }
-
-      const { data: roleData, error: roleError } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", session.user.id)
-        .single();
-
-      if (roleError || !roleData || roleData.role !== "admin") {
-        alert("You do not have administrator privileges.");
-        await supabase.auth.signOut();
-        navigate("/");
-        return;
-      }
-
-      setUser(session.user);
-      await fetchBaptisms();
       setLoading(false);
-    };
-
-    checkUserAndFetchData();
-  }, [navigate]);
-
-  const fetchBaptisms = async () => {
-    const { data: baptismData } = await supabase
-      .from("baptisms")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (baptismData) setBaptisms(baptismData);
-  };
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleAcceptBaptism = async (id) => {
     if (!window.confirm("Are you sure you want to approve this request?")) return;
-    try {
-      const { error } = await supabase
-        .from("baptisms")
-        .update({ status: "Approved" })
-        .eq("id", id);
-      if (error) throw error;
-      setBaptisms(prev => prev.map(b => b.id === id ? { ...b, status: "Approved" } : b));
-    } catch (err) {
-      alert("Error approving request: " + err.message);
+    const { error } = await restUpdate("baptisms", { id }, { status: "Approved" });
+    if (error) {
+      alert("Error approving request: " + error.message);
+      return;
     }
+    setBaptisms(prev => prev.map(b => b.id === id ? { ...b, status: "Approved" } : b));
   };
 
   const handleRejectBaptism = async () => {
@@ -86,22 +90,21 @@ function AdminDashboard() {
       alert("Please provide a reason for rejection.");
       return;
     }
-    try {
-      const { error } = await supabase
-        .from("baptisms")
-        .update({ 
-          status: "Rejected", 
-          rejection_remarks: rejectionReason 
-        })
-        .eq("id", rejectingBaptism.id);
-      if (error) throw error;
-      setBaptisms(prev => prev.map(b => b.id === rejectingBaptism.id ? { ...b, status: "Rejected", rejection_remarks: rejectionReason } : b));
-      setIsRejectModalOpen(false);
-      setRejectionReason("");
-      setRejectingBaptism(null);
-    } catch (err) {
-      alert("Error rejecting request: " + err.message);
+    const { error } = await restUpdate(
+      "baptisms",
+      { id: rejectingBaptism.id },
+      { status: "Rejected", rejection_remarks: rejectionReason }
+    );
+    if (error) {
+      alert("Error rejecting request: " + error.message);
+      return;
     }
+    setBaptisms(prev => prev.map(b =>
+      b.id === rejectingBaptism.id ? { ...b, status: "Rejected", rejection_remarks: rejectionReason } : b
+    ));
+    setIsRejectModalOpen(false);
+    setRejectionReason("");
+    setRejectingBaptism(null);
   };
 
   const pendingBaptismsCount = baptisms.filter(b => b.status === "Pending").length;
@@ -116,8 +119,6 @@ function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-      <Header forceSolidBg={true} />
-
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-32 pb-12">
         
         <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">

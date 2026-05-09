@@ -1,5 +1,4 @@
 import React from "react";
-import Header from "./Header";
 
 const ministriesData = [
   {
@@ -52,8 +51,6 @@ const ministriesData = [
 function MinistriesPage() {
   return (
     <div className="min-h-screen w-full flex flex-col font-sans bg-[#F6F5ED]">
-      <Header />
-
       {/* --- HERO SECTION --- */}
       <section className="relative pt-32 pb-20 px-6 text-center overflow-hidden">
         {/* Decorative background elements */}

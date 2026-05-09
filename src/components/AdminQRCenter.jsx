@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
-import Header from "./Header";
-import GenerateEventQR from "./Auth/GenerateEventQR"; // Adjust path if needed
+import GenerateEventQR from "./Auth/GenerateEventQR";
 
 function AdminQRCenter() {
   const [events, setEvents] = useState([]);
@@ -29,8 +28,6 @@ function AdminQRCenter() {
 
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans">
-      <Header forceSolidBg={true} />
-      
       <main className="flex-1 max-w-4xl w-full mx-auto px-6 pt-32 pb-12">
         <div className="text-center mb-12">
           <h1 className="text-3xl font-serif text-[#B59E74] uppercase tracking-widest mb-2">

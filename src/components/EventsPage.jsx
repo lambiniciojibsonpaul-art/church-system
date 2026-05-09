@@ -1,21 +1,45 @@
 import { useState, useEffect } from "react";
-import Header from "./Header";
-import { supabase } from "../supabaseClient";
+import { restSelect, restInsert } from "../supabaseRest";
+import { useAuth } from "../contexts/useAuth";
 import church1 from "../assets/Images/church1.jpg";
 
+const EVENTS_CACHE_KEY = "eventsPage:events";
+const EVENTS_CACHE_TTL_MS = 5 * 60 * 1000;
+const EVENTS_FETCH_TIMEOUT_MS = 12000;
+
+function readEventsCache() {
+  try {
+    const raw = sessionStorage.getItem(EVENTS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed?.events)) return null;
+    if (Date.now() - parsed.ts > EVENTS_CACHE_TTL_MS) return null;
+    return parsed.events;
+  } catch {
+    return null;
+  }
+}
+
+function writeEventsCache(events) {
+  try {
+    sessionStorage.setItem(
+      EVENTS_CACHE_KEY,
+      JSON.stringify({ events, ts: Date.now() })
+    );
+  } catch { /* ignore */ }
+}
+
 function EventsPage() {
-  // --- STATE MANAGEMENT ---
+  const { user, isAdmin } = useAuth();
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(
     new Date(today.getFullYear(), today.getMonth(), 1),
   );
   const [selectedDate, setSelectedDate] = useState(today);
 
-  // Database Events & Admin State
-  const [events, setEvents] = useState([]);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cachedEvents = readEventsCache();
+  const [events, setEvents] = useState(cachedEvents || []);
+  const [loading, setLoading] = useState(!cachedEvents);
 
   // Modal & Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -31,36 +55,23 @@ function EventsPage() {
     isInside: true,
   });
 
-  // --- FETCH DATA & CHECK ADMIN ON LOAD ---
+  // user/isAdmin come from AuthContext. Just fetch events.
   useEffect(() => {
-    const checkAdminAndFetch = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        setUser(session.user);
-        const { data: roleData } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", session.user.id)
-          .single();
-
-        if (roleData && roleData.role === "admin") {
-          setIsAdmin(true);
-        }
-      }
-      fetchEvents();
-    };
-    checkAdminAndFetch();
+    fetchEvents();
   }, []);
 
   const fetchEvents = async () => {
-    const { data, error } = await supabase
-      .from("events")
-      .select("*")
-      .order("event_time", { ascending: true });
+    const { data, error } = await restSelect("events", {
+      order: "event_time.asc",
+      timeoutMs: EVENTS_FETCH_TIMEOUT_MS,
+    });
 
-    if (data) setEvents(data);
+    if (error) {
+      console.warn("Events fetch failed:", error.message, "— showing cached data if any.");
+    } else if (data) {
+      setEvents(data);
+      writeEventsCache(data);
+    }
     setLoading(false);
   };
 
@@ -91,14 +102,13 @@ function EventsPage() {
     setSubmitting(true);
 
     try {
-      // 2. Try the dangerous Supabase insert
-      const { error } = await supabase.from("events").insert([
+      const { error } = await restInsert("events", [
         {
           creator_id: user.id,
           title: formData.title,
           event_class: formData.eventClass,
           priest_name: formData.priestName,
-          event_date: formData.eventDate, 
+          event_date: formData.eventDate,
           event_time: formData.eventTime,
           location: formData.location,
           description: formData.description,
@@ -106,8 +116,7 @@ function EventsPage() {
         },
       ]);
 
-      // If Supabase complains, throw the error to the catch block!
-      if (error) throw error; 
+      if (error) throw new Error(error.message);
 
       // 3. If successful, clean up the UI
       setIsModalOpen(false);
@@ -162,7 +171,7 @@ function EventsPage() {
     currentDate.getMonth(),
   );
 
-  const blanks = Array.from({ length: firstDay }, (_, i) => null);
+  const blanks = Array.from({ length: firstDay }, () => null);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const calendarGrid = [...blanks, ...days];
 
@@ -209,8 +218,6 @@ function EventsPage() {
 
   return (
     <div className="relative min-h-screen w-full flex flex-col font-sans bg-white">
-      <Header />
-
       <main
         style={backgroundStyle}
         className="relative h-[60vh] md:h-screen flex flex-col items-center justify-center text-center px-4 text-white"

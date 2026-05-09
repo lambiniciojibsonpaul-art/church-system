@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
-import Header from "./Header";
+import { restSelect } from "../supabaseRest";
 import church3 from "../assets/Images/church3.jpg";
 
 function LoginPage() {
@@ -17,6 +17,7 @@ function LoginPage() {
     error: null,
     successMsg: null,
     showSuccessOverlay: false,
+    overlayPhase: "verifying", // "verifying" | "success"
   });
 
   const handleInputChange = (e) => {
@@ -24,57 +25,184 @@ function LoginPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const withTimeout = (promise, ms, label) =>
+    Promise.race([
+      promise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} timed out — check your connection and try again.`)), ms)
+      ),
+    ]);
+
+  const ADMIN_CACHE_KEY = (email) => `adminCache:${email.toLowerCase()}`;
+  const ADMIN_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  const readLongTermAdminCache = (email) => {
+    try {
+      const raw = localStorage.getItem(ADMIN_CACHE_KEY(email));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (Date.now() - parsed.ts > ADMIN_CACHE_TTL_MS) return null;
+      return parsed.role || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeLongTermAdminCache = (email, role) => {
+    try {
+      localStorage.setItem(
+        ADMIN_CACHE_KEY(email),
+        JSON.stringify({ role, ts: Date.now() })
+      );
+    } catch { /* ignore */ }
+  };
+
   const handleSignIn = async () => {
-    // 1. Verify Credentials
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({
-      email: formData.email,
-      password: formData.password,
+    console.log("[Login] Starting sign-in flow.");
+    const t0 = performance.now();
+
+    // Race signInWithPassword's promise against the SIGNED_IN auth event.
+    // The event fires reliably; the promise can hang under GoTrue lock contention.
+    let authSubscription;
+    const sessionFromEvent = new Promise((resolve) => {
+      const sub = supabase.auth.onAuthStateChange((event, sess) => {
+        if (event === "SIGNED_IN" && sess) resolve(sess);
+      });
+      authSubscription = sub.data.subscription;
     });
 
-    if (signInError) throw signInError;
+    const sessionFromCall = supabase.auth
+      .signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      })
+      .then(({ data: result, error: signInError }) => {
+        if (signInError) throw signInError;
+        return result.session;
+      });
 
-    // 2. SNAPPIER FEEDBACK: Show overlay immediately while we check roles in background
-    setUiState(prev => ({ ...prev, showSuccessOverlay: true, loading: false }));
-
-    // 3. Fetch role safely (using * to prevent column-missing crashes)
-    const { data: roleData, error: roleError } = await supabase
-      .from("user_roles")
-      .select("*") 
-      .eq("user_id", data.user.id)
-      .single();
-
-    if (roleError && roleError.code !== 'PGRST116') {
-      console.error("Role Fetch Error:", roleError.message);
+    let session;
+    try {
+      session = await withTimeout(
+        Promise.race([sessionFromEvent, sessionFromCall]),
+        15000,
+        "Sign-in"
+      );
+    } finally {
+      authSubscription?.unsubscribe();
     }
 
-    // Intercept for first-time login password change
-    if (roleData?.requires_password_change) {
-      navigate("/update-password");
+    if (!session?.user) throw new Error("Sign-in succeeded but no session was returned.");
+
+    const tAuth = performance.now();
+    console.log(`[Login] Auth confirmed in ${Math.round(tAuth - t0)}ms — user=${session.user.email}`);
+
+    setUiState(prev => ({ ...prev, overlayPhase: "success" }));
+
+    // Long-term cache check: if this email has been confirmed as admin in
+    // a prior session within the last 7 days, trust it and route immediately.
+    // The DB verification still runs in the background.
+    const cachedRole = readLongTermAdminCache(session.user.email);
+    if (cachedRole) {
+      console.log(`[Login] Long-term cache hit for ${session.user.email}: role="${cachedRole}". Routing immediately, verifying in background.`);
+      try {
+        sessionStorage.setItem(
+          `userRole:${session.user.id}`,
+          JSON.stringify({ role: cachedRole, ts: Date.now() })
+        );
+      } catch { /* ignore */ }
+
+      // Background refresh via direct REST (bypasses SDK auth lock).
+      restSelect("user_roles", {
+        match: { user_id: session.user.id },
+        single: true,
+      }).then(({ data: fresh }) => {
+        if (!fresh) return;
+        writeLongTermAdminCache(session.user.email, fresh.role);
+        try {
+          sessionStorage.setItem(
+            `userRole:${session.user.id}`,
+            JSON.stringify({ role: fresh.role, ts: Date.now() })
+          );
+        } catch { /* ignore */ }
+      });
+
+      const dest = String(cachedRole).toLowerCase() === "admin" ? "/admin" : "/";
+      navigate(dest, { replace: true });
       return;
     }
 
-    // 4. Shortened transition (800ms) for a professional feel
-    setTimeout(() => {
-      if (roleData?.role === "admin") {
-        navigate("/admin");
-      } else {
-        navigate("/");
+    // No cached answer — fetch via direct REST (bypasses SDK auth lock).
+    let roleData = null;
+    let lastErrorMsg = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      console.log(`[Login] Role lookup attempt ${attempt} (direct REST)...`);
+      const { data: result, error: roleError } = await restSelect("user_roles", {
+        match: { user_id: session.user.id },
+        single: true,
+        timeoutMs: 12000,
+      });
+      if (roleError) {
+        lastErrorMsg = roleError.message;
+        console.warn(`[Login] Role lookup attempt ${attempt} failed:`, roleError.message);
+        continue;
       }
-    }, 800);
+      roleData = result;
+      console.log(`[Login] Role lookup attempt ${attempt} succeeded:`, roleData);
+      break;
+    }
+    const tRole = performance.now();
+    console.log(`[Login] Role phase took ${Math.round(tRole - tAuth)}ms`);
+
+    if (!roleData && lastErrorMsg) {
+      console.warn("[Login] Role lookup failed after retry:", lastErrorMsg);
+    }
+
+    if (roleData) {
+      try {
+        sessionStorage.setItem(
+          `userRole:${session.user.id}`,
+          JSON.stringify({ role: roleData.role, ts: Date.now() })
+        );
+      } catch { /* ignore */ }
+      // Persist for 7 days so future sign-ins can skip this slow query.
+      writeLongTermAdminCache(session.user.email, roleData.role);
+    }
+
+    if (roleData?.requires_password_change) {
+      console.log("[Login] requires_password_change=true → /update-password");
+      navigate("/update-password", { replace: true });
+      return;
+    }
+
+    const role = String(roleData?.role || "").toLowerCase();
+    const dest = role === "admin" ? "/admin" : "/";
+    console.log(`[Login] role="${role || "(unknown)"}" → navigating to ${dest}`);
+    navigate(dest, { replace: true });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setUiState({ loading: true, error: null, successMsg: null, showSuccessOverlay: false });
+    // Optimistic: show full-screen overlay the instant the user clicks, so the
+    // slow signInWithPassword network call has visible progress feedback.
+    setUiState({
+      loading: true,
+      error: null,
+      successMsg: null,
+      showSuccessOverlay: true,
+      overlayPhase: "verifying",
+    });
 
     try {
       await handleSignIn();
     } catch (err) {
-      // If sign in fails, error shows and loading turns off immediately
-      setUiState(prev => ({ ...prev, error: err.message, loading: false }));
-    } finally {
-      // ensures spinner never gets stuck
-      setUiState(prev => ({ ...prev, loading: false }));
+      setUiState({
+        loading: false,
+        error: err.message,
+        successMsg: null,
+        showSuccessOverlay: false,
+        overlayPhase: "verifying",
+      });
     }
   };
 
@@ -87,20 +215,32 @@ function LoginPage() {
 
   return (
     <div className="relative min-h-screen w-full flex flex-col font-sans bg-white overflow-hidden">
-      <Header />
-
       {uiState.showSuccessOverlay && (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-[#F6F5ED] animate-fade-in">
           <div className="transform transition-all duration-700 translate-y-0 opacity-100">
-            <div className="w-20 h-20 mx-auto rounded-full flex items-center justify-center bg-[#B59E74] text-white text-4xl mb-6 shadow-xl animate-bounce">
-              👑
-            </div>
-            <h2 className="text-3xl font-serif text-[#B59E74] tracking-widest uppercase text-center">
-              Welcome Back
-            </h2>
-            <p className="text-gray-500 font-serif italic mt-3 text-center text-lg">
-              Preparing your dashboard...
-            </p>
+            {uiState.overlayPhase === "verifying" ? (
+              <>
+                <div className="w-20 h-20 mx-auto rounded-full border-t-2 border-b-2 border-[#B59E74] animate-spin mb-6"></div>
+                <h2 className="text-3xl font-serif text-[#B59E74] tracking-widest uppercase text-center">
+                  Signing You In
+                </h2>
+                <p className="text-gray-500 font-serif italic mt-3 text-center text-lg">
+                  Verifying credentials...
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="w-20 h-20 mx-auto rounded-full flex items-center justify-center bg-[#B59E74] text-white text-4xl mb-6 shadow-xl animate-bounce">
+                  👑
+                </div>
+                <h2 className="text-3xl font-serif text-[#B59E74] tracking-widest uppercase text-center">
+                  Welcome Back
+                </h2>
+                <p className="text-gray-500 font-serif italic mt-3 text-center text-lg">
+                  Preparing your dashboard...
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}

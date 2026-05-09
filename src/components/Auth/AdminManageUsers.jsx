@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../../supabaseClient"; 
-import Header from "../Header"; 
+import { supabase } from "../../supabaseClient";
 
 function AdminManageUsers() {
   const [formData, setFormData] = useState({ 
@@ -44,8 +43,6 @@ function AdminManageUsers() {
 
   return (
     <div className="relative min-h-screen w-full flex flex-col font-sans bg-[#F6F5ED]">
-      <Header />
-      
       <main className="flex-1 flex items-center justify-center p-6 mt-16 lg:mt-0">
         <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-fade-in-up border border-gray-100 flex flex-col">
           
