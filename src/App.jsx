@@ -10,6 +10,7 @@ import AdminDashboard from './components/AdminDashboard';
 import AdminSchedules from './components/AdminSchedules';
 import AdminReports from './components/AdminReports';
 import MinistriesPage from './components/MinistriesPage';
+import GivePage from './components/GivePage';
 import AdminAttendanceList from './components/AdminAttendanceList';
 import AdminQRCenter from './components/AdminQRCenter';
 
@@ -32,6 +33,7 @@ function App() {
             <Route path="/events" element={<EventsPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/ministries" element={<MinistriesPage />} />
+            <Route path="/give" element={<GivePage />} />
 
             {/* QR Check-In (component handles its own login gate) */}
             <Route path="/check-in/:eventId" element={<CheckInPage />} />
