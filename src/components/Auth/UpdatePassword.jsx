@@ -39,7 +39,7 @@ function UpdatePassword() {
       console.log("Step 2 SUCCESS: Auth password updated.");
 
       // STEP 3: GET USER ID
-      console,log("Step 3: Fetching current user ID...");
+      console.log("Step 3: Fetching current user ID...");
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) {
         console.error("Step 3 ERROR (GetUser):", userError.message);

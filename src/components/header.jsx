@@ -90,22 +90,21 @@ function Header({ forceSolidBg = false }) {
   const handleLogout = async () => {
     setIsOpen(false);
     setIsLoggingOut(true);
-    
-    // Explicitly reset admin state before logging out
-    setIsAdmin(false); 
-    
+
+    // scope: 'local' clears the session from localStorage without a network
+    // round-trip. Default 'global' can hang if the access token is already
+    // invalid or the network is slow, leaving the overlay stuck open and the
+    // session intact on refresh.
     try {
-      // Actual logout call
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
     } catch (error) {
       console.error("Logout Error:", error.message);
-    } finally {
-      // Speed up wait time to 600ms and use clean navigation (no full reload)
-      setTimeout(() => {
-        setIsLoggingOut(false);
-        navigate("/", { replace: true });
-      }, 600);
     }
+
+    setUser(null);
+    setIsAdmin(false);
+    setIsLoggingOut(false);
+    navigate("/", { replace: true });
   };
 
   const isSolid = scrolled || forceSolidBg;
@@ -151,7 +150,6 @@ function Header({ forceSolidBg = false }) {
             <Link to="/" className="hover:text-[#B59E74] transition-colors">Home</Link>
             <Link to="/about" className="hover:text-[#B59E74] transition-colors">About Us</Link>
             <Link to="/services" className="hover:text-[#B59E74] transition-colors">Services</Link>
-            <a href="#sermons" className="hover:text-[#B59E74] transition-colors">Sermons</a>
             <Link to="/events" className="hover:text-[#B59E74] transition-colors">Events</Link>
             <Link to="/ministries" className="hover:text-[#B59E74] transition-colors">Ministries</Link>
             <Link to="/give" className="hover:text-[#B59E74] transition-colors">Give</Link>
@@ -222,7 +220,6 @@ function Header({ forceSolidBg = false }) {
               <li><Link to="/about" onClick={() => setIsOpen(false)}>About Us</Link></li>
               <li><Link to="/services" onClick={() => setIsOpen(false)}>Services</Link></li>
               <li><Link to="/events" onClick={() => setIsOpen(false)}>Events</Link></li>
-              <li><a href="#sermons" onClick={() => setIsOpen(false)}>Sermons</a></li>
               <li><Link to="/ministries" onClick={() => setIsOpen(false)}>Ministries</Link></li>
 
               <hr className="border-gray-300/30 my-2" />
