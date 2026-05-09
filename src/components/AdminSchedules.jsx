@@ -1,22 +1,22 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Header from "./Header";
+import { Link } from "react-router-dom";
+import { restSelect, restInsert } from "../supabaseRest";
+import { useAuth } from "../contexts/useAuth";
+import { ministryNames } from "../data/ministries";
 
 function AdminSchedules() {
-  const [user, setUser] = useState(null);
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const navigate = useNavigate();
-
-  // Form State
+  // Form State. `ministry` replaces the old `priestName` field — the chosen
+  // ministry is what now hosts the event. We map it to the existing
+  // `priest_name` DB column on insert to avoid a schema migration.
   const [formData, setFormData] = useState({
     title: "",
-    eventClass: "Mass",
-    priestName: "Fr. Default Priest", // We can make this a dropdown later!
+    ministry: "",
     eventDate: "",
     eventTime: "",
     location: "Main Altar",
@@ -24,38 +24,16 @@ function AdminSchedules() {
     isInside: true,
   });
 
-  // Fetch User & Events on Load
+  // RequireAdmin gates the route. We just fetch events.
   useEffect(() => {
-    const checkAccessAndFetch = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
-        navigate("/login");
-        return;
-      }
-
-      const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", session.user.id)
-        .single();
-      if (!roleData || roleData.role !== "admin") {
-        navigate("/");
-        return;
-      }
-
-      setUser(session.user);
-      fetchEvents();
-    };
-    checkAccessAndFetch();
-  }, [navigate]);
+    fetchEvents();
+  }, []);
 
   const fetchEvents = async () => {
-    const { data } = await supabase
-      .from("events")
-      .select("*")
-      .order("event_date", { ascending: true });
+    const { data } = await restSelect("events", {
+      order: "event_date.asc",
+      timeoutMs: 12000,
+    });
     if (data) setEvents(data);
     setLoading(false);
   };
@@ -73,14 +51,17 @@ function AdminSchedules() {
     setSubmitting(true);
 
     try {
-      // 2. Try the dangerous Supabase insert
-      const { error } = await supabase.from("events").insert([
+      const { error } = await restInsert("events", [
         {
           creator_id: user.id,
           title: formData.title,
-          event_class: formData.eventClass,
-          priest_name: formData.priestName,
-          event_date: formData.eventDate, 
+          // event_class is no longer collected from the form. We send a
+          // generic default so the column (which may be NOT NULL) is
+          // satisfied without polluting reports/legacy queries.
+          event_class: "Event",
+          // priest_name column now stores the hosting ministry name.
+          priest_name: formData.ministry,
+          event_date: formData.eventDate,
           event_time: formData.eventTime,
           location: formData.location,
           description: formData.description,
@@ -88,18 +69,17 @@ function AdminSchedules() {
         },
       ]);
 
-      // If Supabase complains, throw the error to the catch block!
-      if (error) throw error; 
+      if (error) throw new Error(error.message);
 
-      // 3. If successful, clean up the UI
       setIsModalOpen(false);
-      fetchEvents(); 
+      fetchEvents();
       setFormData({
         ...formData,
         title: "",
+        ministry: "",
         eventDate: "",
         eventTime: "",
-        location: "Main Altar", // Reset to default location
+        location: "Main Altar",
         description: "",
       });
       
@@ -123,8 +103,6 @@ function AdminSchedules() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-      <Header forceSolidBg={true} />
-
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-32 pb-12">
         {/* Admin Sub-Navigation (Like the sidebar in your image, but horizontal for now!) */}
         <div className="flex gap-4 mb-8 border-b border-gray-200 pb-4">
@@ -189,7 +167,7 @@ function AdminSchedules() {
                     <span
                       className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${ev.is_inside ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}
                     >
-                      {ev.is_inside ? "Sa Loob" : "Sa Labas"}
+                      {ev.is_inside ? "Indoor" : "Outdoor"}
                     </span>
                   </div>
                   <h3 className="text-xl font-serif text-gray-800 font-medium leading-tight mb-1">
@@ -250,37 +228,26 @@ function AdminSchedules() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">
-                    Class *
-                  </label>
-                  <select
-                    name="eventClass"
-                    value={formData.eventClass}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none"
-                  >
-                    <option value="Mass">Mass</option>
-                    <option value="Custom">Custom Event</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">
-                    Priest *
-                  </label>
-                  <select
-                    name="priestName"
-                    value={formData.priestName}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none"
-                  >
-                    <option value="Fr. Default Priest">
-                      Fr. Default Priest
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-gray-600 uppercase">
+                  Hosting Ministry *
+                </label>
+                <select
+                  name="ministry"
+                  required
+                  value={formData.ministry}
+                  onChange={handleChange}
+                  className="p-3 rounded-xl border border-gray-300 outline-none"
+                >
+                  <option value="" disabled>
+                    Select a ministry…
+                  </option>
+                  {ministryNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
                     </option>
-                    <option value="Fr. Guest">Guest Priest</option>
-                  </select>
-                </div>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-6">
@@ -342,7 +309,7 @@ function AdminSchedules() {
                         }
                         className="text-[#B59E74] focus:ring-[#B59E74]"
                       />{" "}
-                      Sa Loob
+                      Indoor
                     </label>
                     <label className="flex items-center gap-2 text-sm">
                       <input
@@ -354,7 +321,7 @@ function AdminSchedules() {
                         }
                         className="text-[#B59E74] focus:ring-[#B59E74]"
                       />{" "}
-                      Sa Labas
+                      Outdoor
                     </label>
                   </div>
                 </div>

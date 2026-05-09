@@ -1,12 +1,17 @@
 import { useState } from "react";
-import { supabase } from "../../supabaseClient";
+import { restInsert } from "../../supabaseRest";
+import { useAuth } from "../../contexts/useAuth";
+import { sendRequestEmail } from "../../emailNotifications";
+import SignInPrompt from "../SignInPrompt";
+import { DeclarationBlock, SuccessPanel } from "./formHelpers";
 
 function BaptismFormModal({ onClose }) {
+  // All hooks declared up-front (Rules of Hooks). The auth gate happens
+  // *after* the hook section to keep call order consistent across renders.
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
-
-  // State to hold all form data
   const [formData, setFormData] = useState({
     baptismType: "Sunday",
     preferredDate: "",
@@ -25,45 +30,102 @@ function BaptismFormModal({ onClose }) {
     godmotherName: "",
     additionalSponsors: "",
     submitterName: "",
+    submitter_signature: "",
+    declaration_consent: false,
   });
 
-  // Helper to handle input changes
+  // Guest visitors must sign in/register before submitting a request.
+  if (!user) {
+    return <SignInPrompt onClose={onClose} serviceName="a baptism" />;
+  }
+
+  // Helper to handle input changes (handles checkboxes too).
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, type, checked, value } = e.target;
+    setFormData({ ...formData, [name]: type === "checkbox" ? checked : value });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    if (!formData.declaration_consent) {
+      setError("Please confirm the declaration before submitting.");
+      return;
+    }
+    setLoading(true);
 
     try {
-      // Send data to Supabase
-      const { error: supabaseError } = await supabase.from("baptisms").insert([
-        {
-          baptism_type: formData.baptismType,
-          preferred_date: formData.preferredDate,
-          child_first_name: formData.childFirstName,
-          child_middle_name: formData.childMiddleName,
-          child_last_name: formData.childLastName,
-          child_dob: formData.childDob,
-          child_birthplace: formData.childBirthplace,
-          child_gender: formData.childGender,
-          father_name: formData.fatherName,
-          mother_maiden_name: formData.motherMaidenName,
-          address: formData.address,
-          contact_numbers: formData.contactNumbers,
-          parents_marriage_status: formData.parentsMarriageStatus,
-          godfather_name: formData.godfatherName,
-          godmother_name: formData.godmotherName,
-          additional_sponsors: formData.additionalSponsors,
-          submitter_name: formData.submitterName,
-        },
-      ]);
+      // Build the row. We include user_id, submitter_email, submitter_phone
+      // so admins know who submitted the request and can contact them.
+      // These columns must exist in the `baptisms` table — see the SQL
+      // migration in the project README/setup notes.
+      const payload = {
+        baptism_type: formData.baptismType,
+        preferred_date: formData.preferredDate,
+        child_first_name: formData.childFirstName,
+        child_middle_name: formData.childMiddleName,
+        child_last_name: formData.childLastName,
+        child_dob: formData.childDob,
+        child_birthplace: formData.childBirthplace,
+        child_gender: formData.childGender,
+        father_name: formData.fatherName,
+        mother_maiden_name: formData.motherMaidenName,
+        address: formData.address,
+        contact_numbers: formData.contactNumbers,
+        parents_marriage_status: formData.parentsMarriageStatus,
+        godfather_name: formData.godfatherName,
+        godmother_name: formData.godmotherName,
+        additional_sponsors: formData.additionalSponsors,
+        // The typed digital signature now serves as the submitter's name.
+        submitter_name: formData.submitter_signature,
+        user_id: user.id,
+        submitter_email: user.email || null,
+        // Email-OTP signups store the contact number in user_metadata; older
+        // phone-OTP signups put it on user.phone. Fall back so both work.
+        submitter_phone:
+          user.user_metadata?.contact_number || user.phone || null,
+      };
 
-      if (supabaseError) throw supabaseError;
+      // Strategy: try with the new optional metadata columns first. On ANY
+      // failure, retry once with those columns stripped. If the second
+      // attempt also fails, that's a real problem and we surface it.
+      const first = await restInsert("baptisms", [payload]);
+
+      if (first.error) {
+        console.warn(
+          "[Baptism] first insert attempt failed — retrying without optional metadata columns:",
+          first.error
+        );
+        const fallbackPayload = { ...payload };
+        delete fallbackPayload.user_id;
+        delete fallbackPayload.submitter_email;
+        delete fallbackPayload.submitter_phone;
+
+        const retry = await restInsert("baptisms", [fallbackPayload]);
+        if (retry.error) {
+          console.error("[Baptism] retry also failed:", retry.error);
+          throw new Error(retry.error.message);
+        }
+        console.log(
+          "[Baptism] retry succeeded. To capture submitter email/phone in admin, add user_id, submitter_email, submitter_phone columns to the baptisms table."
+        );
+      }
 
       setSuccess(true);
+
+      // Fire-and-forget email notification. No-op if email is not yet
+      // configured on the Supabase project.
+      const childName = [
+        formData.childFirstName,
+        formData.childLastName,
+      ].filter(Boolean).join(" ").trim();
+      sendRequestEmail({
+        to: user.email,
+        serviceName: "baptism",
+        summary: childName
+          ? `Baptism request for ${childName} on ${formData.preferredDate || "(date pending)"}.`
+          : undefined,
+      });
 
       // Close modal after 2.5 seconds showing success
       setTimeout(() => {
@@ -103,19 +165,8 @@ function BaptismFormModal({ onClose }) {
           </button>
         </div>
 
-        {/* Success Overlay */}
         {success ? (
-          <div className="p-16 flex flex-col items-center justify-center text-center min-h-[50vh]">
-            <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-5xl mb-6 animate-bounce">
-              ✓
-            </div>
-            <h2 className="text-3xl font-serif text-[#B59E74]">
-              Registration Submitted!
-            </h2>
-            <p className="text-gray-600 mt-2">
-              The parish office will review your request shortly.
-            </p>
-          </div>
+          <SuccessPanel />
         ) : (
           <form onSubmit={handleSubmit} className="p-8 space-y-10">
             {/* Error Message */}
@@ -487,27 +538,13 @@ function BaptismFormModal({ onClose }) {
               </div>
             </div>
 
-            {/* SUBMITTER'S DETAILS */}
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-              <div className="flex flex-col gap-1 flex-1 max-w-lg">
-                <label className="text-sm font-bold text-gray-600">
-                  Submitter's Name & Digital Signature *
-                </label>
-                <input
-                  type="text"
-                  name="submitterName"
-                  value={formData.submitterName}
-                  onChange={handleChange}
-                  required
-                  placeholder="Enter full name as digital signature"
-                  className="p-3 border-b-2 border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 font-serif italic"
-                />
-                <span className="text-[11px] text-gray-400 mt-1">
-                  I declare that all the information provided above is true and
-                  correct, and I acknowledge the fees and dress code required.
-                </span>
-              </div>
-            </div>
+            {/* DECLARATION & SIGNATURE */}
+            <DeclarationBlock
+              declaration="I declare that the information provided above is true and correct, and I respectfully request the Sacrament of Baptism for the child named above. I also acknowledge the fees and dress code required."
+              consent={formData.declaration_consent}
+              signature={formData.submitter_signature}
+              onChange={handleChange}
+            />
 
             <div className="pt-2 pb-4">
               <button

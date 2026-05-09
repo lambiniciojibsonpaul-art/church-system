@@ -1,5 +1,4 @@
 import { useState } from "react";
-import Header from "./Header";
 import church3 from "../assets/Images/church3.jpg";
 
 // Import your shiny new components!
@@ -9,6 +8,8 @@ import WeddingRegistryFormModal from "./Forms/WeddingRegistryFormModal";
 import SacramentsLiturgicalFormModal from "./Forms/SacramentsLiturgicalFormModal";
 import MassIntentionFormModal from "./Forms/MassIntentionFormModal";
 import ConfirmationFormModal from "./Forms/ConfirmationFormModal";
+import FacilitiesBookingFormModal from "./Forms/FacilitiesBookingFormModal";
+import CertificationRequestFormModal from "./Forms/CertificationRequestFormModal";
 
 function ServicesPage() {
   // States for the Modals
@@ -19,6 +20,8 @@ function ServicesPage() {
   const [isMassIntentionModalOpen, setIsMassIntentionModalOpen] =
     useState(false);
   const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
+  const [isFacilitiesModalOpen, setIsFacilitiesModalOpen] = useState(false);
+  const [isCertificationModalOpen, setIsCertificationModalOpen] = useState(false);
 
   const backgroundStyle = {
     backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('${church3}')`,
@@ -43,8 +46,6 @@ function ServicesPage() {
 
   return (
     <div className="relative min-h-screen w-full flex flex-col font-sans bg-white">
-      <Header />
-
       {/* Hero Section */}
       <main
         style={backgroundStyle}
@@ -142,8 +143,16 @@ function ServicesPage() {
                 tempIcon="🕯️"
                 onClick={() => setIsMassIntentionModalOpen(true)}
               />
-              <ServiceCard title="Facilities Booking" tempIcon="📅" />
-              <ServiceCard title="Certification Request" tempIcon="📜" />
+              <ServiceCard
+                title="Facilities Booking"
+                tempIcon="📅"
+                onClick={() => setIsFacilitiesModalOpen(true)}
+              />
+              <ServiceCard
+                title="Certification Request"
+                tempIcon="📜"
+                onClick={() => setIsCertificationModalOpen(true)}
+              />
             </div>
           </div>
         </div>
@@ -176,6 +185,16 @@ function ServicesPage() {
       {isConfirmationModalOpen && (
         <ConfirmationFormModal
           onClose={() => setIsConfirmationModalOpen(false)}
+        />
+      )}
+      {isFacilitiesModalOpen && (
+        <FacilitiesBookingFormModal
+          onClose={() => setIsFacilitiesModalOpen(false)}
+        />
+      )}
+      {isCertificationModalOpen && (
+        <CertificationRequestFormModal
+          onClose={() => setIsCertificationModalOpen(false)}
         />
       )}
     </div>

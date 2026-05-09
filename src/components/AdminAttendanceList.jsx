@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
-import Header from "./Header";
 
 function AdminAttendanceList() {
   const [events, setEvents] = useState([]);
@@ -41,8 +40,6 @@ function AdminAttendanceList() {
 
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans">
-      <Header forceSolidBg={true} />
-      
       <main className="flex-1 max-w-6xl w-full mx-auto px-6 pt-32 pb-12">
         <div className="mb-10 text-center">
           <h1 className="text-3xl font-serif text-[#B59E74] uppercase tracking-widest mb-2">

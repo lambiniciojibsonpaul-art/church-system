@@ -1,66 +1,79 @@
 import { useState, useEffect } from "react";
-import Header from "./Header";
-import { supabase } from "../supabaseClient";
+import { restSelect, restInsert } from "../supabaseRest";
+import { useAuth } from "../contexts/useAuth";
+import { ministryNames } from "../data/ministries";
 import church1 from "../assets/Images/church1.jpg";
 
+const EVENTS_CACHE_KEY = "eventsPage:events";
+const EVENTS_CACHE_TTL_MS = 5 * 60 * 1000;
+const EVENTS_FETCH_TIMEOUT_MS = 12000;
+
+function readEventsCache() {
+  try {
+    const raw = sessionStorage.getItem(EVENTS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed?.events)) return null;
+    if (Date.now() - parsed.ts > EVENTS_CACHE_TTL_MS) return null;
+    return parsed.events;
+  } catch {
+    return null;
+  }
+}
+
+function writeEventsCache(events) {
+  try {
+    sessionStorage.setItem(
+      EVENTS_CACHE_KEY,
+      JSON.stringify({ events, ts: Date.now() })
+    );
+  } catch { /* ignore */ }
+}
+
 function EventsPage() {
-  // --- STATE MANAGEMENT ---
+  const { user, isAdmin } = useAuth();
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(
     new Date(today.getFullYear(), today.getMonth(), 1),
   );
   const [selectedDate, setSelectedDate] = useState(today);
 
-  // Database Events & Admin State
-  const [events, setEvents] = useState([]);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cachedEvents = readEventsCache();
+  const [events, setEvents] = useState(cachedEvents || []);
+  const [loading, setLoading] = useState(!cachedEvents);
 
   // Modal & Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Form state. `ministry` replaces the old `priestName` field; we map it
+  // to the existing `priest_name` DB column on insert.
   const [formData, setFormData] = useState({
     title: "",
-    eventClass: "Mass",
-    priestName: "Fr. Default Priest",
-    eventDate: "", // <-- NEW: Added eventDate state
+    ministry: "",
+    eventDate: "",
     eventTime: "",
     location: "",
     description: "",
     isInside: true,
   });
 
-  // --- FETCH DATA & CHECK ADMIN ON LOAD ---
+  // user/isAdmin come from AuthContext. Just fetch events.
   useEffect(() => {
-    const checkAdminAndFetch = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        setUser(session.user);
-        const { data: roleData } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", session.user.id)
-          .single();
-
-        if (roleData && roleData.role === "admin") {
-          setIsAdmin(true);
-        }
-      }
-      fetchEvents();
-    };
-    checkAdminAndFetch();
+    fetchEvents();
   }, []);
 
   const fetchEvents = async () => {
-    const { data, error } = await supabase
-      .from("events")
-      .select("*")
-      .order("event_time", { ascending: true });
+    const { data, error } = await restSelect("events", {
+      order: "event_time.asc",
+      timeoutMs: EVENTS_FETCH_TIMEOUT_MS,
+    });
 
-    if (data) setEvents(data);
+    if (error) {
+      console.warn("Events fetch failed:", error.message, "— showing cached data if any.");
+    } else if (data) {
+      setEvents(data);
+      writeEventsCache(data);
+    }
     setLoading(false);
   };
 
@@ -91,14 +104,16 @@ function EventsPage() {
     setSubmitting(true);
 
     try {
-      // 2. Try the dangerous Supabase insert
-      const { error } = await supabase.from("events").insert([
+      const { error } = await restInsert("events", [
         {
           creator_id: user.id,
           title: formData.title,
-          event_class: formData.eventClass,
-          priest_name: formData.priestName,
-          event_date: formData.eventDate, 
+          // Class field removed from the form — keep column populated with a
+          // generic default so legacy reports/queries don't break.
+          event_class: "Event",
+          // priest_name column now stores the hosting ministry name.
+          priest_name: formData.ministry,
+          event_date: formData.eventDate,
           event_time: formData.eventTime,
           location: formData.location,
           description: formData.description,
@@ -106,18 +121,17 @@ function EventsPage() {
         },
       ]);
 
-      // If Supabase complains, throw the error to the catch block!
-      if (error) throw error; 
+      if (error) throw new Error(error.message);
 
-      // 3. If successful, clean up the UI
       setIsModalOpen(false);
-      fetchEvents(); 
+      fetchEvents();
       setFormData({
         ...formData,
         title: "",
+        ministry: "",
         eventDate: "",
         eventTime: "",
-        location: "", // Reset location
+        location: "",
         description: "",
       });
       
@@ -162,7 +176,7 @@ function EventsPage() {
     currentDate.getMonth(),
   );
 
-  const blanks = Array.from({ length: firstDay }, (_, i) => null);
+  const blanks = Array.from({ length: firstDay }, () => null);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const calendarGrid = [...blanks, ...days];
 
@@ -208,32 +222,63 @@ function EventsPage() {
   };
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col font-sans bg-white">
-      <Header />
+    <div
+      className={`relative min-h-screen w-full flex flex-col font-sans ${
+        isAdmin ? "bg-gray-50" : "bg-white"
+      }`}
+    >
+      {/* Public hero image — hidden for admins (cleaner dashboard look). */}
+      {!isAdmin && (
+        <main
+          style={backgroundStyle}
+          className="relative h-[60vh] md:h-screen flex flex-col items-center justify-center text-center px-4 text-white"
+        >
+          <h1 className="text-5xl md:text-7xl font-bold tracking-tight mt-16">
+            Events
+          </h1>
+        </main>
+      )}
 
-      <main
-        style={backgroundStyle}
-        className="relative h-[60vh] md:h-screen flex flex-col items-center justify-center text-center px-4 text-white"
+      <section
+        className={
+          isAdmin
+            ? "w-full px-6 pt-32 pb-12"
+            : "relative w-full z-20 -mt-24 pb-32 px-6"
+        }
       >
-        <h1 className="text-5xl md:text-7xl font-bold tracking-tight mt-16">
-          Events
-        </h1>
-      </main>
+        <div
+          className={
+            isAdmin
+              ? "max-w-7xl mx-auto"
+              : "bg-[#F6F5ED] rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-7xl mx-auto py-12 px-6 md:px-12 text-left"
+          }
+        >
+          {isAdmin ? (
+            <div className="mb-8">
+              <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] mb-2 uppercase tracking-wide">
+                Parish Events
+              </h1>
+              <p className="text-gray-500 font-serif italic">
+                Manage and review parish events. Select a date to see what's
+                scheduled.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="text-center max-w-3xl mx-auto mb-12">
+                <h2 className="text-3xl md:text-4xl text-[#B59E74] font-serif uppercase tracking-widest mb-6 font-medium">
+                  Church Calendar
+                </h2>
+                <p className="text-gray-600 font-serif italic text-lg">
+                  Stay connected with our parish family. Select a date on the
+                  calendar below to view upcoming masses, community gatherings,
+                  and special ceremonies.
+                </p>
+              </div>
 
-      <section className="relative w-full z-20 -mt-24 pb-32 px-6">
-        <div className="bg-[#F6F5ED] rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-7xl mx-auto py-12 px-6 md:px-12 text-left">
-          <div className="text-center max-w-3xl mx-auto mb-12">
-            <h2 className="text-3xl md:text-4xl text-[#B59E74] font-serif uppercase tracking-widest mb-6 font-medium">
-              Church Calendar
-            </h2>
-            <p className="text-gray-600 font-serif italic text-lg">
-              Stay connected with our parish family. Select a date on the
-              calendar below to view upcoming masses, community gatherings, and
-              special ceremonies.
-            </p>
-          </div>
-
-          <hr className="border-gray-300 border-t w-full max-w-5xl mx-auto mb-12" />
+              <hr className="border-gray-300 border-t w-full max-w-5xl mx-auto mb-12" />
+            </>
+          )}
 
           <div className="flex flex-col lg:flex-row gap-12 max-w-6xl mx-auto">
             <div className="flex-1 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-[#B59E74]/20 h-fit">
@@ -321,11 +366,18 @@ function EventsPage() {
                                             `}
                     >
                       {day}
-                      {hasEvent && (
-                        <span
-                          className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${isSelected ? "bg-white" : "bg-[#B59E74]"}`}
-                        ></span>
-                      )}
+                      {/* Status indicator: red = has event (scheduled),
+                          green = available. White when the day is selected
+                          so it stays visible on the gold background. */}
+                      <span
+                        className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${
+                          isSelected
+                            ? "bg-white"
+                            : hasEvent
+                              ? "bg-[#B9554A]"
+                              : "bg-[#86efac]"
+                        }`}
+                      ></span>
                     </button>
                   );
                 })}
@@ -422,9 +474,32 @@ function EventsPage() {
                           {event.location}
                         </div>
                       </div>
-                      <p className="text-gray-700 leading-relaxed mt-2 text-sm">
-                        {event.description}
-                      </p>
+
+                      {event.priest_name && (
+                        <div className="flex items-center gap-2 text-sm text-gray-700 font-medium border-t border-gray-100 pt-3">
+                          <svg
+                            className="w-5 h-5 text-[#B59E74]"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={1.5}
+                              d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 0a4 4 0 11-8 0 4 4 0 018 0z"
+                            />
+                          </svg>
+                          <span className="text-gray-500 italic mr-1">Hosted by:</span>
+                          {event.priest_name}
+                        </div>
+                      )}
+
+                      {event.description && (
+                        <p className="text-gray-700 leading-relaxed mt-1 text-sm">
+                          {event.description}
+                        </p>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -497,40 +572,29 @@ function EventsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Class *
-                  </label>
-                  <select
-                    name="eventClass"
-                    value={formData.eventClass}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none"
-                  >
-                    <option value="Mass">Mass</option>
-                    <option value="Custom">Custom Event</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Priest *
-                  </label>
-                  <select
-                    name="priestName"
-                    value={formData.priestName}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none"
-                  >
-                    <option value="Fr. Default Priest">
-                      Fr. Default Priest
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                  Hosting Ministry *
+                </label>
+                <select
+                  name="ministry"
+                  required
+                  value={formData.ministry}
+                  onChange={handleChange}
+                  className="p-3 rounded-xl border border-gray-300 outline-none"
+                >
+                  <option value="" disabled>
+                    Select a ministry…
+                  </option>
+                  {ministryNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
                     </option>
-                    <option value="Fr. Guest">Guest Priest</option>
-                  </select>
-                </div>
+                  ))}
+                </select>
               </div>
 
-              {/* NEW: Date and Time Side-by-Side */}
+              {/* Date and Time Side-by-Side */}
               <div className="grid grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
@@ -591,7 +655,7 @@ function EventsPage() {
                         }
                         className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]"
                       />{" "}
-                      Sa Loob
+                      Indoor
                     </label>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                       <input
@@ -603,7 +667,7 @@ function EventsPage() {
                         }
                         className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]"
                       />{" "}
-                      Sa Labas
+                      Outdoor
                     </label>
                   </div>
                 </div>

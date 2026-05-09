@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../../supabaseClient"; 
-import Header from "../Header"; 
+import { supabase } from "../../supabaseClient";
 
 function UpdatePassword() {
   const navigate = useNavigate();
@@ -39,7 +38,7 @@ function UpdatePassword() {
       console.log("Step 2 SUCCESS: Auth password updated.");
 
       // STEP 3: GET USER ID
-      console,log("Step 3: Fetching current user ID...");
+      console.log("Step 3: Fetching current user ID...");
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) {
         console.error("Step 3 ERROR (GetUser):", userError.message);
@@ -75,8 +74,6 @@ function UpdatePassword() {
 
   return (
     <div className="relative min-h-screen w-full flex flex-col font-sans bg-[#F6F5ED]">
-      <Header />
-      
       <main className="flex-1 flex items-center justify-center p-6 mt-16 lg:mt-0">
         <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-fade-in-up border border-gray-100">
           

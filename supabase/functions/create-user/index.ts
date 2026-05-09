@@ -50,10 +50,14 @@ serve(async (req) => {
     // 5. UPDATE ROLE (Normalize to lowercase to match your SQL)
     const normalizedRole = role ? role.toLowerCase() : 'parishioner';
 
+    // upsert (not update): guarantees the row exists even if no DB trigger
+    // auto-inserts a user_roles record when an auth user is created.
     const { error: roleError } = await supabaseAdmin
       .from('user_roles')
-      .update({ role: normalizedRole, requires_password_change: true })
-      .eq('user_id', data.user.id);
+      .upsert(
+        { user_id: data.user.id, role: normalizedRole, requires_password_change: true },
+        { onConflict: 'user_id' }
+      );
 
     if (roleError) throw roleError;
 

@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { supabase } from "../../supabaseClient"; // FIXED: Changed from "../" to "../../" to reach src/
-import Header from "../Header"; // FIXED: Changed from "./" to "../" to reach components/
+import { supabase } from "../../supabaseClient";
 
 function CheckInPage() {
   const { eventId } = useParams();
@@ -102,8 +101,6 @@ function CheckInPage() {
 
   return (
     <div className="min-h-screen w-full flex flex-col font-sans bg-[#F6F5ED]">
-      <Header />
-      
       <main className="flex-1 flex items-center justify-center p-6 pt-24">
         <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden border border-gray-100 text-center p-10">
           
