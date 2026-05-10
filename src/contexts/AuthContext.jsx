@@ -90,7 +90,6 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(initialSession);
   const [user, setUser] = useState(initialUser);
   const [role, setRole] = useState(initialRole);
-  const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
   // True until the first session+role resolution completes. Consumers gating
   // protected routes should wait for `loading === false` before redirecting.
   const [loading, setLoading] = useState(true);
@@ -102,7 +101,7 @@ export function AuthProvider({ children }) {
     if (!userId) return null;
 
     const { data, error } = await restSelect("user_roles", {
-      select: "role,requires_password_change",
+      select: "role",
       match: { user_id: userId },
       single: true,
       timeoutMs: 12000,
@@ -116,7 +115,6 @@ export function AuthProvider({ children }) {
 
     const normalised = data ? String(data.role || "").toLowerCase() : null;
     setRole(normalised);
-    setRequiresPasswordChange(Boolean(data?.requires_password_change));
     if (email) writeCachedRole(email, normalised);
     return data;
   }, []);
@@ -136,7 +134,6 @@ export function AuthProvider({ children }) {
           await refreshRole(currentSession.user.id, currentSession.user.email);
         } else {
           setRole(null);
-          setRequiresPasswordChange(false);
         }
       } catch (err) {
         console.warn("[Auth] getSession failed:", err.message);
@@ -156,7 +153,6 @@ export function AuthProvider({ children }) {
           refreshRole(newSession.user.id, newSession.user.email);
         } else {
           setRole(null);
-          setRequiresPasswordChange(false);
         }
       }
     );
@@ -168,7 +164,7 @@ export function AuthProvider({ children }) {
   }, [refreshRole]);
 
   // signIn: race signInWithPassword's promise against the SIGNED_IN event.
-  // Returns { session, role, requiresPasswordChange }.
+  // Returns { session, role }.
   const signIn = useCallback(async (email, password) => {
     let authSubscription;
     const sessionFromEvent = new Promise((resolve) => {
@@ -211,7 +207,6 @@ export function AuthProvider({ children }) {
     return {
       session: signedInSession,
       role: roleRow ? String(roleRow.role || "").toLowerCase() : null,
-      requiresPasswordChange: Boolean(roleRow?.requires_password_change),
     };
   }, [refreshRole]);
 
@@ -230,7 +225,6 @@ export function AuthProvider({ children }) {
     setSession(null);
     setUser(null);
     setRole(null);
-    setRequiresPasswordChange(false);
   }, [user]);
 
   const value = useMemo(
@@ -240,12 +234,11 @@ export function AuthProvider({ children }) {
       role,
       isAdmin,
       loading,
-      requiresPasswordChange,
       signIn,
       signOut,
       refreshRole: () => (user ? refreshRole(user.id, user.email) : null),
     }),
-    [session, user, role, isAdmin, loading, requiresPasswordChange, signIn, signOut, refreshRole]
+    [session, user, role, isAdmin, loading, signIn, signOut, refreshRole]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

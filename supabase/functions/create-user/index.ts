@@ -55,7 +55,7 @@ serve(async (req) => {
     const { error: roleError } = await supabaseAdmin
       .from('user_roles')
       .upsert(
-        { user_id: data.user.id, role: normalizedRole, requires_password_change: true },
+        { user_id: data.user.id, role: normalizedRole },
         { onConflict: 'user_id' }
       );
 

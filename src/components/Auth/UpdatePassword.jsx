@@ -25,48 +25,16 @@ function UpdatePassword() {
     setError(null);
 
     try {
-      // STEP 2: UPDATE AUTH PASSWORD
-      console.log("Step 2: Attempting to update Auth password...");
       const { error: authError } = await supabase.auth.updateUser({
         password: passwords.newPassword,
       });
-      
-      if (authError) {
-        console.error("Step 2 ERROR (Auth):", authError.message);
-        throw authError;
-      }
-      console.log("Step 2 SUCCESS: Auth password updated.");
+      if (authError) throw authError;
 
-      // STEP 3: GET USER ID
-      console.log("Step 3: Fetching current user ID...");
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) {
-        console.error("Step 3 ERROR (GetUser):", userError.message);
-        throw userError;
-      }
-      console.log("Step 3 SUCCESS: User ID found:", user.id);
-
-      // STEP 4: UPDATE DATABASE FLAG
-      console.log("Step 4: Updating requires_password_change flag in DB...");
-      const { error: dbError } = await supabase
-        .from("user_roles")
-        .update({ requires_password_change: false })
-        .eq("user_id", user.id);
-
-      if (dbError) {
-        console.error("Step 4 ERROR (DB Update):", dbError.message);
-        throw dbError;
-      }
-      console.log("Step 4 SUCCESS: Database flag updated.");
-
-      // FINAL STEP: SUCCESS
       setIsSuccess(true);
       setTimeout(() => {
         navigate("/");
       }, 3000);
-
     } catch (err) {
-      console.error("FINAL CATCH ERROR:", err.message);
       setError(err.message);
       setLoading(false);
     }
@@ -82,12 +50,12 @@ function UpdatePassword() {
               {isSuccess ? "✅" : "🔐"}
             </div>
             <h2 className="text-2xl font-serif text-[#B59E74] font-medium uppercase tracking-widest">
-              {isSuccess ? "Password Updated" : "Security Update"}
+              {isSuccess ? "Password Updated" : "Change Password"}
             </h2>
             <p className="text-sm text-gray-500 mt-2 font-serif italic">
-              {isSuccess 
-                ? "Your account is now secure. Redirecting..." 
-                : "Please set your permanent password to continue."}
+              {isSuccess
+                ? "Your password has been updated. Redirecting..."
+                : "Choose a new password for your account."}
             </p>
           </div>
 
@@ -139,7 +107,7 @@ function UpdatePassword() {
 
           <div className="bg-gray-50 border-t border-gray-200 p-6 text-center">
             <p className="text-xs text-gray-500 italic">
-              For your security, your temporary password will be deactivated immediately.
+              You will remain signed in after changing your password.
             </p>
           </div>
         </div>

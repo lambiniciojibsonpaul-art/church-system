@@ -75,6 +75,7 @@ function LoginPage() {
 
   // ----- LOGIN STATE (unchanged from previous implementation) ----------------
   const [formData, setFormData] = useState({ email: "", password: "" });
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [uiState, setUiState] = useState({
     loading: false,
     error: null,
@@ -182,11 +183,6 @@ function LoginPage() {
         );
       } catch { /* ignore */ }
       writeLongTermAdminCache(session.user.email, roleData.role);
-    }
-
-    if (roleData?.requires_password_change) {
-      navigate("/update-password", { replace: true });
-      return;
     }
 
     // Routing decision:
@@ -449,16 +445,26 @@ function LoginPage() {
                   <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
                     Password
                   </label>
-                  <input
-                    name="password"
-                    type="password"
-                    required
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    minLength={6}
-                    className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full transition-shadow"
-                    placeholder="••••••••"
-                  />
+                  <div className="relative">
+                    <input
+                      name="password"
+                      type={showLoginPassword ? "text" : "password"}
+                      required
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      minLength={6}
+                      className="p-3 pr-12 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full transition-shadow"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowLoginPassword((v) => !v)}
+                      aria-label={showLoginPassword ? "Hide password" : "Show password"}
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-xs font-bold text-[#B59E74] hover:text-[#9c8760] uppercase tracking-wider"
+                    >
+                      {showLoginPassword ? "Hide" : "Show"}
+                    </button>
+                  </div>
                 </div>
 
                 <button
