@@ -175,6 +175,50 @@ const TAB_CONFIG = {
 
 const TAB_NAMES = Object.keys(TAB_CONFIG);
 
+// Sentinel used in the Viewing dropdown to render every service in one table.
+const ALL_SERVICES = "All Services";
+
+// Pull the most relevant date from a record regardless of source table — used
+// only by the "All Services" combined view for sorting + display.
+function extractRecordDate(r) {
+  return (
+    r.preferred_date ||
+    r.wedding_date ||
+    r.date_of_confirmation ||
+    r.date_of_communion ||
+    r.request_date ||
+    r.start_date ||
+    null
+  );
+}
+
+function extractRecordSubmitter(r) {
+  return (
+    r.submitter_signature ||
+    r.submitter_name ||
+    r.full_name ||
+    r.requested_by ||
+    [r.requestor_first_name, r.requestor_surname].filter(Boolean).join(" ") ||
+    "—"
+  );
+}
+
+// Columns for the combined "All Services" table. Each row is a tagged record
+// with `_tab` (source tab name) and `_config` (TAB_CONFIG entry) attached.
+const ALL_SERVICES_COLUMNS = [
+  { label: "Service", value: (r) => r._tab },
+  { label: "Title", value: (r) => r._config.title(r) },
+  { label: "Date", value: (r) => formatDate(extractRecordDate(r)) },
+  { label: "Submitter", value: (r) => extractRecordSubmitter(r) },
+];
+
+const ALL_SERVICES_CONFIG = {
+  table: null, // never used directly — actions resolve per-row via _config
+  isSacrament: false,
+  columns: ALL_SERVICES_COLUMNS,
+  title: (r) => r._config.title(r),
+};
+
 function formatDate(d) {
   if (!d) return "";
   try {
@@ -196,11 +240,12 @@ function AdminDashboard() {
   const [requests, setRequests] = useState(
     Object.fromEntries(TAB_NAMES.map((t) => [t, []]))
   );
-  const [activeTab, setActiveTab] = useState("Baptisms");
-  const [activeSubTab, setActiveSubTab] = useState("Pending");
+  const [activeTab, setActiveTab] = useState(ALL_SERVICES);
+  const [activeSubTab, setActiveSubTab] = useState("All");
 
-  // Search + pagination
+  // Search + sort + pagination
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("date_desc"); // "date_desc" | "date_asc" | "status" | "title"
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -261,14 +306,25 @@ function AdminDashboard() {
   }, []);
 
   // ----------------------- Derived values -----------------------
-  const activeConfig = TAB_CONFIG[activeTab];
-  const activeData = requests[activeTab] || [];
+  const isAllServices = activeTab === ALL_SERVICES;
+  const activeConfig = isAllServices ? ALL_SERVICES_CONFIG : TAB_CONFIG[activeTab];
+  // For All Services: tag every record with its source tab + config so row-level
+  // actions (accept/reject/cancel/delete) can resolve the right table.
+  const activeData = isAllServices
+    ? TAB_NAMES
+        .flatMap((t) =>
+          (requests[t] || []).map((r) => ({ ...r, _tab: t, _config: TAB_CONFIG[t] }))
+        )
+        .sort((a, b) =>
+          String(b.created_at || "").localeCompare(String(a.created_at || ""))
+        )
+    : requests[activeTab] || [];
   const statusFiltered =
     activeSubTab === "All"
       ? activeData
       : activeData.filter((r) => r.status === activeSubTab);
   const trimmedQuery = searchQuery.trim().toLowerCase();
-  const filteredData = trimmedQuery
+  const searchedData = trimmedQuery
     ? statusFiltered.filter((r) =>
         activeConfig.columns.some((col) => {
           const v = col.value(r);
@@ -276,6 +332,35 @@ function AdminDashboard() {
         })
       )
     : statusFiltered;
+  // Sort: copy then sort so we never mutate state arrays.
+  const titleOf = (r) => {
+    const cfg = r._config || activeConfig;
+    return String(cfg.title?.(r) || "").toLowerCase();
+  };
+  const dateKeyOf = (r) =>
+    extractRecordDate(r) || r.created_at || "";
+  const filteredData = [...searchedData].sort((a, b) => {
+    if (sortBy === "title") {
+      return titleOf(a).localeCompare(titleOf(b));
+    }
+    if (sortBy === "status") {
+      const sa = String(a.status || "").localeCompare(String(b.status || ""));
+      if (sa !== 0) return sa;
+      // Tie-break by newest date so status groups stay readable.
+      return String(dateKeyOf(b)).localeCompare(String(dateKeyOf(a)));
+    }
+    if (sortBy === "date_asc") {
+      // Oldest first — push records with no date to the end.
+      const da = dateKeyOf(a);
+      const db = dateKeyOf(b);
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return String(da).localeCompare(String(db));
+    }
+    // "date_desc" (default) — newest first.
+    return String(dateKeyOf(b)).localeCompare(String(dateKeyOf(a)));
+  });
   const totalRecords = filteredData.length;
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
   const safePage = Math.min(currentPage, totalPages);
@@ -289,7 +374,13 @@ function AdminDashboard() {
   // Reset to page 1 whenever the visible slice could shift.
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, activeSubTab, searchQuery, pageSize]);
+  }, [activeTab, activeSubTab, searchQuery, sortBy, pageSize]);
+
+  // Resolve the source tab + config for a record. In normal mode it's the
+  // active tab; in "All Services" mode the record carries its own _tab/_config.
+  const resolveTabFor = (req) => req?._tab || activeTab;
+  const resolveConfigFor = (req) =>
+    req?._config || TAB_CONFIG[resolveTabFor(req)] || activeConfig;
 
   // ----------------------- Accept handlers -----------------------
   const openAcceptModal = (req) => {
@@ -304,7 +395,9 @@ function AdminDashboard() {
 
   const confirmAccept = async () => {
     if (!acceptingRequest) return;
-    if (activeConfig.isSacrament && !assignedPriest) {
+    const reqTab = resolveTabFor(acceptingRequest);
+    const reqConfig = resolveConfigFor(acceptingRequest);
+    if (reqConfig.isSacrament && !assignedPriest) {
       alert("Please assign a priest before approving.");
       return;
     }
@@ -313,7 +406,7 @@ function AdminDashboard() {
 
     // 1. Update request status to Approved.
     const { error: updateErr } = await restUpdate(
-      activeConfig.table,
+      reqConfig.table,
       { id: acceptingRequest.id },
       { status: "Approved" }
     );
@@ -324,14 +417,14 @@ function AdminDashboard() {
     }
 
     // 2. For sacraments, also create a calendar event with the priest.
-    if (activeConfig.isSacrament && activeConfig.eventBuilder) {
+    if (reqConfig.isSacrament && reqConfig.eventBuilder) {
       const eventPayload = {
-        ...activeConfig.eventBuilder(
+        ...reqConfig.eventBuilder(
           acceptingRequest,
           assignedPriest,
           user?.id || null
         ),
-        source_table: activeConfig.table,
+        source_table: reqConfig.table,
         source_id: acceptingRequest.id,
       };
       if (eventPayload?.event_date) {
@@ -351,7 +444,7 @@ function AdminDashboard() {
     if (acceptingRequest.submitter_email) {
       sendApprovalEmail({
         to: acceptingRequest.submitter_email,
-        serviceName: activeTab.toLowerCase(),
+        serviceName: reqTab.toLowerCase(),
         eventDate: formatDate(
           acceptingRequest.preferred_date ||
             acceptingRequest.wedding_date ||
@@ -375,7 +468,7 @@ function AdminDashboard() {
     // 4. Sync local state.
     setRequests((prev) => ({
       ...prev,
-      [activeTab]: prev[activeTab].map((r) =>
+      [reqTab]: prev[reqTab].map((r) =>
         r.id === acceptingRequest.id ? { ...r, status: "Approved" } : r
       ),
     }));
@@ -398,8 +491,10 @@ function AdminDashboard() {
       alert("Please provide a reason for rejection.");
       return;
     }
+    const reqTab = resolveTabFor(rejectingRequest);
+    const reqConfig = resolveConfigFor(rejectingRequest);
     const { error } = await restUpdate(
-      activeConfig.table,
+      reqConfig.table,
       { id: rejectingRequest.id },
       { status: "Rejected", rejection_remarks: rejectionReason }
     );
@@ -409,7 +504,7 @@ function AdminDashboard() {
     }
     setRequests((prev) => ({
       ...prev,
-      [activeTab]: prev[activeTab].map((r) =>
+      [reqTab]: prev[reqTab].map((r) =>
         r.id === rejectingRequest.id
           ? { ...r, status: "Rejected", rejection_remarks: rejectionReason }
           : r
@@ -435,9 +530,11 @@ function AdminDashboard() {
       alert("Please provide a reason for cancellation.");
       return;
     }
+    const reqTab = resolveTabFor(cancellingRequest);
+    const reqConfig = resolveConfigFor(cancellingRequest);
     setCancelSubmitting(true);
     const { error } = await restUpdate(
-      activeConfig.table,
+      reqConfig.table,
       { id: cancellingRequest.id },
       { status: "Cancelled", rejection_remarks: cancelReason }
     );
@@ -452,16 +549,16 @@ function AdminDashboard() {
     // 2. Fall back to event_class + event_date + title — covers legacy events
     //    approved before source_table/source_id existed, or cases where the
     //    columns were never added.
-    if (activeConfig.isSacrament) {
+    if (reqConfig.isSacrament) {
       let removed = 0;
       const { data: bySource, error: srcErr } = await restDelete("events", {
-        source_table: activeConfig.table,
+        source_table: reqConfig.table,
         source_id: cancellingRequest.id,
       });
       if (!srcErr && Array.isArray(bySource)) removed = bySource.length;
 
-      if (removed === 0 && activeConfig.eventBuilder) {
-        const legacy = activeConfig.eventBuilder(cancellingRequest, "", null);
+      if (removed === 0 && reqConfig.eventBuilder) {
+        const legacy = reqConfig.eventBuilder(cancellingRequest, "", null);
         if (legacy?.event_date && legacy?.event_class && legacy?.title) {
           const { data: byHeur, error: heurErr } = await restDelete("events", {
             event_class: legacy.event_class,
@@ -486,7 +583,7 @@ function AdminDashboard() {
 
     setRequests((prev) => ({
       ...prev,
-      [activeTab]: prev[activeTab].map((r) =>
+      [reqTab]: prev[reqTab].map((r) =>
         r.id === cancellingRequest.id
           ? { ...r, status: "Cancelled", rejection_remarks: cancelReason }
           : r
@@ -504,8 +601,10 @@ function AdminDashboard() {
 
   const confirmDelete = async () => {
     if (!deletingRequest) return;
+    const reqTab = resolveTabFor(deletingRequest);
+    const reqConfig = resolveConfigFor(deletingRequest);
     setDeleteSubmitting(true);
-    const { error } = await restDelete(activeConfig.table, {
+    const { error } = await restDelete(reqConfig.table, {
       id: deletingRequest.id,
     });
     if (error) {
@@ -515,7 +614,7 @@ function AdminDashboard() {
     }
     setRequests((prev) => ({
       ...prev,
-      [activeTab]: prev[activeTab].filter((r) => r.id !== deletingRequest.id),
+      [reqTab]: prev[reqTab].filter((r) => r.id !== deletingRequest.id),
     }));
     closeDeleteModal();
   };
@@ -599,11 +698,15 @@ function AdminDashboard() {
                 <select
                   value={activeTab}
                   onChange={(e) => {
-                    setActiveTab(e.target.value);
-                    setActiveSubTab("Pending");
+                    const next = e.target.value;
+                    setActiveTab(next);
+                    setActiveSubTab(next === ALL_SERVICES ? "All" : "Pending");
                   }}
                   className="appearance-none w-full pl-4 pr-12 py-3 rounded-xl bg-white border-2 border-[#B59E74]/40 hover:border-[#B59E74] focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-[#B59E74] cursor-pointer transition-colors md:min-w-[260px]"
                 >
+                  <option value={ALL_SERVICES}>
+                    {ALL_SERVICES}{totalPending > 0 ? `  •  ${totalPending} pending` : ""}
+                  </option>
                   {TAB_NAMES.map((tab) => {
                     const count = pendingCount(tab);
                     return (
@@ -625,14 +728,18 @@ function AdminDashboard() {
               </div>
             </div>
 
-            {pendingCount(activeTab) > 0 && (
-              <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-red-600">
-                <span className="inline-flex items-center justify-center w-6 h-6 text-[11px] text-white bg-red-500 rounded-full">
-                  {pendingCount(activeTab)}
+            {(() => {
+              const badgeCount = isAllServices ? totalPending : pendingCount(activeTab);
+              if (badgeCount === 0) return null;
+              return (
+                <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-red-600">
+                  <span className="inline-flex items-center justify-center w-6 h-6 text-[11px] text-white bg-red-500 rounded-full">
+                    {badgeCount}
+                  </span>
+                  pending request{badgeCount === 1 ? "" : "s"} {isAllServices ? "across all services" : "in this tab"}
                 </span>
-                pending request{pendingCount(activeTab) === 1 ? "" : "s"} in this tab
-              </span>
-            )}
+              );
+            })()}
           </div>
 
           <div className="p-4 sm:p-6 md:p-8">
@@ -669,7 +776,7 @@ function AdminDashboard() {
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={`Search ${activeTab.toLowerCase()}…`}
+                  placeholder={isAllServices ? "Search all services…" : `Search ${activeTab.toLowerCase()}…`}
                   className="w-full pl-11 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm transition-colors"
                 />
                 {searchQuery && (
@@ -685,12 +792,37 @@ function AdminDashboard() {
               </div>
               <div className="flex items-center gap-2 sm:gap-3">
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                  Sort
+                </label>
+                <div className="relative">
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors"
+                  >
+                    <option value="date_desc">Date (newest first)</option>
+                    <option value="date_asc">Date (oldest first)</option>
+                    <option value="status">Status</option>
+                    <option value="title">Title (A–Z)</option>
+                  </select>
+                  <svg
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                   Show
                 </label>
                 <div className="relative">
                   <select
                     value={pageSize}
-                    onChange={(e) => setPageSize(Number(e.target.value))}
+                    onChange={(e) => setPageSize(Math.min(25, Number(e.target.value) || 10))}
                     className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors"
                   >
                     {[5, 10, 25].map((n) => (
@@ -726,7 +858,7 @@ function AdminDashboard() {
                 <tbody>
                   {pageData.map((req) => (
                     <tr
-                      key={req.id}
+                      key={`${req._tab || activeTab}:${req.id}`}
                       className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
                     >
                       {activeConfig.columns.map((col, i) => (
@@ -800,7 +932,7 @@ function AdminDashboard() {
                 const [primaryCol, ...restCols] = activeConfig.columns;
                 return (
                   <div
-                    key={req.id}
+                    key={`${req._tab || activeTab}:${req.id}`}
                     className="border border-gray-100 rounded-2xl p-4 bg-white shadow-sm"
                   >
                     <div className="flex items-start justify-between gap-3 mb-3">
@@ -1140,7 +1272,7 @@ function AdminDashboard() {
       {selectedRequest && (
         <DetailsModal
           request={selectedRequest}
-          tabName={activeTab}
+          tabName={selectedRequest._tab || activeTab}
           onClose={() => setSelectedRequest(null)}
         />
       )}
@@ -1199,6 +1331,9 @@ const HIDDEN_FIELDS = new Set([
   "created_at",
   "user_id",
   "declaration_consent",
+  // Helper fields injected by the "All Services" combined view — not real data.
+  "_tab",
+  "_config",
 ]);
 
 function humanizeKey(key) {
