@@ -178,6 +178,16 @@ const TAB_NAMES = Object.keys(TAB_CONFIG);
 // Sentinel used in the Viewing dropdown to render every service in one table.
 const ALL_SERVICES = "All Services";
 
+// Key used by EventsPage to cache its events list — keep in sync with
+// EVENTS_CACHE_KEY in src/components/EventsPage.jsx. We bust this key whenever
+// an event's lifecycle changes here so the public calendar reflects it.
+const EVENTS_PAGE_CACHE_KEY = "eventsPage:events";
+function bustEventsPageCache() {
+  try {
+    sessionStorage.removeItem(EVENTS_PAGE_CACHE_KEY);
+  } catch { /* ignore */ }
+}
+
 // Pull the most relevant date from a record regardless of source table — used
 // only by the "All Services" combined view for sorting + display.
 function extractRecordDate(r) {
@@ -270,6 +280,21 @@ function AdminDashboard() {
   const [deletingRequest, setDeletingRequest] = useState(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
+  // ---------------- Events table state (independent of services) ----------------
+  const [events, setEvents] = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [eventsSearchQuery, setEventsSearchQuery] = useState("");
+  const [eventsSortBy, setEventsSortBy] = useState("date_desc");
+  const [eventsFilter, setEventsFilter] = useState("All"); // All | Upcoming | Past
+  const [eventsPageSize, setEventsPageSize] = useState(10);
+  const [eventsCurrentPage, setEventsCurrentPage] = useState(1);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [cancellingEvent, setCancellingEvent] = useState(null);
+  const [eventCancelReason, setEventCancelReason] = useState("");
+  const [cancelEventSubmitting, setCancelEventSubmitting] = useState(false);
+  const [deletingEvent, setDeletingEvent] = useState(null);
+  const [deleteEventSubmitting, setDeleteEventSubmitting] = useState(false);
+
   // Fetch all 8 tables in parallel on mount.
   useEffect(() => {
     let cancelled = false;
@@ -299,6 +324,26 @@ function AdminDashboard() {
       });
       setRequests(merged);
       setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Fetch events independently — failure here must not block the services UI.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await restSelect("events", {
+        order: "event_date.desc",
+        timeoutMs: QUERY_TIMEOUT_MS,
+      });
+      if (cancelled) return;
+      if (error) {
+        console.warn("[AdminDashboard] events fetch error:", error.message);
+      }
+      setEvents(Array.isArray(data) ? data : []);
+      setEventsLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -375,6 +420,66 @@ function AdminDashboard() {
   useEffect(() => {
     setCurrentPage(1);
   }, [activeTab, activeSubTab, searchQuery, sortBy, pageSize]);
+
+  // ---------------- Events derived values ----------------
+  const todayKey = (() => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  })();
+  // Only show events created via the ministries' Events page / Schedules page.
+  // Sacrament-approved events carry a `source_table` reference back to their
+  // originating request — exclude those so this table is purely ministry-led.
+  const ministryEvents = events.filter((ev) => !ev.source_table);
+  const eventsTimeFiltered = ministryEvents.filter((ev) => {
+    const d = String(ev.event_date || "");
+    const status = ev.status || "Active";
+    if (eventsFilter === "Cancelled") return status === "Cancelled";
+    if (eventsFilter === "Upcoming") return d && d >= todayKey;
+    if (eventsFilter === "Past") return d && d < todayKey;
+    return true;
+  });
+  const eventsTrimmedQuery = eventsSearchQuery.trim().toLowerCase();
+  const eventsSearchedData = eventsTrimmedQuery
+    ? eventsTimeFiltered.filter((ev) =>
+        [ev.title, ev.event_class, ev.priest_name, ev.location, ev.description]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(eventsTrimmedQuery))
+      )
+    : eventsTimeFiltered;
+  const eventsSortedData = [...eventsSearchedData].sort((a, b) => {
+    if (eventsSortBy === "title") {
+      return String(a.title || "").toLowerCase().localeCompare(
+        String(b.title || "").toLowerCase()
+      );
+    }
+    if (eventsSortBy === "class") {
+      const ca = String(a.event_class || "").localeCompare(String(b.event_class || ""));
+      if (ca !== 0) return ca;
+      return String(b.event_date || "").localeCompare(String(a.event_date || ""));
+    }
+    if (eventsSortBy === "date_asc") {
+      const da = String(a.event_date || "");
+      const db = String(b.event_date || "");
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return da.localeCompare(db);
+    }
+    return String(b.event_date || "").localeCompare(String(a.event_date || ""));
+  });
+  const eventsTotal = eventsSortedData.length;
+  const eventsTotalPages = Math.max(1, Math.ceil(eventsTotal / eventsPageSize));
+  const eventsSafePage = Math.min(eventsCurrentPage, eventsTotalPages);
+  const eventsPageStart = (eventsSafePage - 1) * eventsPageSize;
+  const eventsPageEnd = Math.min(eventsPageStart + eventsPageSize, eventsTotal);
+  const eventsPageData = eventsSortedData.slice(eventsPageStart, eventsPageEnd);
+
+  useEffect(() => {
+    setEventsCurrentPage(1);
+  }, [eventsSearchQuery, eventsSortBy, eventsFilter, eventsPageSize]);
 
   // Resolve the source tab + config for a record. In normal mode it's the
   // active tab; in "All Services" mode the record carries its own _tab/_config.
@@ -617,6 +722,63 @@ function AdminDashboard() {
       [reqTab]: prev[reqTab].filter((r) => r.id !== deletingRequest.id),
     }));
     closeDeleteModal();
+  };
+
+  // ----------------------- Events cancel handler -----------------------
+  const openCancelEventModal = (ev) => {
+    setCancellingEvent(ev);
+    setEventCancelReason("");
+  };
+  const closeCancelEventModal = () => {
+    setCancellingEvent(null);
+    setEventCancelReason("");
+    setCancelEventSubmitting(false);
+  };
+  const confirmCancelEvent = async () => {
+    if (!cancellingEvent) return;
+    if (!eventCancelReason.trim()) {
+      alert("Please provide a reason for cancellation.");
+      return;
+    }
+    setCancelEventSubmitting(true);
+    const { error } = await restUpdate(
+      "events",
+      { id: cancellingEvent.id },
+      { status: "Cancelled", cancellation_remarks: eventCancelReason }
+    );
+    if (error) {
+      setCancelEventSubmitting(false);
+      alert("Error cancelling event: " + error.message);
+      return;
+    }
+    setEvents((prev) =>
+      prev.map((ev) =>
+        ev.id === cancellingEvent.id
+          ? { ...ev, status: "Cancelled", cancellation_remarks: eventCancelReason }
+          : ev
+      )
+    );
+    bustEventsPageCache();
+    closeCancelEventModal();
+  };
+
+  // ----------------------- Events delete handler -----------------------
+  const closeDeleteEventModal = () => {
+    setDeletingEvent(null);
+    setDeleteEventSubmitting(false);
+  };
+  const confirmDeleteEvent = async () => {
+    if (!deletingEvent) return;
+    setDeleteEventSubmitting(true);
+    const { error } = await restDelete("events", { id: deletingEvent.id });
+    if (error) {
+      setDeleteEventSubmitting(false);
+      alert("Error deleting event: " + error.message);
+      return;
+    }
+    setEvents((prev) => prev.filter((ev) => ev.id !== deletingEvent.id));
+    bustEventsPageCache();
+    closeDeleteEventModal();
   };
 
   // ----------------------- Render -----------------------
@@ -1069,6 +1231,343 @@ function AdminDashboard() {
             )}
           </div>
         </div>
+
+        {/* ============================================================ */}
+        {/* PARISH EVENTS TABLE (events created via the events page) */}
+        {/* ============================================================ */}
+        <div className="mt-8 bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden min-h-[400px]">
+          <div className="border-b border-gray-100 bg-gray-50/50 px-4 sm:px-6 py-4 md:py-5 flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="text-2xl">📅</span>
+              <div className="min-w-0">
+                <h2 className="text-base md:text-lg font-serif text-[#B59E74] font-medium uppercase tracking-widest leading-tight">
+                  Parish Events
+                </h2>
+                <p className="text-xs text-gray-500 italic truncate">
+                  Events scheduled by ministries on the parish calendar.
+                </p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#B59E74]">
+              <span className="inline-flex items-center justify-center w-6 h-6 text-[11px] text-white bg-[#B59E74] rounded-full">
+                {ministryEvents.length}
+              </span>
+              total event{ministryEvents.length === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          <div className="p-4 sm:p-6 md:p-8">
+            {/* Filter pills (All / Upcoming / Past / Cancelled) */}
+            <div className="flex justify-center gap-1 sm:gap-3 mb-6 md:mb-8 p-1.5 sm:p-2 bg-[#F6F5ED] rounded-full w-full sm:w-fit mx-auto border border-gray-100">
+              {["All", "Upcoming", "Past", "Cancelled"].map((f) => {
+                const active = eventsFilter === f;
+                const activeCls =
+                  f === "Cancelled"
+                    ? "bg-orange-600 text-white shadow-md"
+                    : "bg-[#B59E74] text-white shadow-md";
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setEventsFilter(f)}
+                    className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${
+                      active ? activeCls : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    <span className="sm:hidden">{f}</span>
+                    <span className="hidden sm:inline">{f} Events</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Search + Sort + Show */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
+              <div className="relative flex-1">
+                <svg
+                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.85-5.4a7.25 7.25 0 11-14.5 0 7.25 7.25 0 0114.5 0z" />
+                </svg>
+                <input
+                  type="search"
+                  value={eventsSearchQuery}
+                  onChange={(e) => setEventsSearchQuery(e.target.value)}
+                  placeholder="Search events…"
+                  className="w-full pl-11 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm transition-colors"
+                />
+                {eventsSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setEventsSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+                    aria-label="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                  Sort
+                </label>
+                <div className="relative">
+                  <select
+                    value={eventsSortBy}
+                    onChange={(e) => setEventsSortBy(e.target.value)}
+                    className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors"
+                  >
+                    <option value="date_desc">Date (newest first)</option>
+                    <option value="date_asc">Date (oldest first)</option>
+                    <option value="title">Title (A–Z)</option>
+                    <option value="class">Class</option>
+                  </select>
+                  <svg
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                  Show
+                </label>
+                <div className="relative">
+                  <select
+                    value={eventsPageSize}
+                    onChange={(e) => setEventsPageSize(Math.min(25, Number(e.target.value) || 10))}
+                    className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors"
+                  >
+                    {[5, 10, 25].map((n) => (
+                      <option key={n} value={n}>{n} rows</option>
+                    ))}
+                  </select>
+                  <svg
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            {/* Loading state */}
+            {eventsLoading && (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#B59E74]"></div>
+              </div>
+            )}
+
+            {/* Desktop table */}
+            {!eventsLoading && (
+              <div className="hidden md:block overflow-x-auto animate-fade-in">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-widest">
+                      <th className="p-4 font-bold">Title</th>
+                      <th className="p-4 font-bold">Date</th>
+                      <th className="p-4 font-bold">Time</th>
+                      <th className="p-4 font-bold">Class</th>
+                      <th className="p-4 font-bold">Hosted By</th>
+                      <th className="p-4 font-bold">Location</th>
+                      <th className="p-4 font-bold">Status</th>
+                      <th className="p-4 font-bold text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {eventsPageData.map((ev) => (
+                      <tr
+                        key={ev.id}
+                        className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                      >
+                        <td className="p-4 text-sm font-serif text-gray-800 font-medium">
+                          {ev.title || "—"}
+                        </td>
+                        <td className="p-4 text-sm text-gray-600">{formatDate(ev.event_date)}</td>
+                        <td className="p-4 text-sm text-gray-600">{ev.event_time || "—"}</td>
+                        <td className="p-4 text-sm text-gray-600">{ev.event_class || "—"}</td>
+                        <td className="p-4 text-sm text-gray-600">{ev.priest_name || "—"}</td>
+                        <td className="p-4 text-sm text-gray-600">{ev.location || "—"}</td>
+                        <td className="p-4">
+                          <StatusBadge status={ev.status || "Active"} />
+                        </td>
+                        <td className="p-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => setSelectedEvent(ev)}
+                              className="text-[#B59E74] hover:text-[#9c8760] text-xs font-bold uppercase tracking-widest px-3 py-2 rounded hover:bg-[#B59E74]/10 transition-colors"
+                            >
+                              View
+                            </button>
+                            {(ev.status || "Active") !== "Cancelled" && (
+                              <button
+                                onClick={() => openCancelEventModal(ev)}
+                                className="text-orange-600 hover:text-white hover:bg-orange-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-orange-50 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                            {(ev.status || "Active") === "Cancelled" && (
+                              <button
+                                onClick={() => setDeletingEvent(ev)}
+                                className="text-red-600 hover:text-white hover:bg-red-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-red-50 transition-colors"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Mobile cards */}
+            {!eventsLoading && (
+              <div className="md:hidden space-y-3 animate-fade-in">
+                {eventsPageData.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="border border-gray-100 rounded-2xl p-4 bg-white shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] uppercase tracking-widest text-gray-400">Title</p>
+                        <p className="font-serif text-gray-800 font-medium text-base break-words">
+                          {ev.title || "—"}
+                        </p>
+                      </div>
+                      <StatusBadge status={ev.status || "Active"} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2 mb-4">
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-widest text-gray-400">Date</p>
+                        <p className="text-sm text-gray-700 break-words">{formatDate(ev.event_date) || "—"}</p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-widest text-gray-400">Time</p>
+                        <p className="text-sm text-gray-700 break-words">{ev.event_time || "—"}</p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-widest text-gray-400">Class</p>
+                        <p className="text-sm text-gray-700 break-words">{ev.event_class || "—"}</p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-widest text-gray-400">Hosted By</p>
+                        <p className="text-sm text-gray-700 break-words">{ev.priest_name || "—"}</p>
+                      </div>
+                      <div className="col-span-2 min-w-0">
+                        <p className="text-[10px] uppercase tracking-widest text-gray-400">Location</p>
+                        <p className="text-sm text-gray-700 break-words">{ev.location || "—"}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-50">
+                      <button
+                        onClick={() => setSelectedEvent(ev)}
+                        className="flex-1 min-w-[100px] py-2.5 rounded-lg border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74]/10 text-xs font-bold uppercase tracking-widest transition-all"
+                      >
+                        View
+                      </button>
+                      {(ev.status || "Active") !== "Cancelled" && (
+                        <button
+                          onClick={() => openCancelEventModal(ev)}
+                          className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      {(ev.status || "Active") === "Cancelled" && (
+                        <button
+                          onClick={() => setDeletingEvent(ev)}
+                          className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!eventsLoading && eventsTotal === 0 && (
+              <div className="text-center py-16 md:py-20 text-gray-400 italic font-serif">
+                {eventsTrimmedQuery
+                  ? `No events match "${eventsSearchQuery.trim()}".`
+                  : eventsFilter === "Upcoming"
+                  ? "No upcoming events."
+                  : eventsFilter === "Past"
+                  ? "No past events."
+                  : eventsFilter === "Cancelled"
+                  ? "No cancelled events."
+                  : "No events found."}
+              </div>
+            )}
+
+            {/* Pagination */}
+            {!eventsLoading && eventsTotal > 0 && (
+              <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <p className="text-xs text-gray-500 font-medium tracking-wide">
+                  Showing <span className="font-bold text-gray-700">{eventsPageStart + 1}</span>–
+                  <span className="font-bold text-gray-700">{eventsPageEnd}</span> of{" "}
+                  <span className="font-bold text-gray-700">{eventsTotal}</span>
+                  {eventsTrimmedQuery ? " (filtered)" : ""}
+                </p>
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEventsCurrentPage(1)}
+                    disabled={eventsSafePage === 1}
+                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    aria-label="First page"
+                  >
+                    «
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEventsCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={eventsSafePage === 1}
+                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Prev
+                  </button>
+                  <span className="px-3 py-2 text-xs font-bold tracking-widest text-gray-700">
+                    Page {eventsSafePage} / {eventsTotalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEventsCurrentPage((p) => Math.min(eventsTotalPages, p + 1))}
+                    disabled={eventsSafePage === eventsTotalPages}
+                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEventsCurrentPage(eventsTotalPages)}
+                    disabled={eventsSafePage === eventsTotalPages}
+                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Last page"
+                  >
+                    »
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </main>
 
       {/* ACCEPT / ASSIGN PRIEST MODAL */}
@@ -1276,6 +1775,111 @@ function AdminDashboard() {
           onClose={() => setSelectedRequest(null)}
         />
       )}
+
+      {/* EVENT DETAILS MODAL */}
+      {selectedEvent && (
+        <DetailsModal
+          request={selectedEvent}
+          tabName="Parish Event"
+          onClose={() => setSelectedEvent(null)}
+        />
+      )}
+
+      {/* CANCEL EVENT MODAL */}
+      {cancellingEvent && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
+            <div className="bg-orange-50 px-6 sm:px-8 py-6 border-b border-orange-100">
+              <h2 className="text-xl font-serif text-orange-800 font-medium uppercase tracking-widest">
+                Cancel Event
+              </h2>
+              <p className="text-sm text-orange-700 italic">
+                {cancellingEvent.title || "Untitled event"}
+              </p>
+            </div>
+            <div className="p-6 sm:p-8 space-y-6">
+              <p className="text-sm text-gray-600">
+                Cancelling marks this event as <span className="font-bold">Cancelled</span> on
+                the parish calendar and records your reason. The record stays in the
+                table — you can permanently delete it later.
+              </p>
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                  Reason for Cancellation *
+                </label>
+                <textarea
+                  className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none h-32 text-sm resize-none"
+                  placeholder="Please specify why this event is being cancelled..."
+                  value={eventCancelReason}
+                  onChange={(e) => setEventCancelReason(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={closeCancelEventModal}
+                  disabled={cancelEventSubmitting}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50"
+                >
+                  Keep Active
+                </button>
+                <button
+                  onClick={confirmCancelEvent}
+                  disabled={cancelEventSubmitting || !eventCancelReason.trim()}
+                  className="flex-1 py-3 rounded-xl bg-orange-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-orange-700 transition-all shadow-lg shadow-orange-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {cancelEventSubmitting ? "Cancelling…" : "Confirm Cancellation"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE EVENT MODAL */}
+      {deletingEvent && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
+            <div className="bg-red-50 px-6 sm:px-8 py-6 border-b border-red-100">
+              <h2 className="text-xl font-serif text-red-800 font-medium uppercase tracking-widest">
+                Delete Event
+              </h2>
+              <p className="text-sm text-red-700 italic">
+                {deletingEvent.title || "Untitled event"}
+              </p>
+            </div>
+            <div className="p-6 sm:p-8 space-y-6">
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-800 space-y-2">
+                <p className="font-bold uppercase tracking-wider text-xs">⚠ Warning — this cannot be undone</p>
+                <p>
+                  This will permanently remove the event from the parish calendar.
+                  Anyone scheduled to attend will no longer see it.
+                </p>
+              </div>
+              <p className="text-sm text-gray-600">
+                If the event was created from an approved sacrament request, the
+                source request will not be affected — only the calendar entry is
+                removed.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={closeDeleteEventModal}
+                  disabled={deleteEventSubmitting}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50"
+                >
+                  Keep Event
+                </button>
+                <button
+                  onClick={confirmDeleteEvent}
+                  disabled={deleteEventSubmitting}
+                  className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deleteEventSubmitting ? "Deleting…" : "Delete Permanently"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1314,6 +1918,8 @@ function StatusBadge({ status }) {
       ? "bg-yellow-100 text-yellow-700"
       : status === "Approved"
       ? "bg-green-100 text-green-700"
+      : status === "Active"
+      ? "bg-emerald-100 text-emerald-700"
       : status === "Cancelled"
       ? "bg-orange-100 text-orange-700"
       : "bg-red-100 text-red-700";

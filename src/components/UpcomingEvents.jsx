@@ -15,9 +15,16 @@ function UpcomingEvents() {
         .select("*")
         .gte("event_date", today)
         .order("event_date", { ascending: true })
-        .limit(4); // Show the next 4 upcoming events
+        .limit(8); // Fetch a few extra so client-side cancellation filter still leaves enough.
 
-      if (data) setEvents(data);
+      if (error) {
+        console.warn("UpcomingEvents fetch failed:", error.message);
+      }
+      // Hide cancelled events from the public homepage list.
+      const visible = (data || [])
+        .filter((e) => (e.status || "Active") !== "Cancelled")
+        .slice(0, 4);
+      setEvents(visible);
       setLoading(false);
     };
 

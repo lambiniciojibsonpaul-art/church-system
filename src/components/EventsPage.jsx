@@ -41,6 +41,8 @@ function EventsPage() {
   const cachedEvents = readEventsCache();
   const [events, setEvents] = useState(cachedEvents || []);
   const [loading, setLoading] = useState(!cachedEvents);
+  // Admin-only toggle. Public visitors are always pinned to "Active".
+  const [viewMode, setViewMode] = useState("Active"); // "Active" | "Cancelled"
 
   // Modal & Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -196,8 +198,16 @@ function EventsPage() {
       );
   };
 
+  // Public visitors only see active events. Admins can flip to a Cancelled
+  // view via the toggle to audit what was cancelled and why.
+  const isCancelledView = isAdmin && viewMode === "Cancelled";
+  const visibleEvents = events.filter((e) => {
+    const status = e.status || "Active";
+    return isCancelledView ? status === "Cancelled" : status !== "Cancelled";
+  });
+
   const getEventsForDate = (dateToMatch) => {
-    return events.filter((e) => {
+    return visibleEvents.filter((e) => {
       const eventDate = new Date(e.event_date + "T00:00:00");
       return eventDate.toDateString() === dateToMatch.toDateString();
     });
@@ -385,6 +395,30 @@ function EventsPage() {
             </div>
 
             <div className="flex-1 flex flex-col gap-6">
+              {isAdmin && (
+                <div className="flex items-center justify-center sm:justify-start gap-2 p-1.5 bg-[#F6F5ED] rounded-full w-full sm:w-fit border border-gray-100">
+                  {[
+                    { key: "Active", label: "Active Events" },
+                    { key: "Cancelled", label: "Cancelled Events" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setViewMode(opt.key)}
+                      className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${
+                        viewMode === opt.key
+                          ? opt.key === "Cancelled"
+                            ? "bg-orange-600 text-white shadow-md"
+                            : "bg-[#B59E74] text-white shadow-md"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div className="bg-[#B59E74] p-6 rounded-2xl shadow-sm text-white flex flex-col md:flex-row justify-between items-center md:items-start relative overflow-hidden">
                 <div className="z-10 text-center md:text-left">
                   <span className="text-sm font-bold tracking-widest uppercase opacity-80 mb-1 block">
@@ -416,12 +450,23 @@ function EventsPage() {
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B59E74]"></div>
                   </div>
                 ) : selectedEvents.length > 0 ? (
-                  selectedEvents.map((event) => (
+                  selectedEvents.map((event) => {
+                    const cancelled = (event.status || "Active") === "Cancelled";
+                    return (
                     <div
                       key={event.id}
-                      className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4 animate-fade-in-up relative overflow-hidden group"
+                      className={`p-6 rounded-2xl shadow-sm flex flex-col gap-4 animate-fade-in-up relative overflow-hidden group ${
+                        cancelled
+                          ? "bg-orange-50/40 border border-orange-200"
+                          : "bg-white border border-gray-100"
+                      }`}
                     >
-                      <div className="absolute top-4 right-4">
+                      <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
+                        {cancelled && (
+                          <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-orange-600 text-white">
+                            Cancelled
+                          </span>
+                        )}
                         <span
                           className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${event.event_class === "Mass" ? "bg-[#B59E74]/10 text-[#B59E74]" : "bg-gray-100 text-gray-600"}`}
                         >
@@ -429,7 +474,7 @@ function EventsPage() {
                         </span>
                       </div>
 
-                      <h4 className="text-2xl font-bold text-gray-800 pr-16">
+                      <h4 className={`text-2xl font-bold pr-24 ${cancelled ? "text-gray-500 line-through decoration-orange-400/70" : "text-gray-800"}`}>
                         {event.title}
                       </h4>
 
@@ -500,8 +545,20 @@ function EventsPage() {
                           {event.description}
                         </p>
                       )}
+
+                      {cancelled && event.cancellation_remarks && (
+                        <div className="mt-1 rounded-xl border border-orange-200 bg-orange-100/60 px-4 py-3">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-orange-700">
+                            Cancellation Reason
+                          </p>
+                          <p className="text-sm text-orange-900 mt-1 whitespace-pre-wrap break-words">
+                            {event.cancellation_remarks}
+                          </p>
+                        </div>
+                      )}
                     </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="bg-transparent border-2 border-dashed border-[#B59E74]/30 rounded-2xl p-10 flex flex-col items-center justify-center text-center h-full min-h-[250px]">
                     <svg
@@ -519,11 +576,12 @@ function EventsPage() {
                       />
                     </svg>
                     <h4 className="text-xl font-serif text-gray-500 mb-2">
-                      No Scheduled Events
+                      {isCancelledView ? "No Cancelled Events" : "No Scheduled Events"}
                     </h4>
                     <p className="text-sm text-gray-400 italic">
-                      There are no activities currently planned for this date.
-                      Check back later or view another day!
+                      {isCancelledView
+                        ? "Nothing has been cancelled for this date."
+                        : "There are no activities currently planned for this date. Check back later or view another day!"}
                     </p>
                   </div>
                 )}
