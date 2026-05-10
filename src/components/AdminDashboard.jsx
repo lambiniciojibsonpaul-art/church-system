@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { restSelect, restUpdate, restInsert } from "../supabaseRest";
+import { restSelect, restUpdate, restInsert, restDelete } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
 import { sendApprovalEmail } from "../emailNotifications";
 
@@ -199,6 +199,11 @@ function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("Baptisms");
   const [activeSubTab, setActiveSubTab] = useState("Pending");
 
+  // Search + pagination
+  const [searchQuery, setSearchQuery] = useState("");
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
+
   // View modal
   const [selectedRequest, setSelectedRequest] = useState(null);
 
@@ -210,6 +215,15 @@ function AdminDashboard() {
   const [acceptingRequest, setAcceptingRequest] = useState(null);
   const [assignedPriest, setAssignedPriest] = useState("");
   const [acceptSubmitting, setAcceptSubmitting] = useState(false);
+
+  // Cancel modal
+  const [cancellingRequest, setCancellingRequest] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
+
+  // Delete modal (cancelled requests only — hard-deletes the row)
+  const [deletingRequest, setDeletingRequest] = useState(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   // Fetch all 8 tables in parallel on mount.
   useEffect(() => {
@@ -249,10 +263,33 @@ function AdminDashboard() {
   // ----------------------- Derived values -----------------------
   const activeConfig = TAB_CONFIG[activeTab];
   const activeData = requests[activeTab] || [];
-  const filteredData = activeData.filter((r) => r.status === activeSubTab);
+  const statusFiltered =
+    activeSubTab === "All"
+      ? activeData
+      : activeData.filter((r) => r.status === activeSubTab);
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const filteredData = trimmedQuery
+    ? statusFiltered.filter((r) =>
+        activeConfig.columns.some((col) => {
+          const v = col.value(r);
+          return v && String(v).toLowerCase().includes(trimmedQuery);
+        })
+      )
+    : statusFiltered;
+  const totalRecords = filteredData.length;
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = (safePage - 1) * pageSize;
+  const pageEnd = Math.min(pageStart + pageSize, totalRecords);
+  const pageData = filteredData.slice(pageStart, pageEnd);
   const pendingCount = (tab) =>
     (requests[tab] || []).filter((r) => r.status === "Pending").length;
   const totalPending = TAB_NAMES.reduce((sum, t) => sum + pendingCount(t), 0);
+
+  // Reset to page 1 whenever the visible slice could shift.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, activeSubTab, searchQuery, pageSize]);
 
   // ----------------------- Accept handlers -----------------------
   const openAcceptModal = (req) => {
@@ -288,11 +325,15 @@ function AdminDashboard() {
 
     // 2. For sacraments, also create a calendar event with the priest.
     if (activeConfig.isSacrament && activeConfig.eventBuilder) {
-      const eventPayload = activeConfig.eventBuilder(
-        acceptingRequest,
-        assignedPriest,
-        user?.id || null
-      );
+      const eventPayload = {
+        ...activeConfig.eventBuilder(
+          acceptingRequest,
+          assignedPriest,
+          user?.id || null
+        ),
+        source_table: activeConfig.table,
+        source_id: acceptingRequest.id,
+      };
       if (eventPayload?.event_date) {
         const { error: eventErr } = await restInsert("events", [eventPayload]);
         if (eventErr) {
@@ -377,6 +418,108 @@ function AdminDashboard() {
     closeRejectModal();
   };
 
+  // ----------------------- Cancel handlers -----------------------
+  const openCancelModal = (req) => {
+    setCancellingRequest(req);
+    setCancelReason("");
+  };
+  const closeCancelModal = () => {
+    setCancellingRequest(null);
+    setCancelReason("");
+    setCancelSubmitting(false);
+  };
+
+  const confirmCancel = async () => {
+    if (!cancellingRequest) return;
+    if (!cancelReason.trim()) {
+      alert("Please provide a reason for cancellation.");
+      return;
+    }
+    setCancelSubmitting(true);
+    const { error } = await restUpdate(
+      activeConfig.table,
+      { id: cancellingRequest.id },
+      { status: "Cancelled", rejection_remarks: cancelReason }
+    );
+    if (error) {
+      setCancelSubmitting(false);
+      alert("Error cancelling request: " + error.message);
+      return;
+    }
+
+    // Remove the calendar event created at approval time, if any.
+    // 1. Try the source-id link (works for events created after the migration).
+    // 2. Fall back to event_class + event_date + title — covers legacy events
+    //    approved before source_table/source_id existed, or cases where the
+    //    columns were never added.
+    if (activeConfig.isSacrament) {
+      let removed = 0;
+      const { data: bySource, error: srcErr } = await restDelete("events", {
+        source_table: activeConfig.table,
+        source_id: cancellingRequest.id,
+      });
+      if (!srcErr && Array.isArray(bySource)) removed = bySource.length;
+
+      if (removed === 0 && activeConfig.eventBuilder) {
+        const legacy = activeConfig.eventBuilder(cancellingRequest, "", null);
+        if (legacy?.event_date && legacy?.event_class && legacy?.title) {
+          const { data: byHeur, error: heurErr } = await restDelete("events", {
+            event_class: legacy.event_class,
+            event_date: legacy.event_date,
+            title: legacy.title,
+          });
+          if (heurErr) {
+            console.warn("[AdminDashboard] legacy event delete failed:", heurErr.message);
+          } else if (Array.isArray(byHeur)) {
+            removed = byHeur.length;
+          }
+        }
+      }
+
+      if (removed === 0) {
+        console.warn(
+          "[AdminDashboard] no calendar event matched this cancellation",
+          srcErr ? `(source delete error: ${srcErr.message})` : ""
+        );
+      }
+    }
+
+    setRequests((prev) => ({
+      ...prev,
+      [activeTab]: prev[activeTab].map((r) =>
+        r.id === cancellingRequest.id
+          ? { ...r, status: "Cancelled", rejection_remarks: cancelReason }
+          : r
+      ),
+    }));
+    closeCancelModal();
+  };
+
+  // ----------------------- Delete handlers -----------------------
+  const openDeleteModal = (req) => setDeletingRequest(req);
+  const closeDeleteModal = () => {
+    setDeletingRequest(null);
+    setDeleteSubmitting(false);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingRequest) return;
+    setDeleteSubmitting(true);
+    const { error } = await restDelete(activeConfig.table, {
+      id: deletingRequest.id,
+    });
+    if (error) {
+      setDeleteSubmitting(false);
+      alert("Error deleting request: " + error.message);
+      return;
+    }
+    setRequests((prev) => ({
+      ...prev,
+      [activeTab]: prev[activeTab].filter((r) => r.id !== deletingRequest.id),
+    }));
+    closeDeleteModal();
+  };
+
   // ----------------------- Render -----------------------
   if (loading) {
     return (
@@ -388,7 +531,7 @@ function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-32 pb-12">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-28 md:pt-32 pb-12">
         {/* Header */}
         <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
@@ -447,19 +590,19 @@ function AdminDashboard() {
         {/* Tabs container */}
         <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px]">
           {/* Request-type selector (dropdown) */}
-          <div className="border-b border-gray-100 bg-gray-50/50 px-6 py-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="border-b border-gray-100 bg-gray-50/50 px-4 sm:px-6 py-4 md:py-5 flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
+            <div className="flex items-center gap-3 w-full md:w-auto">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                 Viewing:
               </label>
-              <div className="relative">
+              <div className="relative flex-1 md:flex-none">
                 <select
                   value={activeTab}
                   onChange={(e) => {
                     setActiveTab(e.target.value);
                     setActiveSubTab("Pending");
                   }}
-                  className="appearance-none pl-4 pr-12 py-3 rounded-xl bg-white border-2 border-[#B59E74]/40 hover:border-[#B59E74] focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-[#B59E74] cursor-pointer transition-colors min-w-[260px]"
+                  className="appearance-none w-full pl-4 pr-12 py-3 rounded-xl bg-white border-2 border-[#B59E74]/40 hover:border-[#B59E74] focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-[#B59E74] cursor-pointer transition-colors md:min-w-[260px]"
                 >
                   {TAB_NAMES.map((tab) => {
                     const count = pendingCount(tab);
@@ -492,26 +635,82 @@ function AdminDashboard() {
             )}
           </div>
 
-          <div className="p-8">
+          <div className="p-4 sm:p-6 md:p-8">
             {/* Sub-tabs */}
-            <div className="flex justify-center gap-3 mb-8 p-2 bg-[#F6F5ED] rounded-full w-fit mx-auto border border-gray-100">
-              {["Pending", "Approved", "Rejected"].map((sub) => (
+            <div className="flex justify-center gap-1 sm:gap-3 mb-6 md:mb-8 p-1.5 sm:p-2 bg-[#F6F5ED] rounded-full w-full sm:w-fit mx-auto border border-gray-100">
+              {["All", "Pending", "Approved", "Rejected", "Cancelled"].map((sub) => (
                 <button
                   key={sub}
                   onClick={() => setActiveSubTab(sub)}
-                  className={`px-6 py-2 rounded-full text-xs font-bold uppercase tracking-tighter transition-all ${
+                  className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${
                     activeSubTab === sub
                       ? "bg-[#B59E74] text-white shadow-md"
                       : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
-                  {sub} Requests
+                  <span className="sm:hidden">{sub}</span>
+                  <span className="hidden sm:inline">{sub} Requests</span>
                 </button>
               ))}
             </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto animate-fade-in">
+            {/* Search + page size */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
+              <div className="relative flex-1">
+                <svg
+                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.85-5.4a7.25 7.25 0 11-14.5 0 7.25 7.25 0 0114.5 0z" />
+                </svg>
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={`Search ${activeTab.toLowerCase()}…`}
+                  className="w-full pl-11 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm transition-colors"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+                    aria-label="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                  Show
+                </label>
+                <div className="relative">
+                  <select
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                    className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors"
+                  >
+                    {[5, 10, 25].map((n) => (
+                      <option key={n} value={n}>{n} rows</option>
+                    ))}
+                  </select>
+                  <svg
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            {/* Table (desktop) */}
+            <div className="hidden md:block overflow-x-auto animate-fade-in">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-widest">
@@ -525,7 +724,7 @@ function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredData.map((req) => (
+                  {pageData.map((req) => (
                     <tr
                       key={req.id}
                       className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
@@ -571,18 +770,171 @@ function AdminDashboard() {
                           >
                             View
                           </button>
+                          {req.status === "Approved" && (
+                            <button
+                              onClick={() => openCancelModal(req)}
+                              className="text-orange-600 hover:text-white hover:bg-orange-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-orange-50 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                          {(req.status === "Cancelled" || req.status === "Rejected") && (
+                            <button
+                              onClick={() => openDeleteModal(req)}
+                              className="text-red-600 hover:text-white hover:bg-red-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-red-50 transition-colors"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {filteredData.length === 0 && (
-                <div className="text-center py-20 text-gray-400 italic font-serif">
-                  No {activeSubTab.toLowerCase()} requests found.
-                </div>
-              )}
             </div>
+
+            {/* Card list (mobile) */}
+            <div className="md:hidden space-y-3 animate-fade-in">
+              {pageData.map((req) => {
+                const [primaryCol, ...restCols] = activeConfig.columns;
+                return (
+                  <div
+                    key={req.id}
+                    className="border border-gray-100 rounded-2xl p-4 bg-white shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] uppercase tracking-widest text-gray-400">
+                          {primaryCol.label}
+                        </p>
+                        <p className="font-serif text-gray-800 font-medium text-base break-words">
+                          {primaryCol.value(req) || "—"}
+                        </p>
+                      </div>
+                      <StatusBadge status={req.status} />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2 mb-4">
+                      {restCols.map((col) => (
+                        <div key={col.label} className="min-w-0">
+                          <p className="text-[10px] uppercase tracking-widest text-gray-400">
+                            {col.label}
+                          </p>
+                          <p className="text-sm text-gray-700 break-words">
+                            {col.value(req) || "—"}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-50">
+                      {req.status === "Pending" && (
+                        <>
+                          <button
+                            onClick={() => openAcceptModal(req)}
+                            className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
+                          >
+                            ✓ Accept
+                          </button>
+                          <button
+                            onClick={() => openRejectModal(req)}
+                            className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
+                          >
+                            ✕ Reject
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => setSelectedRequest(req)}
+                        className="flex-1 min-w-[100px] py-2.5 rounded-lg border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74]/10 text-xs font-bold uppercase tracking-widest transition-all"
+                      >
+                        View
+                      </button>
+                      {req.status === "Approved" && (
+                        <button
+                          onClick={() => openCancelModal(req)}
+                          className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      {(req.status === "Cancelled" || req.status === "Rejected") && (
+                        <button
+                          onClick={() => openDeleteModal(req)}
+                          className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {totalRecords === 0 && (
+              <div className="text-center py-16 md:py-20 text-gray-400 italic font-serif">
+                {trimmedQuery
+                  ? `No requests match "${searchQuery.trim()}"${
+                      activeSubTab === "All" ? "" : ` in ${activeSubTab.toLowerCase()}`
+                    }.`
+                  : activeSubTab === "All"
+                  ? "No requests found."
+                  : `No ${activeSubTab.toLowerCase()} requests found.`}
+              </div>
+            )}
+
+            {/* Pagination footer */}
+            {totalRecords > 0 && (
+              <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <p className="text-xs text-gray-500 font-medium tracking-wide">
+                  Showing <span className="font-bold text-gray-700">{pageStart + 1}</span>–
+                  <span className="font-bold text-gray-700">{pageEnd}</span> of{" "}
+                  <span className="font-bold text-gray-700">{totalRecords}</span>
+                  {trimmedQuery ? " (filtered)" : ""}
+                </p>
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={safePage === 1}
+                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    aria-label="First page"
+                  >
+                    «
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={safePage === 1}
+                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Prev
+                  </button>
+                  <span className="px-3 py-2 text-xs font-bold tracking-widest text-gray-700">
+                    Page {safePage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={safePage === totalPages}
+                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={safePage === totalPages}
+                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Last page"
+                  >
+                    »
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
@@ -688,6 +1040,102 @@ function AdminDashboard() {
         </div>
       )}
 
+      {/* CANCEL MODAL */}
+      {cancellingRequest && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
+            <div className="bg-orange-50 px-6 sm:px-8 py-6 border-b border-orange-100">
+              <h2 className="text-xl font-serif text-orange-800 font-medium uppercase tracking-widest">
+                Cancel Request
+              </h2>
+              <p className="text-sm text-orange-700 italic">
+                For {activeConfig.title(cancellingRequest)}
+              </p>
+            </div>
+            <div className="p-6 sm:p-8 space-y-6">
+              <p className="text-sm text-gray-600">
+                This request is currently <span className="font-bold">Approved</span>. Cancelling will mark it as
+                {" "}<span className="font-bold">Cancelled</span> and record your reason. Any calendar event already created
+                must be removed from the Schedules page manually.
+              </p>
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                  Reason for Cancellation *
+                </label>
+                <textarea
+                  className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none h-32 text-sm resize-none"
+                  placeholder="Please specify why this approved request needs to be cancelled..."
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={closeCancelModal}
+                  disabled={cancelSubmitting}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50"
+                >
+                  Keep Approved
+                </button>
+                <button
+                  onClick={confirmCancel}
+                  disabled={cancelSubmitting || !cancelReason.trim()}
+                  className="flex-1 py-3 rounded-xl bg-orange-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-orange-700 transition-all shadow-lg shadow-orange-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {cancelSubmitting ? "Cancelling…" : "Confirm Cancellation"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {deletingRequest && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
+            <div className="bg-red-50 px-6 sm:px-8 py-6 border-b border-red-100">
+              <h2 className="text-xl font-serif text-red-800 font-medium uppercase tracking-widest">
+                Delete Request
+              </h2>
+              <p className="text-sm text-red-700 italic">
+                For {activeConfig.title(deletingRequest)}
+              </p>
+            </div>
+            <div className="p-6 sm:p-8 space-y-6">
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-800 space-y-2">
+                <p className="font-bold uppercase tracking-wider text-xs">⚠ Warning — this cannot be undone</p>
+                <p>
+                  This will permanently remove the record from the{" "}
+                  <span className="font-mono font-bold">{activeConfig.table}</span> table in the database.
+                  All submitted information will be lost.
+                </p>
+              </div>
+              <p className="text-sm text-gray-600">
+                If you want to keep a record of this request, leave it in its current list instead. Delete only when you
+                are certain the record is no longer needed.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={closeDeleteModal}
+                  disabled={deleteSubmitting}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50"
+                >
+                  Keep Record
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={deleteSubmitting}
+                  className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deleteSubmitting ? "Deleting…" : "Delete Permanently"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* VIEW DETAILS MODAL */}
       {selectedRequest && (
         <DetailsModal
@@ -734,6 +1182,8 @@ function StatusBadge({ status }) {
       ? "bg-yellow-100 text-yellow-700"
       : status === "Approved"
       ? "bg-green-100 text-green-700"
+      : status === "Cancelled"
+      ? "bg-orange-100 text-orange-700"
       : "bg-red-100 text-red-700";
   return (
     <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${cls}`}>

@@ -129,6 +129,42 @@ export async function restInsert(table, rows, opts = {}) {
   }
 }
 
+// DELETE rows matching the given filter.
+export async function restDelete(table, match, opts = {}) {
+  const { timeoutMs = 12000 } = opts;
+  const params = {};
+  Object.entries(match).forEach(([col, val]) => {
+    params[col] = `eq.${val}`;
+  });
+  const url = buildUrl(table, params);
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      method: "DELETE",
+      headers: { ...authHeaders(), Prefer: "return=representation" },
+      signal: ctl.signal,
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      return { data: null, error: { status: res.status, message: body || res.statusText } };
+    }
+    const data = await res.json().catch(() => []);
+    return { data, error: null };
+  } catch (err) {
+    clearTimeout(timer);
+    return {
+      data: null,
+      error: {
+        message: err.name === "AbortError" ? `Request timed out after ${timeoutMs}ms` : err.message,
+      },
+    };
+  }
+}
+
 // UPDATE rows matching the given filter. patch is the partial row.
 export async function restUpdate(table, match, patch, opts = {}) {
   const { timeoutMs = 12000 } = opts;

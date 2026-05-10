@@ -184,11 +184,6 @@ function LoginPage() {
       writeLongTermAdminCache(session.user.email, roleData.role);
     }
 
-    if (roleData?.requires_password_change) {
-      navigate("/update-password", { replace: true });
-      return;
-    }
-
     // Routing decision:
     //   - Role definitively known to be "admin" → /admin
     //   - Role definitively known to be something else → /
