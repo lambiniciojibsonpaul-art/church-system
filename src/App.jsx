@@ -13,6 +13,8 @@ import MinistriesPage from './components/MinistriesPage';
 import GivePage from './components/GivePage';
 import AdminAttendanceList from './components/AdminAttendanceList';
 import AdminQRCenter from './components/AdminQRCenter';
+import RequirePriest from './components/RequirePriest';
+import PriestDashboard from './components/PriestDashboard';
 
 // --- Auth Folder Imports ---
 import CheckInPage from './components/Auth/CheckInPage';
@@ -45,6 +47,9 @@ function App() {
             <Route path="/admin/reports" element={<RequireAdmin><AdminReports /></RequireAdmin>} />
             <Route path="/admin/attendance-list" element={<RequireAdmin><AdminAttendanceList /></RequireAdmin>} />
             <Route path="/admin/qr-generator" element={<RequireAdmin><AdminQRCenter /></RequireAdmin>} />
+
+            {/* PRIEST DASHBOARD (gated by RequirePriest) */}
+            <Route path="/priest-dashboard" element={<RequirePriest><PriestDashboard /></RequirePriest>} />
 
             {/* Auth security */}
             <Route path="/update-password" element={<UpdatePassword />} />
