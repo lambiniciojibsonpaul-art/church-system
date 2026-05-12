@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { restSelect, restInsert } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
-import { ministryNames } from "../data/ministries";
+
+// EDIT THESE NAMES to match the actual priests at your parish!
+const priestNames = [
+  "Rev. Fr. Pedro Bautista",
+  "Rev. Fr. Juan Dela Cruz",
+  "Rev. Fr. Michael Smith",
+  "Rev. Fr. Antonio Luna"
+];
 
 function AdminSchedules() {
   const { user } = useAuth();
@@ -11,12 +18,10 @@ function AdminSchedules() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Form State. `ministry` replaces the old `priestName` field — the chosen
-  // ministry is what now hosts the event. We map it to the existing
-  // `priest_name` DB column on insert to avoid a schema migration.
+  // Form State updated to use priestName instead of ministry
   const [formData, setFormData] = useState({
     title: "",
-    ministry: "",
+    priestName: "", 
     eventDate: "",
     eventTime: "",
     location: "Main Altar",
@@ -24,7 +29,6 @@ function AdminSchedules() {
     isInside: true,
   });
 
-  // RequireAdmin gates the route. We just fetch events.
   useEffect(() => {
     fetchEvents();
   }, []);
@@ -47,7 +51,6 @@ function AdminSchedules() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // 1. Turn loading ON
     setSubmitting(true);
 
     try {
@@ -55,12 +58,8 @@ function AdminSchedules() {
         {
           creator_id: user.id,
           title: formData.title,
-          // event_class is no longer collected from the form. We send a
-          // generic default so the column (which may be NOT NULL) is
-          // satisfied without polluting reports/legacy queries.
           event_class: "Event",
-          // priest_name column now stores the hosting ministry name.
-          priest_name: formData.ministry,
+          priest_name: formData.priestName, // Updated to save the chosen Priest
           event_date: formData.eventDate,
           event_time: formData.eventTime,
           location: formData.location,
@@ -73,10 +72,12 @@ function AdminSchedules() {
 
       setIsModalOpen(false);
       fetchEvents();
+      
+      // Reset the form
       setFormData({
         ...formData,
         title: "",
-        ministry: "",
+        priestName: "", // Updated reset
         eventDate: "",
         eventTime: "",
         location: "Main Altar",
@@ -84,12 +85,9 @@ function AdminSchedules() {
       });
       
     } catch (error) {
-      // Catch any crash so the app survives
       console.error("Database Error:", error.message);
       alert("Failed to create schedule. The system said: " + error.message);
-      
     } finally {
-      // 4. ALWAYS turn the loading spinner OFF, no matter what happens
       setSubmitting(false);
     }
   };
@@ -104,7 +102,7 @@ function AdminSchedules() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-32 pb-12">
-        {/* Admin Sub-Navigation (Like the sidebar in your image, but horizontal for now!) */}
+        {/* Admin Sub-Navigation */}
         <div className="flex gap-4 mb-8 border-b border-gray-200 pb-4">
           <Link
             to="/admin"
@@ -228,21 +226,22 @@ function AdminSchedules() {
                 />
               </div>
 
+              {/* UPDATED: Priest Dropdown */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-gray-600 uppercase">
-                  Hosting Ministry *
+                  Hosting Priest *
                 </label>
                 <select
-                  name="ministry"
+                  name="priestName"
                   required
-                  value={formData.ministry}
+                  value={formData.priestName}
                   onChange={handleChange}
-                  className="p-3 rounded-xl border border-gray-300 outline-none"
+                  className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                 >
                   <option value="" disabled>
-                    Select a ministry…
+                    Select a priest…
                   </option>
-                  {ministryNames.map((name) => (
+                  {priestNames.map((name) => (
                     <option key={name} value={name}>
                       {name}
                     </option>
@@ -261,7 +260,7 @@ function AdminSchedules() {
                     required
                     value={formData.eventDate}
                     onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none"
+                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -274,7 +273,7 @@ function AdminSchedules() {
                     required
                     value={formData.eventTime}
                     onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none"
+                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                   />
                 </div>
               </div>
@@ -290,7 +289,7 @@ function AdminSchedules() {
                     required
                     value={formData.location}
                     onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none"
+                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                     placeholder="e.g., Main Altar"
                   />
                 </div>
@@ -344,7 +343,7 @@ function AdminSchedules() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-xl uppercase tracking-widest mt-4"
+                className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-xl uppercase tracking-widest mt-4 shadow-md transition-colors disabled:opacity-70"
               >
                 {submitting ? "Saving..." : "Post Schedule"}
               </button>
