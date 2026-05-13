@@ -3,12 +3,14 @@ import { Link } from "react-router-dom";
 import { restSelect, restInsert } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
 
-// EDIT THESE NAMES to match the actual priests at your parish!
+// These are "Virtual Priests" - they don't need accounts yet.
+// They are stored as text in the events table.
 const priestNames = [
   "Rev. Fr. Pedro Bautista",
   "Rev. Fr. Juan Dela Cruz",
   "Rev. Fr. Michael Smith",
-  "Rev. Fr. Antonio Luna"
+  "Rev. Fr. Antonio Luna",
+  "Rev. Fr. Gabriel Santos"
 ];
 
 function AdminSchedules() {
@@ -18,10 +20,10 @@ function AdminSchedules() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Form State updated to use priestName instead of ministry
+  // Form State: focused entirely on the Hosting Priest
   const [formData, setFormData] = useState({
     title: "",
-    priestName: "", 
+    priestName: "", // This stores the string from the array
     eventDate: "",
     eventTime: "",
     location: "Main Altar",
@@ -43,23 +45,23 @@ function AdminSchedules() {
   };
 
   const handleChange = (e) => {
-    const value =
-      e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
     setFormData({ ...formData, [e.target.name]: value });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     setSubmitting(true);
 
     try {
+      // We send priest_name as a STRING. 
+      // This means the priest doesn't need to be in the auth.users table.
       const { error } = await restInsert("events", [
         {
           creator_id: user.id,
           title: formData.title,
-          event_class: "Event",
-          priest_name: formData.priestName, // Updated to save the chosen Priest
+          event_class: "General Event",
+          priest_name: formData.priestName, 
           event_date: formData.eventDate,
           event_time: formData.eventTime,
           location: formData.location,
@@ -73,20 +75,19 @@ function AdminSchedules() {
       setIsModalOpen(false);
       fetchEvents();
       
-      // Reset the form
       setFormData({
-        ...formData,
         title: "",
-        priestName: "", // Updated reset
+        priestName: "",
         eventDate: "",
         eventTime: "",
         location: "Main Altar",
         description: "",
+        isInside: true,
       });
       
     } catch (error) {
       console.error("Database Error:", error.message);
-      alert("Failed to create schedule. The system said: " + error.message);
+      alert("Failed to create schedule: " + error.message);
     } finally {
       setSubmitting(false);
     }
@@ -102,6 +103,7 @@ function AdminSchedules() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-32 pb-12">
+        
         {/* Admin Sub-Navigation */}
         <div className="flex gap-4 mb-8 border-b border-gray-200 pb-4">
           <Link
@@ -125,7 +127,7 @@ function AdminSchedules() {
               Parish Schedules
             </h1>
             <p className="text-gray-500 font-serif italic mt-1">
-              Manage upcoming masses and custom events.
+              Assign hosting priests and manage upcoming events.
             </p>
           </div>
           <button
@@ -142,9 +144,7 @@ function AdminSchedules() {
             <div className="text-center text-gray-400 py-12">
               <div className="text-4xl mb-4">📅</div>
               <h3 className="text-lg font-serif">No upcoming schedules.</h3>
-              <p className="text-sm">
-                Click "Create Schedule" to add a new event.
-              </p>
+              <p className="text-sm">Click "Create Schedule" to add a new event.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -153,18 +153,12 @@ function AdminSchedules() {
                   key={ev.id}
                   className="border border-gray-100 rounded-2xl p-6 hover:shadow-md transition-shadow relative overflow-hidden group"
                 >
-                  <div
-                    className={`absolute top-0 left-0 w-1 h-full ${ev.event_class === "Mass" ? "bg-[#B59E74]" : "bg-gray-800"}`}
-                  ></div>
+                  <div className={`absolute top-0 left-0 w-1 h-full ${ev.event_class === "Mass" ? "bg-[#B59E74]" : "bg-gray-800"}`}></div>
                   <div className="flex justify-between items-start mb-2">
-                    <span
-                      className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${ev.event_class === "Mass" ? "bg-[#B59E74]/10 text-[#B59E74]" : "bg-gray-100 text-gray-600"}`}
-                    >
+                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${ev.event_class === "Mass" ? "bg-[#B59E74]/10 text-[#B59E74]" : "bg-gray-100 text-gray-600"}`}>
                       {ev.event_class}
                     </span>
-                    <span
-                      className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${ev.is_inside ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}
-                    >
+                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${ev.is_inside ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}>
                       {ev.is_inside ? "Indoor" : "Outdoor"}
                     </span>
                   </div>
@@ -177,8 +171,7 @@ function AdminSchedules() {
 
                   <div className="space-y-2 text-sm text-gray-600 border-t border-gray-50 pt-4">
                     <div className="flex items-center gap-2">
-                      <span>🗓️</span>{" "}
-                      {new Date(ev.event_date).toLocaleDateString()}
+                      <span>🗓️</span> {new Date(ev.event_date).toLocaleDateString()}
                     </div>
                     <div className="flex items-center gap-2">
                       <span>⏰</span> {ev.event_time}
@@ -226,7 +219,7 @@ function AdminSchedules() {
                 />
               </div>
 
-              {/* UPDATED: Priest Dropdown */}
+              {/* THE PRIEST SELECTION SECTION */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-gray-600 uppercase">
                   Hosting Priest *
@@ -238,9 +231,7 @@ function AdminSchedules() {
                   onChange={handleChange}
                   className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                 >
-                  <option value="" disabled>
-                    Select a priest…
-                  </option>
+                  <option value="" disabled>Select a priest...</option>
                   {priestNames.map((name) => (
                     <option key={name} value={name}>
                       {name}
@@ -251,9 +242,7 @@ function AdminSchedules() {
 
               <div className="grid grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">
-                    Date *
-                  </label>
+                  <label className="text-xs font-bold text-gray-600 uppercase">Date *</label>
                   <input
                     type="date"
                     name="eventDate"
@@ -264,9 +253,7 @@ function AdminSchedules() {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">
-                    Start Time *
-                  </label>
+                  <label className="text-xs font-bold text-gray-600 uppercase">Start Time *</label>
                   <input
                     type="time"
                     name="eventTime"
@@ -280,9 +267,7 @@ function AdminSchedules() {
 
               <div className="grid grid-cols-3 gap-6">
                 <div className="flex flex-col gap-1 col-span-2">
-                  <label className="text-xs font-bold text-gray-600 uppercase">
-                    Location *
-                  </label>
+                  <label className="text-xs font-bold text-gray-600 uppercase">Location *</label>
                   <input
                     type="text"
                     name="location"
@@ -294,42 +279,32 @@ function AdminSchedules() {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">
-                    Setting
-                  </label>
+                  <label className="text-xs font-bold text-gray-600 uppercase">Setting</label>
                   <div className="flex items-center gap-4 mt-2">
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="radio"
                         name="isInside"
                         checked={formData.isInside === true}
-                        onChange={() =>
-                          setFormData({ ...formData, isInside: true })
-                        }
+                        onChange={() => setFormData({ ...formData, isInside: true })}
                         className="text-[#B59E74] focus:ring-[#B59E74]"
-                      />{" "}
-                      Indoor
+                      /> Indoor
                     </label>
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="radio"
                         name="isInside"
                         checked={formData.isInside === false}
-                        onChange={() =>
-                          setFormData({ ...formData, isInside: false })
-                        }
+                        onChange={() => setFormData({ ...formData, isInside: false })}
                         className="text-[#B59E74] focus:ring-[#B59E74]"
-                      />{" "}
-                      Outdoor
+                      /> Outdoor
                     </label>
                   </div>
                 </div>
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600 uppercase">
-                  Description (Optional)
-                </label>
+                <label className="text-xs font-bold text-gray-600 uppercase">Description (Optional)</label>
                 <textarea
                   name="description"
                   value={formData.description}
