@@ -86,7 +86,7 @@ function Header({ forceSolidBg = false }) {
         <div className="max-w-7xl mx-auto px-6 flex justify-between items-center relative">
           <div className="w-32 hidden lg:flex items-center">
             <div className="text-sm font-serif italic opacity-70">
-              San Pedro Bautista
+              Minore Basilica of San Pedro Bautista
             </div>
           </div>
 

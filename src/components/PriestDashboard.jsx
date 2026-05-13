@@ -23,8 +23,8 @@ function PriestDashboard() {
     setLoading(true);
     let allRequests = [];
 
-    // 1. Fetch Baptisms
     try {
+      // 1. Fetch Baptisms (Using actual DB columns: child_first_name, child_last_name)
       const { data: baptisms, error: bError } = await supabase
         .from("baptisms")
         .select("*");
@@ -34,16 +34,12 @@ function PriestDashboard() {
           ...b,
           request_type: "Baptism",
           display_date: b.preferred_date || b.created_at,
-          display_name: b.child_name || "N/A",
+          display_name: `${b.child_first_name || ''} ${b.child_last_name || ''}`,
         }));
         allRequests = [...allRequests, ...mapped];
       }
-    } catch (err) {
-      console.warn("Could not fetch baptisms:", err);
-    }
 
-    // 2. Fetch Weddings
-    try {
+      // 2. Fetch Weddings (Using actual DB columns: groom_name, bride_name)
       const { data: weddings, error: wError } = await supabase
         .from("weddings")
         .select("*");
@@ -57,15 +53,15 @@ function PriestDashboard() {
         }));
         allRequests = [...allRequests, ...mapped];
       }
-    } catch (err) {
-      console.warn("Could not fetch weddings:", err);
-    }
 
-    // Sort by date (newest/upcoming first)
-    allRequests.sort((a, b) => new Date(a.display_date) - new Date(b.display_date));
-    
-    setRequests(allRequests);
-    setLoading(false);
+      // Sort by date (Upcoming first)
+      allRequests.sort((a, b) => new Date(a.display_date) - new Date(b.display_date));
+      setRequests(allRequests);
+    } catch (err) {
+      console.error("Error fetching requests:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleStatusUpdate = async (id, type, newStatus) => {
@@ -85,8 +81,8 @@ function PriestDashboard() {
 
       if (error) throw error;
 
-      // Refresh the UI
-      fetchRequests();
+      // Optimistic update for a smooth UI
+      setRequests(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
       setRejectingId(null);
       setRejectReason("");
     } catch (error) {
@@ -171,7 +167,6 @@ function PriestDashboard() {
                 key={`${req.request_type}-${req.id}`}
                 className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden group"
               >
-                {/* Decorative Side Line */}
                 <div className={`absolute top-0 left-0 w-1.5 h-full ${req.request_type === "Wedding" ? "bg-rose-400" : "bg-blue-400"}`}></div>
 
                 <div className="flex justify-between items-start mb-4">
@@ -203,7 +198,6 @@ function PriestDashboard() {
                   </div>
                 </div>
 
-                {/* --- PENDING ACTIONS --- */}
                 {activeTab === "pending" && (
                   <div className="mt-6 pt-6 border-t border-gray-100">
                     {rejectingId === req.id ? (
@@ -214,7 +208,7 @@ function PriestDashboard() {
                         <textarea
                           value={rejectReason}
                           onChange={(e) => setRejectReason(e.target.value)}
-                          placeholder="e.g., Schedule conflict, please reschedule to Next Friday 3 PM..."
+                          placeholder="e.g., Schedule conflict, please reschedule..."
                           className="w-full p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none text-sm resize-none"
                           rows="2"
                         ></textarea>
@@ -224,7 +218,7 @@ function PriestDashboard() {
                             disabled={processingId === req.id}
                             className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-xl uppercase tracking-widest text-xs transition-colors"
                           >
-                            Submit & Notify Admin
+                            {processingId === req.id ? "Processing..." : "Confirm Rejection"}
                           </button>
                           <button
                             onClick={() => { setRejectingId(null); setRejectReason(""); }}
@@ -241,28 +235,25 @@ function PriestDashboard() {
                           disabled={processingId === req.id}
                           className="flex-1 bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-3 rounded-xl uppercase tracking-widest text-sm shadow-md transition-transform hover:-translate-y-1"
                         >
-                          {processingId === req.id ? "..." : "Approve Schedule"}
+                          {processingId === req.id ? "Processing..." : "Approve Schedule"}
                         </button>
                         <button
                           onClick={() => setRejectingId(req.id)}
-                          className="px-6 bg-white border-2 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-200 font-bold py-3 rounded-xl uppercase tracking-widest text-sm transition-colors flex-1 md:flex-none"
+                          className="px-6 bg-white border-2 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-200 font-bold py-3 rounded-xl uppercase tracking-widest text-sm transition-colors"
                         >
-                          Reschedule / Reject
+                          Reject
                         </button>
                       </div>
                     )}
                   </div>
                 )}
                 
-                {/* --- SCHEDULED BADGE & VIEW DETAILS BUTTON --- */}
                 {activeTab === "schedule" && (
                   <div className="mt-4 flex flex-col gap-3">
                     <div className="flex items-center gap-2 text-green-600 bg-green-50 px-4 py-2 rounded-lg w-fit border border-green-100">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                       <span className="text-xs font-bold uppercase tracking-widest">Confirmed to Officiate</span>
                     </div>
-                    
-                    {/* NEW: View Details Button */}
                     <button
                       onClick={() => setViewingDetails(req)}
                       className="w-full bg-white border-2 border-[#B59E74] text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors"
@@ -281,8 +272,6 @@ function PriestDashboard() {
       {viewingDetails && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative animate-fade-in-up">
-            
-            {/* Header Area */}
             <div className={`p-8 border-b-4 ${viewingDetails.request_type === "Wedding" ? "border-rose-400 bg-rose-50/30" : "border-blue-400 bg-blue-50/30"}`}>
               <button 
                 onClick={() => setViewingDetails(null)}
@@ -290,11 +279,8 @@ function PriestDashboard() {
               >
                 ✕
               </button>
-              
               <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-md mb-4 inline-block ${
-                  viewingDetails.request_type === "Wedding" 
-                    ? "bg-rose-100 text-rose-700" 
-                    : "bg-blue-100 text-blue-700"
+                  viewingDetails.request_type === "Wedding" ? "bg-rose-100 text-rose-700" : "bg-blue-100 text-blue-700"
                 }`}
               >
                 {viewingDetails.request_type} Details
@@ -302,90 +288,52 @@ function PriestDashboard() {
               <h2 className="text-3xl font-serif text-gray-800 font-medium">
                 {viewingDetails.display_name}
               </h2>
-              <p className="text-sm font-serif italic text-gray-500 mt-2">
-                Scheduled for {new Date(viewingDetails.display_date).toLocaleDateString("en-US", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} at {viewingDetails.preferred_time || viewingDetails.wedding_time || "Time TBD"}
-              </p>
             </div>
 
-            {/* Dynamic Content Area */}
-            <div className="p-8 space-y-6">
-              
+            <div className="p-8 space-y-8">
               {viewingDetails.request_type === "Baptism" ? (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Child's Full Name</label>
-                      <p className="font-medium text-gray-800">{viewingDetails.child_name || "N/A"}</p>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Date of Birth</label>
-                      <p className="font-medium text-gray-800">{viewingDetails.date_of_birth ? new Date(viewingDetails.date_of_birth).toLocaleDateString() : "N/A"}</p>
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Child's Full Name</label>
+                    <p className="font-medium text-gray-800">{viewingDetails.child_first_name} {viewingDetails.child_last_name}</p>
                   </div>
-                  
-                  <div className="border-t border-gray-100 pt-6">
-                    <h4 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-4">Parent Information</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Father's Name</label>
-                        <p className="font-medium text-gray-800">{viewingDetails.father_name || "N/A"}</p>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Mother's Name</label>
-                        <p className="font-medium text-gray-800">{viewingDetails.mother_name || "N/A"}</p>
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Contact Number</label>
-                        <p className="font-medium text-gray-800">{viewingDetails.contact_number || "N/A"}</p>
-                      </div>
-                    </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Date of Birth</label>
+                    <p className="font-medium text-gray-800">{viewingDetails.child_dob ? new Date(viewingDetails.child_dob).toLocaleDateString() : "N/A"}</p>
                   </div>
-                </>
+                  <div className="md:col-span-2 border-t border-gray-100 pt-4">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Father's Name</label>
+                    <p className="font-medium text-gray-800">{viewingDetails.father_name || "N/A"}</p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Mother's Name</label>
+                    <p className="font-medium text-gray-800">{viewingDetails.mother_maiden_name || "N/A"}</p>
+                  </div>
+                </div>
               ) : (
-                <>
-                  {/* Wedding Details */}
-                  <div className="border-t border-gray-100 pt-6 mt-[-1.5rem]">
-                    <h4 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-4">Couple Information</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Groom's Name</label>
-                        <p className="font-medium text-gray-800">{viewingDetails.groom_name || "N/A"}</p>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Bride's Name</label>
-                        <p className="font-medium text-gray-800">{viewingDetails.bride_name || "N/A"}</p>
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Primary Contact Number</label>
-                        <p className="font-medium text-gray-800">{viewingDetails.contact_number || "N/A"}</p>
-                      </div>
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Groom's Name</label>
+                    <p className="font-medium text-gray-800">{viewingDetails.groom_name || "N/A"}</p>
                   </div>
-                </>
-              )}
-
-              {/* Extra Remarks / Notes */}
-              {(viewingDetails.remarks || viewingDetails.special_requests) && (
-                <div className="border-t border-gray-100 pt-6">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Special Requests / Notes</label>
-                  <div className="bg-gray-50 p-4 rounded-xl text-sm text-gray-700 italic">
-                    {viewingDetails.remarks || viewingDetails.special_requests}
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Bride's Name</label>
+                    <p className="font-medium text-gray-800">{viewingDetails.bride_name || "N/A"}</p>
                   </div>
                 </div>
               )}
               
+              {viewingDetails.remarks && (
+                <div className="p-4 bg-gray-50 rounded-xl italic text-sm text-gray-600 border-l-4 border-[#B59E74]">
+                  {viewingDetails.remarks}
+                </div>
+              )}
             </div>
-            
-            {/* Modal Footer */}
             <div className="p-6 bg-gray-50 border-t border-gray-100 text-center rounded-b-[2rem]">
-               <button 
-                onClick={() => setViewingDetails(null)}
-                className="px-8 py-3 bg-[#B59E74] text-white font-bold uppercase tracking-widest rounded-full hover:bg-[#9c8760] transition-colors"
-               >
+               <button onClick={() => setViewingDetails(null)} className="px-8 py-3 bg-[#B59E74] text-white font-bold uppercase tracking-widest rounded-full hover:bg-[#9c8760] transition-colors">
                  Close Details
                </button>
             </div>
-            
           </div>
         </div>
       )}
