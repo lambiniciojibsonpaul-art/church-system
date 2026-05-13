@@ -15,6 +15,7 @@ import AdminAttendanceList from './components/AdminAttendanceList';
 import AdminQRCenter from './components/AdminQRCenter';
 import RequirePriest from './components/RequirePriest';
 import PriestDashboard from './components/PriestDashboard';
+import StaffDashboard from "./components/StaffDashboard";
 
 // --- Auth Folder Imports ---
 import CheckInPage from './components/Auth/CheckInPage';
@@ -36,6 +37,7 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/ministries" element={<MinistriesPage />} />
             <Route path="/give" element={<GivePage />} />
+            <Route path="/staff-dashboard" element={<StaffDashboard />} />
 
             {/* QR Check-In (component handles its own login gate) */}
             <Route path="/check-in/:eventId" element={<CheckInPage />} />

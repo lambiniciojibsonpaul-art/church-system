@@ -7,7 +7,8 @@ import { useAuth } from "../contexts/useAuth";
 // (white nav text would be invisible on a light/cream background).
 const SOLID_BG_PREFIXES = [
   "/admin",
-  "/priest-dashboard", // Added priest dashboard to solid background list
+  "/priest-dashboard", 
+  "/staff-dashboard", // <-- Added staff dashboard to solid background list
   "/login",
   "/check-in",
   "/update-password",
@@ -25,6 +26,7 @@ function Header({ forceSolidBg = false }) {
   const location = useLocation();
 
   const isPriest = role === "priest";
+  const isStaff = role === "staff"; // <-- Added staff check
 
   useEffect(() => {
     const handleScroll = () => {
@@ -122,6 +124,15 @@ function Header({ forceSolidBg = false }) {
                       Priest Dashboard
                     </Link>
                   )}
+                  {/* --- NEW: STAFF LINK --- */}
+                  {isStaff && (
+                    <Link
+                      to="/staff-dashboard"
+                      className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors"
+                    >
+                      Staff Portal
+                    </Link>
+                  )}
                   
                   <button
                     onClick={handleLogout}
@@ -201,6 +212,18 @@ function Header({ forceSolidBg = false }) {
                         className="block w-full text-center bg-[#B59E74] text-white py-3 rounded-xl font-bold tracking-widest uppercase mb-2"
                       >
                         Priest Dashboard
+                      </Link>
+                    </li>
+                  )}
+                  {/* --- NEW: MOBILE STAFF LINK --- */}
+                  {isStaff && (
+                    <li>
+                      <Link
+                        to="/staff-dashboard"
+                        onClick={() => setIsOpen(false)}
+                        className="block w-full text-center bg-gray-800 text-white py-3 rounded-xl font-bold tracking-widest uppercase mb-2"
+                      >
+                        Staff Portal
                       </Link>
                     </li>
                   )}
