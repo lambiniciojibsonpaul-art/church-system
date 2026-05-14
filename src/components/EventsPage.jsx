@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { restSelect, restInsert } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
 import { ministryNames } from "../data/ministries";
@@ -31,7 +31,9 @@ function writeEventsCache(events) {
 }
 
 function EventsPage() {
-  const { user, isAdmin } = useAuth();
+  const { user, role, isAdmin } = useAuth();
+  const isMinistry = role === "ministry";
+
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(
     new Date(today.getFullYear(), today.getMonth(), 1),
@@ -41,37 +43,54 @@ function EventsPage() {
   const cachedEvents = readEventsCache();
   const [events, setEvents] = useState(cachedEvents || []);
   const [loading, setLoading] = useState(!cachedEvents);
-  // Admin-only toggle. Public visitors are always pinned to "Active".
-  const [viewMode, setViewMode] = useState("Active"); // "Active" | "Cancelled"
+  
+  const [viewMode, setViewMode] = useState("Active");
+
+  // Dynamic Facilities List
+  const [facilitiesList, setFacilitiesList] = useState([]);
 
   // Modal & Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  // Form state. `ministry` replaces the old `priestName` field; we map it
-  // to the existing `priest_name` DB column on insert.
+  
+  // Collaboration State
+  const [isCollaborating, setIsCollaborating] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
   const [formData, setFormData] = useState({
     title: "",
     ministry: "",
+    collaborators: [],
     eventDate: "",
     eventTime: "",
     location: "",
     description: "",
-    isInside: true,
+    setting: "", // <-- Changed from isInside
   });
 
-  // user/isAdmin come from AuthContext. Just fetch events.
   useEffect(() => {
     fetchEvents();
+    fetchFacilities();
   }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [dropdownRef]);
 
   const fetchEvents = async () => {
     const { data, error } = await restSelect("events", {
       order: "event_time.asc",
       timeoutMs: EVENTS_FETCH_TIMEOUT_MS,
     });
-
     if (error) {
-      console.warn("Events fetch failed:", error.message, "— showing cached data if any.");
+      console.warn("Events fetch failed:", error.message);
     } else if (data) {
       setEvents(data);
       writeEventsCache(data);
@@ -79,14 +98,31 @@ function EventsPage() {
     setLoading(false);
   };
 
-  // --- FORM SUBMISSION HANDLERS ---
+  const fetchFacilities = async () => {
+    const { data } = await restSelect("facilities");
+    if (data) {
+      // Sort alphabetically for convenience
+      const sorted = data.map(f => f.name).sort((a, b) => a.localeCompare(b));
+      setFacilitiesList(sorted);
+    }
+  };
+
   const handleChange = (e) => {
-    const value =
-      e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
     setFormData({ ...formData, [e.target.name]: value });
   };
 
-  // NEW: Function to open modal and pre-fill the selected date
+  const toggleCollaborator = (ministryName) => {
+    setFormData((prev) => {
+      const currentList = prev.collaborators;
+      if (currentList.includes(ministryName)) {
+        return { ...prev, collaborators: currentList.filter(name => name !== ministryName) };
+      } else {
+        return { ...prev, collaborators: [...currentList, ministryName] };
+      }
+    });
+  };
+
   const handleOpenModal = () => {
     const yyyy = selectedDate.getFullYear();
     const mm = String(selectedDate.getMonth() + 1).padStart(2, "0");
@@ -94,56 +130,67 @@ function EventsPage() {
 
     setFormData({
       ...formData,
-      eventDate: `${yyyy}-${mm}-${dd}`, // Automatically sets the form date to what you clicked!
+      eventDate: `${yyyy}-${mm}-${dd}`,
     });
+    setIsCollaborating(false);
+    setIsDropdownOpen(false);
     setIsModalOpen(true);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // 1. Turn loading ON
+    if (isCollaborating && formData.collaborators.length === 0) {
+      alert("Please select at least one collaborating ministry, or uncheck the Collaboration box.");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
+      const finalDescription = isCollaborating && formData.collaborators.length > 0
+        ? `${formData.description}\n\n🤝 In collaboration with: ${formData.collaborators.join(", ")}`
+        : formData.description;
+
       const { error } = await restInsert("events", [
         {
           creator_id: user.id,
           title: formData.title,
-          // Class field removed from the form — keep column populated with a
-          // generic default so legacy reports/queries don't break.
-          event_class: "Event",
-          // priest_name column now stores the hosting ministry name.
+          event_class: "Parish Event",
           priest_name: formData.ministry,
           event_date: formData.eventDate,
           event_time: formData.eventTime,
           location: formData.location,
-          description: formData.description,
-          is_inside: formData.isInside,
+          description: finalDescription,
+          setting: formData.setting, // <-- Saving new text field
+          status: isMinistry ? "Pending" : "Active" 
         },
       ]);
 
       if (error) throw new Error(error.message);
 
+      if (isMinistry) {
+        alert("Event submitted successfully! It is now pending approval from the Admin.");
+      }
+
       setIsModalOpen(false);
       fetchEvents();
       setFormData({
-        ...formData,
         title: "",
         ministry: "",
+        collaborators: [],
         eventDate: "",
         eventTime: "",
         location: "",
         description: "",
+        setting: "",
       });
+      setIsCollaborating(false);
       
     } catch (error) {
-      // Catch any crash so the app survives
       console.error("Database Error:", error.message);
-      alert("Failed to create event. The system said: " + error.message);
-      
+      alert("Failed to create event: " + error.message);
     } finally {
-      // 4. ALWAYS turn the loading spinner OFF, no matter what happens
       setSubmitting(false);
     }
   };
@@ -151,59 +198,28 @@ function EventsPage() {
   // --- CALENDAR HELPERS ---
   const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const monthNames = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
+    "January", "February", "March", "April", "May", "June", 
+    "July", "August", "September", "October", "November", "December"
   ];
 
-  const getDaysInMonth = (year, month) =>
-    new Date(year, month + 1, 0).getDate();
+  const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
-
-  const daysInMonth = getDaysInMonth(
-    currentDate.getFullYear(),
-    currentDate.getMonth(),
-  );
-  const firstDay = getFirstDayOfMonth(
-    currentDate.getFullYear(),
-    currentDate.getMonth(),
-  );
-
+  const daysInMonth = getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
+  const firstDay = getFirstDayOfMonth(currentDate.getFullYear(), currentDate.getMonth());
   const blanks = Array.from({ length: firstDay }, () => null);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const calendarGrid = [...blanks, ...days];
 
-  const prevMonth = () =>
-    setCurrentDate(
-      new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1),
-    );
-  const nextMonth = () =>
-    setCurrentDate(
-      new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1),
-    );
-
+  const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   const handleDayClick = (day) => {
-    if (day)
-      setSelectedDate(
-        new Date(currentDate.getFullYear(), currentDate.getMonth(), day),
-      );
+    if (day) setSelectedDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
   };
 
-  // Public visitors only see active events. Admins can flip to a Cancelled
-  // view via the toggle to audit what was cancelled and why.
   const isCancelledView = isAdmin && viewMode === "Cancelled";
   const visibleEvents = events.filter((e) => {
     const status = e.status || "Active";
-    return isCancelledView ? status === "Cancelled" : status !== "Cancelled";
+    return isCancelledView ? status === "Cancelled" : status === "Active";
   });
 
   const getEventsForDate = (dateToMatch) => {
@@ -214,7 +230,6 @@ function EventsPage() {
   };
 
   const selectedEvents = getEventsForDate(selectedDate);
-
   const formatTime = (timeStr) => {
     if (!timeStr) return "";
     const [h, m] = timeStr.split(":");
@@ -232,60 +247,28 @@ function EventsPage() {
   };
 
   return (
-    <div
-      className={`relative min-h-screen w-full flex flex-col font-sans ${
-        isAdmin ? "bg-gray-50" : "bg-white"
-      }`}
-    >
-      {/* Public hero image — hidden for admins (cleaner dashboard look). */}
-      {!isAdmin && (
-        <main
-          style={backgroundStyle}
-          className="relative h-[60vh] md:h-screen flex flex-col items-center justify-center text-center px-4 text-white"
-        >
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tight mt-16">
-            Events
-          </h1>
+    <div className={`relative min-h-screen w-full flex flex-col font-sans ${isAdmin || isMinistry ? "bg-gray-50" : "bg-white"}`}>
+      {!isAdmin && !isMinistry && (
+        <main style={backgroundStyle} className="relative h-[60vh] md:h-screen flex flex-col items-center justify-center text-center px-4 text-white">
+          <h1 className="text-5xl md:text-7xl font-bold tracking-tight mt-16">Events</h1>
         </main>
       )}
 
-      <section
-        className={
-          isAdmin
-            ? "w-full px-6 pt-32 pb-12"
-            : "relative w-full z-20 -mt-24 pb-32 px-6"
-        }
-      >
-        <div
-          className={
-            isAdmin
-              ? "max-w-7xl mx-auto"
-              : "bg-[#F6F5ED] rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-7xl mx-auto py-12 px-6 md:px-12 text-left"
-          }
-        >
-          {isAdmin ? (
+      <section className={isAdmin || isMinistry ? "w-full px-6 pt-32 pb-12" : "relative w-full z-20 -mt-24 pb-32 px-6"}>
+        <div className={isAdmin || isMinistry ? "max-w-7xl mx-auto" : "bg-[#F6F5ED] rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-7xl mx-auto py-12 px-6 md:px-12 text-left"}>
+          {isAdmin || isMinistry ? (
             <div className="mb-8">
-              <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] mb-2 uppercase tracking-wide">
-                Parish Events
-              </h1>
+              <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] mb-2 uppercase tracking-wide">Parish Events</h1>
               <p className="text-gray-500 font-serif italic">
-                Manage and review parish events. Select a date to see what's
-                scheduled.
+                {isAdmin ? "Manage and review parish events. Select a date to see what's scheduled." : "View the parish calendar and propose events for your ministry."}
               </p>
             </div>
           ) : (
             <>
               <div className="text-center max-w-3xl mx-auto mb-12">
-                <h2 className="text-3xl md:text-4xl text-[#B59E74] font-serif uppercase tracking-widest mb-6 font-medium">
-                  Church Calendar
-                </h2>
-                <p className="text-gray-600 font-serif italic text-lg">
-                  Stay connected with our parish family. Select a date on the
-                  calendar below to view upcoming masses, community gatherings,
-                  and special ceremonies.
-                </p>
+                <h2 className="text-3xl md:text-4xl text-[#B59E74] font-serif uppercase tracking-widest mb-6 font-medium">Church Calendar</h2>
+                <p className="text-gray-600 font-serif italic text-lg">Stay connected with our parish family. Select a date on the calendar below to view upcoming masses, community gatherings, and special ceremonies.</p>
               </div>
-
               <hr className="border-gray-300 border-t w-full max-w-5xl mx-auto mb-12" />
             </>
           )}
@@ -293,101 +276,27 @@ function EventsPage() {
           <div className="flex flex-col lg:flex-row gap-12 max-w-6xl mx-auto">
             <div className="flex-1 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-[#B59E74]/20 h-fit">
               <div className="flex justify-between items-center mb-6">
-                <button
-                  onClick={prevMonth}
-                  className="p-2 hover:bg-[#F6F5ED] rounded-full transition-colors text-[#B59E74]"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2.5}
-                    stroke="currentColor"
-                    className="w-6 h-6"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M15.75 19.5L8.25 12l7.5-7.5"
-                    />
-                  </svg>
-                </button>
-                <h3 className="text-2xl font-serif font-bold text-gray-800">
-                  {monthNames[currentDate.getMonth()]}{" "}
-                  {currentDate.getFullYear()}
-                </h3>
-                <button
-                  onClick={nextMonth}
-                  className="p-2 hover:bg-[#F6F5ED] rounded-full transition-colors text-[#B59E74]"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2.5}
-                    stroke="currentColor"
-                    className="w-6 h-6"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M8.25 4.5l7.5 7.5-7.5 7.5"
-                    />
-                  </svg>
-                </button>
+                <button onClick={prevMonth} className="p-2 hover:bg-[#F6F5ED] rounded-full transition-colors text-[#B59E74]"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg></button>
+                <h3 className="text-2xl font-serif font-bold text-gray-800">{monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}</h3>
+                <button onClick={nextMonth} className="p-2 hover:bg-[#F6F5ED] rounded-full transition-colors text-[#B59E74]"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg></button>
               </div>
 
               <div className="grid grid-cols-7 gap-2 text-center mb-4">
-                {daysOfWeek.map((day) => (
-                  <div
-                    key={day}
-                    className="text-xs font-bold uppercase tracking-widest text-gray-400"
-                  >
-                    {day}
-                  </div>
-                ))}
+                {daysOfWeek.map((day) => (<div key={day} className="text-xs font-bold uppercase tracking-widest text-gray-400">{day}</div>))}
               </div>
 
               <div className="grid grid-cols-7 gap-2 text-center">
                 {calendarGrid.map((day, index) => {
-                  if (!day)
-                    return (
-                      <div key={`blank-${index}`} className="h-12 w-12"></div>
-                    );
-
-                  const thisDate = new Date(
-                    currentDate.getFullYear(),
-                    currentDate.getMonth(),
-                    day,
-                  );
-                  const isSelected =
-                    selectedDate.toDateString() === thisDate.toDateString();
+                  if (!day) return <div key={`blank-${index}`} className="h-12 w-12"></div>;
+                  const thisDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+                  const isSelected = selectedDate.toDateString() === thisDate.toDateString();
                   const hasEvent = getEventsForDate(thisDate).length > 0;
-                  const isToday =
-                    today.toDateString() === thisDate.toDateString();
+                  const isToday = today.toDateString() === thisDate.toDateString();
 
                   return (
-                    <button
-                      key={day}
-                      onClick={() => handleDayClick(day)}
-                      className={`relative h-10 w-10 sm:h-12 sm:w-12 mx-auto flex items-center justify-center rounded-full text-sm sm:text-base font-medium transition-all duration-200
-                                                ${isSelected ? "bg-[#B59E74] text-white shadow-md" : "text-gray-700 hover:bg-[#F6F5ED]"}
-                                                ${isToday && !isSelected ? "border-2 border-[#B59E74] text-[#B59E74]" : ""}
-                                            `}
-                    >
+                    <button key={day} onClick={() => handleDayClick(day)} className={`relative h-10 w-10 sm:h-12 sm:w-12 mx-auto flex items-center justify-center rounded-full text-sm sm:text-base font-medium transition-all duration-200 ${isSelected ? "bg-[#B59E74] text-white shadow-md" : "text-gray-700 hover:bg-[#F6F5ED]"} ${isToday && !isSelected ? "border-2 border-[#B59E74] text-[#B59E74]" : ""}`}>
                       {day}
-                      {/* Status indicator: red = has event (scheduled),
-                          green = available. White when the day is selected
-                          so it stays visible on the gold background. */}
-                      <span
-                        className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${
-                          isSelected
-                            ? "bg-white"
-                            : hasEvent
-                              ? "bg-[#B9554A]"
-                              : "bg-[#86efac]"
-                        }`}
-                      ></span>
+                      <span className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${isSelected ? "bg-white" : hasEvent ? "bg-[#B9554A]" : "bg-[#86efac]"}`}></span>
                     </button>
                   );
                 })}
@@ -397,22 +306,8 @@ function EventsPage() {
             <div className="flex-1 flex flex-col gap-6">
               {isAdmin && (
                 <div className="flex items-center justify-center sm:justify-start gap-2 p-1.5 bg-[#F6F5ED] rounded-full w-full sm:w-fit border border-gray-100">
-                  {[
-                    { key: "Active", label: "Active Events" },
-                    { key: "Cancelled", label: "Cancelled Events" },
-                  ].map((opt) => (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      onClick={() => setViewMode(opt.key)}
-                      className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${
-                        viewMode === opt.key
-                          ? opt.key === "Cancelled"
-                            ? "bg-orange-600 text-white shadow-md"
-                            : "bg-[#B59E74] text-white shadow-md"
-                          : "text-gray-500 hover:text-gray-700"
-                      }`}
-                    >
+                  {[{ key: "Active", label: "Active Events" }, { key: "Cancelled", label: "Cancelled Events" }].map((opt) => (
+                    <button key={opt.key} type="button" onClick={() => setViewMode(opt.key)} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${viewMode === opt.key ? (opt.key === "Cancelled" ? "bg-orange-600 text-white shadow-md" : "bg-[#B59E74] text-white shadow-md") : "text-gray-500 hover:text-gray-700"}`}>
                       {opt.label}
                     </button>
                   ))}
@@ -421,24 +316,12 @@ function EventsPage() {
 
               <div className="bg-[#B59E74] p-6 rounded-2xl shadow-sm text-white flex flex-col md:flex-row justify-between items-center md:items-start relative overflow-hidden">
                 <div className="z-10 text-center md:text-left">
-                  <span className="text-sm font-bold tracking-widest uppercase opacity-80 mb-1 block">
-                    Schedule For
-                  </span>
-                  <h3 className="text-2xl lg:text-3xl font-serif font-medium">
-                    {selectedDate.toLocaleDateString("en-US", {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                  </h3>
+                  <span className="text-sm font-bold tracking-widest uppercase opacity-80 mb-1 block">Schedule For</span>
+                  <h3 className="text-2xl lg:text-3xl font-serif font-medium">{selectedDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</h3>
                 </div>
-
-                {isAdmin && (
-                  <button
-                    onClick={handleOpenModal} // <-- NEW: Calls our updated function
-                    className="mt-4 md:mt-0 z-10 bg-white text-[#B59E74] hover:bg-gray-50 px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-widest shadow-sm transition-transform hover:scale-105 flex items-center gap-2"
-                  >
-                    <span className="text-lg leading-none">+</span> Add Event
+                {(isAdmin || isMinistry) && (
+                  <button onClick={handleOpenModal} className="mt-4 md:mt-0 z-10 bg-white text-[#B59E74] hover:bg-gray-50 px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-widest shadow-sm transition-transform hover:scale-105 flex items-center gap-2">
+                    <span className="text-lg leading-none">+</span> {isAdmin ? "Add Event" : "Propose Event"}
                   </button>
                 )}
                 <div className="absolute -right-10 -top-10 w-40 h-40 bg-white opacity-10 rounded-full blur-2xl"></div>
@@ -446,143 +329,41 @@ function EventsPage() {
 
               <div className="flex flex-col gap-4">
                 {loading ? (
-                  <div className="flex justify-center py-10">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B59E74]"></div>
-                  </div>
+                  <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B59E74]"></div></div>
                 ) : selectedEvents.length > 0 ? (
                   selectedEvents.map((event) => {
                     const cancelled = (event.status || "Active") === "Cancelled";
                     return (
-                    <div
-                      key={event.id}
-                      className={`p-6 rounded-2xl shadow-sm flex flex-col gap-4 animate-fade-in-up relative overflow-hidden group ${
-                        cancelled
-                          ? "bg-orange-50/40 border border-orange-200"
-                          : "bg-white border border-gray-100"
-                      }`}
-                    >
+                    <div key={event.id} className={`p-6 rounded-2xl shadow-sm flex flex-col gap-4 animate-fade-in-up relative overflow-hidden group ${cancelled ? "bg-orange-50/40 border border-orange-200" : "bg-white border border-gray-100"}`}>
                       <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
-                        {cancelled && (
-                          <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-orange-600 text-white">
-                            Cancelled
-                          </span>
-                        )}
-                        <span
-                          className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${event.event_class === "Mass" ? "bg-[#B59E74]/10 text-[#B59E74]" : "bg-gray-100 text-gray-600"}`}
-                        >
-                          {event.event_class}
-                        </span>
+                        {cancelled && <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-orange-600 text-white">Cancelled</span>}
+                        {event.setting && <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-blue-50 text-blue-600 truncate max-w-[150px]">{event.setting}</span>}
                       </div>
 
-                      <h4 className={`text-2xl font-bold pr-24 ${cancelled ? "text-gray-500 line-through decoration-orange-400/70" : "text-gray-800"}`}>
-                        {event.title}
-                      </h4>
+                      <h4 className={`text-2xl font-bold pr-24 ${cancelled ? "text-gray-500 line-through decoration-orange-400/70" : "text-gray-800"}`}>{event.title}</h4>
 
                       <div className="flex flex-col sm:flex-row sm:items-center gap-4 text-sm text-gray-600 font-serif italic">
-                        <div className="flex items-center gap-2">
-                          <svg
-                            className="w-5 h-5 text-[#B59E74]"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={1.5}
-                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                          </svg>
-                          {formatTime(event.event_time)}
-                        </div>
+                        <div className="flex items-center gap-2"><svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>{formatTime(event.event_time)}</div>
                         <div className="hidden sm:block w-1 h-1 bg-gray-300 rounded-full"></div>
-                        <div className="flex items-center gap-2">
-                          <svg
-                            className="w-5 h-5 text-[#B59E74]"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={1.5}
-                              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                            />
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={1.5}
-                              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                            />
-                          </svg>
-                          {event.location}
-                        </div>
+                        <div className="flex items-center gap-2"><svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>{event.location || "Parish"}</div>
                       </div>
 
                       {event.priest_name && (
                         <div className="flex items-center gap-2 text-sm text-gray-700 font-medium border-t border-gray-100 pt-3">
-                          <svg
-                            className="w-5 h-5 text-[#B59E74]"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={1.5}
-                              d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 0a4 4 0 11-8 0 4 4 0 018 0z"
-                            />
-                          </svg>
-                          <span className="text-gray-500 italic mr-1">Hosted by:</span>
-                          {event.priest_name}
+                          <svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 0a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                          <span className="text-gray-500 italic mr-1">Hosted by:</span>{event.priest_name}
                         </div>
                       )}
 
-                      {event.description && (
-                        <p className="text-gray-700 leading-relaxed mt-1 text-sm">
-                          {event.description}
-                        </p>
-                      )}
-
-                      {cancelled && event.cancellation_remarks && (
-                        <div className="mt-1 rounded-xl border border-orange-200 bg-orange-100/60 px-4 py-3">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-orange-700">
-                            Cancellation Reason
-                          </p>
-                          <p className="text-sm text-orange-900 mt-1 whitespace-pre-wrap break-words">
-                            {event.cancellation_remarks}
-                          </p>
-                        </div>
-                      )}
+                      {event.description && <p className="text-gray-700 leading-relaxed mt-1 text-sm whitespace-pre-wrap">{event.description}</p>}
                     </div>
                     );
                   })
                 ) : (
                   <div className="bg-transparent border-2 border-dashed border-[#B59E74]/30 rounded-2xl p-10 flex flex-col items-center justify-center text-center h-full min-h-[250px]">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={1}
-                      stroke="currentColor"
-                      className="w-12 h-12 text-[#B59E74]/50 mb-4"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
-                      />
-                    </svg>
-                    <h4 className="text-xl font-serif text-gray-500 mb-2">
-                      {isCancelledView ? "No Cancelled Events" : "No Scheduled Events"}
-                    </h4>
-                    <p className="text-sm text-gray-400 italic">
-                      {isCancelledView
-                        ? "Nothing has been cancelled for this date."
-                        : "There are no activities currently planned for this date. Check back later or view another day!"}
-                    </p>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-12 h-12 text-[#B59E74]/50 mb-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
+                    <h4 className="text-xl font-serif text-gray-500 mb-2">{isCancelledView ? "No Cancelled Events" : "No Scheduled Events"}</h4>
+                    <p className="text-sm text-gray-400 italic">{isCancelledView ? "Nothing has been cancelled for this date." : "There are no activities currently planned for this date."}</p>
                   </div>
                 )}
               </div>
@@ -591,166 +372,119 @@ function EventsPage() {
         </div>
       </section>
 
-      {/* --- ADMIN CREATE EVENT MODAL --- */}
-      {isAdmin && isModalOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-          <div className="bg-[#F6F5ED] w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">
-            <div className="sticky top-0 bg-[#F6F5ED] px-8 py-6 z-10 flex justify-between items-center border-b border-gray-200 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#B59E74]/10 border border-[#B59E74]/30 flex items-center justify-center text-xl">
-                  📅
-                </div>
-                <div>
-                  <h2 className="text-xl font-serif text-[#B59E74] font-medium uppercase tracking-widest leading-none">
-                    Create Event
-                  </h2>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100 text-gray-500 transition-colors"
-              >
-                ✕
-              </button>
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">
+            <div className="sticky top-0 bg-white px-8 py-6 z-10 flex justify-between items-center border-b border-gray-100">
+              <h2 className="text-xl font-serif text-[#B59E74] uppercase tracking-widest font-medium">
+                {isMinistry ? "Propose Ministry Event" : "Create New Event"}
+              </h2>
+              <button onClick={() => setIsModalOpen(false)} className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-600">✕</button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-8 space-y-6">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                  Event Title *
-                </label>
-                <input
-                  type="text"
-                  name="title"
-                  required
-                  value={formData.title}
-                  onChange={handleChange}
-                  className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none"
-                  placeholder="e.g., Youth Ministry Assembly"
-                />
-              </div>
+              {isMinistry && (
+                <div className="bg-blue-50 text-blue-700 p-4 rounded-xl text-sm border border-blue-100 mb-6 font-medium">
+                  ℹ️ Events proposed by ministries will be sent to the Parish Office for approval before appearing on the public calendar.
+                </div>
+              )}
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                  Hosting Ministry *
-                </label>
-                <select
-                  name="ministry"
-                  required
-                  value={formData.ministry}
-                  onChange={handleChange}
-                  className="p-3 rounded-xl border border-gray-300 outline-none"
-                >
-                  <option value="" disabled>
-                    Select a ministry…
-                  </option>
-                  {ministryNames.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
+                <label className="text-xs font-bold text-gray-600 uppercase">Event Title *</label>
+                <input type="text" name="title" required value={formData.title} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none" placeholder="e.g., Youth Retreat 2026" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600 uppercase">Hosting Ministry *</label>
+                  <select name="ministry" required value={formData.ministry} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]">
+                    <option value="" disabled>Select your ministry…</option>
+                    {ministryNames.map((name) => (<option key={name} value={name}>{name}</option>))}
+                  </select>
+                </div>
+                
+                <div className="flex flex-col gap-1 relative" ref={dropdownRef}>
+                  <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-2 h-[18px]">
+                    <input type="checkbox" checked={isCollaborating} onChange={(e) => { setIsCollaborating(e.target.checked); if (!e.target.checked) setFormData({...formData, collaborators: []}); }} className="accent-[#B59E74]" />
+                    Collaboration
+                  </label>
+                  
+                  {isCollaborating ? (
+                    <div className="relative">
+                      <div onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="w-full p-3 rounded-xl border border-gray-300 bg-white cursor-pointer min-h-[50px] flex items-center justify-between transition-colors hover:border-[#B59E74]">
+                        <div className="flex-1 truncate text-sm text-gray-700">
+                          {formData.collaborators.length === 0 ? "Select partner ministries..." : `${formData.collaborators.length} ministry selected`}
+                        </div>
+                        <svg className={`w-4 h-4 text-gray-500 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                      </div>
+
+                      {isDropdownOpen && (
+                        <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto animate-fade-in">
+                          {ministryNames.filter(m => m !== formData.ministry).map((name) => {
+                            const isChecked = formData.collaborators.includes(name);
+                            return (
+                              <label key={name} className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
+                                <input type="checkbox" checked={isChecked} onChange={() => toggleCollaborator(name)} className="w-4 h-4 text-[#B59E74] bg-gray-100 border-gray-300 rounded focus:ring-[#B59E74] focus:ring-2" />
+                                <span className="text-sm text-gray-700 flex-1">{name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl border border-gray-100 bg-gray-50 text-gray-400 text-sm italic">Hosting solely</div>
+                  )}
+                </div>
+              </div>
+
+              {isCollaborating && formData.collaborators.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {formData.collaborators.map(partner => (
+                    <span key={partner} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F6F5ED] text-[#B59E74] text-[11px] font-bold uppercase tracking-widest border border-[#B59E74]/30 animate-fade-in-up">
+                      {partner}
+                      <button type="button" onClick={() => toggleCollaborator(partner)} className="hover:text-red-500 focus:outline-none">✕</button>
+                    </span>
                   ))}
-                </select>
-              </div>
+                </div>
+              )}
 
-              {/* Date and Time Side-by-Side */}
               <div className="grid grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Date *
-                  </label>
-                  <input
-                    type="date"
-                    name="eventDate"
-                    required
-                    value={formData.eventDate}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none"
-                  />
+                  <label className="text-xs font-bold text-gray-600 uppercase">Date *</label>
+                  <input type="date" name="eventDate" required value={formData.eventDate} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Time *
-                  </label>
-                  <input
-                    type="time"
-                    name="eventTime"
-                    required
-                    value={formData.eventTime}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none"
-                  />
+                  <label className="text-xs font-bold text-gray-600 uppercase">Time *</label>
+                  <input type="time" name="eventTime" required value={formData.eventTime} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" />
                 </div>
               </div>
 
-              {/* NEW: Location and Setting Side-by-Side */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Location *
-                  </label>
-                  <input
-                    type="text"
-                    name="location"
-                    required
-                    value={formData.location}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none"
-                    placeholder="e.g., Main Altar"
-                  />
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Setting
-                  </label>
-                  <div className="flex items-center gap-4 mt-2 h-full">
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="radio"
-                        name="isInside"
-                        checked={formData.isInside === true}
-                        onChange={() =>
-                          setFormData({ ...formData, isInside: true })
-                        }
-                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]"
-                      />{" "}
-                      Indoor
-                    </label>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="radio"
-                        name="isInside"
-                        checked={formData.isInside === false}
-                        onChange={() =>
-                          setFormData({ ...formData, isInside: false })
-                        }
-                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]"
-                      />{" "}
-                      Outdoor
-                    </label>
-                  </div>
+                  <label className="text-xs font-bold text-gray-600 uppercase">Location *</label>
+                  <input type="text" name="location" required value={formData.location} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" placeholder="e.g., San Pedro Bautista" />
+                </div>
+                
+                {/* NEW SETTING DROPDOWN */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600 uppercase">Facility / Setting *</label>
+                  <select name="setting" required value={formData.setting} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]">
+                    <option value="" disabled>Select a room or garden...</option>
+                    {facilitiesList.map(facility => (
+                      <option key={facility} value={facility}>{facility}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                  Description
-                </label>
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleChange}
-                  rows="3"
-                  className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none resize-none"
-                  placeholder="Optional details..."
-                ></textarea>
+                <label className="text-xs font-bold text-gray-600 uppercase">Event Description</label>
+                <textarea name="description" value={formData.description} onChange={handleChange} rows="3" className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none resize-none" placeholder="Provide details about the event..."></textarea>
               </div>
 
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-xl uppercase tracking-widest mt-4 shadow-md disabled:opacity-70 transition-colors"
-              >
-                {submitting ? "Saving..." : "Post Schedule"}
+              <button type="submit" disabled={submitting} className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-xl uppercase tracking-widest mt-4 shadow-md transition-colors disabled:opacity-70">
+                {submitting ? "Saving..." : isMinistry ? "Submit for Approval" : "Post Event to Calendar"}
               </button>
             </form>
           </div>

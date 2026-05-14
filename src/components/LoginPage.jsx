@@ -150,7 +150,11 @@ function LoginPage() {
         } catch { /* ignore */ }
       });
 
-      const dest = String(cachedRole).toLowerCase() === "admin" ? "/admin" : "/";
+      // Quick routing cache
+      const dest = String(cachedRole).toLowerCase() === "admin" || String(cachedRole).toLowerCase() === "superadmin" ? "/admin" : 
+                   String(cachedRole).toLowerCase() === "priest" ? "/priest-dashboard" :
+                   String(cachedRole).toLowerCase() === "staff" ? "/staff-dashboard" : 
+                   String(cachedRole).toLowerCase() === "ministry" ? "/events" : "/";
       navigate(dest, { replace: true });
       return;
     }
@@ -185,21 +189,26 @@ function LoginPage() {
       writeLongTermAdminCache(session.user.email, roleData.role);
     }
 
-    // Routing decision:
-    //   - Role definitively known to be "admin" → /admin
-    //   - Role definitively known to be something else → /
-    //   - Role lookup failed (no roleData AND we hit an error) → /admin
-    //     (RequireAdmin will redirect non-admins to / if they sneak through.)
     let dest;
     if (roleData) {
       const role = String(roleData.role || "").toLowerCase();
-      dest = role === "admin" ? "/admin" : "/";
+      
+      if (role === "admin" || role === "superadmin") {
+        dest = "/admin";
+      } else if (role === "priest") {
+        dest = "/priest-dashboard";
+      } else if (role === "staff") {
+        dest = "/staff-dashboard";
+      } else if (role === "ministry") {
+        dest = "/events";
+      } else {
+        dest = "/"; 
+      }
+      
     } else if (lastErrorMsg) {
-      // Lookup failed — assume admin and let RequireAdmin gate the page.
       console.log("[Login] Role lookup failed; routing to /admin and letting RequireAdmin verify.");
       dest = "/admin";
     } else {
-      // Lookup succeeded but no row — user is not in user_roles → not admin.
       dest = "/";
     }
     navigate(dest, { replace: true });
@@ -228,10 +237,9 @@ function LoginPage() {
   };
 
   // ----- REGISTER STATE ------------------------------------------------------
-  // Single-step signup. User fills the form, clicks Sign Up, and gets an
-  // email confirmation link from Supabase. They click the link to verify,
-  // then return to log in. No client-side OTP entry.
   const [registerData, setRegisterData] = useState({
+    firstName: "",    // <-- ADDED
+    lastName: "",     // <-- ADDED
     email: "",
     password: "",
     confirmPassword: "",
@@ -240,7 +248,6 @@ function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
   const [registerError, setRegisterError] = useState(null);
-  // After successful signup we show a "check your email" success screen.
   const [registeredEmail, setRegisteredEmail] = useState(null);
 
   const passwordCheck = validatePassword(registerData.password);
@@ -266,6 +273,10 @@ function LoginPage() {
     setRegisterError(null);
 
     // Validate.
+    if (!registerData.firstName.trim() || !registerData.lastName.trim()) {
+      setRegisterError("Please enter your full name.");
+      return;
+    }
     if (!registerData.email.includes("@")) {
       setRegisterError("Please enter a valid email address.");
       return;
@@ -288,14 +299,15 @@ function LoginPage() {
 
     setRegisterLoading(true);
     try {
-      // signUp creates the user with the password persisted transactionally.
-      // Supabase sends the confirmation email automatically (provided
-      // "Confirm email" is enabled in Authentication → Providers → Email).
       const { data: signupData, error } = await supabase.auth.signUp({
         email: registerData.email,
         password: registerData.password,
         options: {
-          data: { contact_number: contact },
+          data: { 
+            first_name: registerData.firstName.trim(), // <-- SAVING FIRST NAME
+            last_name: registerData.lastName.trim(),   // <-- SAVING LAST NAME
+            contact_number: contact 
+          },
         },
       });
       if (error) {
@@ -311,12 +323,6 @@ function LoginPage() {
         throw error;
       }
 
-      // If signUp returned a session, "Confirm email" is OFF in the project
-      // — the user is already authenticated and verified. Send them straight
-      // to the home page so they can use the app immediately.
-      //
-      // If no session was returned, email confirmation is required. Show the
-      // "check your inbox" screen and let them confirm via the email link.
       if (signupData?.session) {
         navigate("/", { replace: true });
         return;
@@ -400,7 +406,7 @@ function LoginPage() {
         style={backgroundStyle}
         className="flex-1 flex items-center justify-center p-6 mt-16 lg:mt-0"
       >
-        <div className="bg-[#F6F5ED] w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up my-12">
+        <div className={`bg-[#F6F5ED] w-full ${mode === "register" ? "max-w-2xl" : "max-w-md"} rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up my-12 transition-all duration-300`}>
           {/* HEADER */}
           <div className="bg-white px-8 py-8 text-center border-b border-gray-200">
             <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center border-2 border-[#B59E74] text-2xl mb-4">
@@ -538,108 +544,149 @@ function LoginPage() {
 
           {/* REGISTER — FORM */}
           {mode === "register" && !registeredEmail && (
-            <form onSubmit={handleSignUp} className="p-8 space-y-5">
+            <form onSubmit={handleSignUp} className="p-8">
               {registerError && (
-                <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200 text-center">
+                <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200 text-center mb-6">
                   {registerError}
                 </div>
               )}
 
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                  Email Address
-                </label>
-                <input
-                  name="email"
-                  type="email"
-                  required
-                  value={registerData.email}
-                  onChange={handleRegisterChange}
-                  className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
-                  placeholder="name@example.com"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* LEFT COLUMN: Personal Info */}
+                <div className="space-y-5">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                      First Name
+                    </label>
+                    <input
+                      name="firstName"
+                      type="text"
+                      required
+                      value={registerData.firstName}
+                      onChange={handleRegisterChange}
+                      className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
+                      placeholder="Juan"
+                    />
+                  </div>
+                  
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                      Last Name
+                    </label>
+                    <input
+                      name="lastName"
+                      type="text"
+                      required
+                      value={registerData.lastName}
+                      onChange={handleRegisterChange}
+                      className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
+                      placeholder="Dela Cruz"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                      Contact Number
+                    </label>
+                    <input
+                      name="contactNumber"
+                      type="tel"
+                      required
+                      value={registerData.contactNumber}
+                      onChange={handleRegisterChange}
+                      className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
+                      placeholder="09XX XXX XXXX"
+                    />
+                    <p className="text-[11px] text-gray-400 italic ml-1">
+                      Saved with your account so the parish office can reach you.
+                    </p>
+                  </div>
+                </div>
+
+                {/* RIGHT COLUMN: Account Info */}
+                <div className="space-y-5">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                      Email Address
+                    </label>
+                    <input
+                      name="email"
+                      type="email"
+                      required
+                      value={registerData.email}
+                      onChange={handleRegisterChange}
+                      className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
+                      placeholder="name@example.com"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                      Password
+                    </label>
+                    <input
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      required
+                      value={registerData.password}
+                      onChange={handleRegisterChange}
+                      className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
+                      placeholder="••••••••"
+                    />
+                    <ul className="text-[11px] mt-1 grid grid-cols-2 gap-y-1 ml-1">
+                      {passwordRule("8+ characters", passwordCheck.minLength)}
+                      {passwordRule("Uppercase letter", passwordCheck.hasUpper)}
+                      {passwordRule("Lowercase letter", passwordCheck.hasLower)}
+                      {passwordRule("Number", passwordCheck.hasNumber)}
+                      {passwordRule("Special character", passwordCheck.hasSpecial)}
+                    </ul>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                      Confirm Password
+                    </label>
+                    <input
+                      name="confirmPassword"
+                      type={showPassword ? "text" : "password"}
+                      required
+                      value={registerData.confirmPassword}
+                      onChange={handleRegisterChange}
+                      className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
+                      placeholder="••••••••"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 text-xs text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={showPassword}
+                      onChange={(e) => setShowPassword(e.target.checked)}
+                      className="accent-[#B59E74]"
+                    />
+                    Show password
+                  </label>
+                </div>
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                  Password
-                </label>
-                <input
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  required
-                  value={registerData.password}
-                  onChange={handleRegisterChange}
-                  className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
-                  placeholder="••••••••"
-                />
-                <ul className="text-[11px] mt-1 grid grid-cols-2 gap-y-1 ml-1">
-                  {passwordRule("8+ characters", passwordCheck.minLength)}
-                  {passwordRule("Uppercase letter", passwordCheck.hasUpper)}
-                  {passwordRule("Lowercase letter", passwordCheck.hasLower)}
-                  {passwordRule("Number", passwordCheck.hasNumber)}
-                  {passwordRule("Special character", passwordCheck.hasSpecial)}
-                </ul>
+              <div className="mt-8 border-t border-gray-200 pt-6">
+                <button
+                  type="submit"
+                  disabled={registerLoading}
+                  className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-base py-4 rounded-xl transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed uppercase tracking-widest"
+                >
+                  {registerLoading ? "Creating account..." : "Sign Up"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={switchToLogin}
+                  className="w-full text-xs text-gray-500 hover:text-[#B59E74] uppercase tracking-widest font-bold py-4"
+                >
+                  ← Back to Login
+                </button>
               </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                  Confirm Password
-                </label>
-                <input
-                  name="confirmPassword"
-                  type={showPassword ? "text" : "password"}
-                  required
-                  value={registerData.confirmPassword}
-                  onChange={handleRegisterChange}
-                  className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
-                  placeholder="••••••••"
-                />
-              </div>
-
-              <label className="flex items-center gap-2 text-xs text-gray-600">
-                <input
-                  type="checkbox"
-                  checked={showPassword}
-                  onChange={(e) => setShowPassword(e.target.checked)}
-                  className="accent-[#B59E74]"
-                />
-                Show password
-              </label>
-
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                  Contact Number
-                </label>
-                <input
-                  name="contactNumber"
-                  type="tel"
-                  required
-                  value={registerData.contactNumber}
-                  onChange={handleRegisterChange}
-                  className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
-                  placeholder="09XX XXX XXXX"
-                />
-                <p className="text-[11px] text-gray-400 italic ml-1">
-                  Saved with your account so the parish office can reach you.
-                </p>
-              </div>
-
-              <button
-                type="submit"
-                disabled={registerLoading}
-                className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-base py-4 rounded-xl transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed mt-2 uppercase tracking-widest"
-              >
-                {registerLoading ? "Creating account..." : "Sign Up"}
-              </button>
-
-              <button
-                type="button"
-                onClick={switchToLogin}
-                className="w-full text-xs text-gray-500 hover:text-[#B59E74] uppercase tracking-widest font-bold py-2"
-              >
-                ← Back to Login
-              </button>
             </form>
           )}
         </div>

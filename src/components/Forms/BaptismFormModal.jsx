@@ -12,6 +12,10 @@ function BaptismFormModal({ onClose }) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
+  
+  // NEW: State for the dynamic sponsor input box
+  const [sponsorInput, setSponsorInput] = useState("");
+
   const [formData, setFormData] = useState({
     baptismType: "Sunday",
     preferredDate: "",
@@ -44,6 +48,39 @@ function BaptismFormModal({ onClose }) {
     const { name, type, checked, value } = e.target;
     setFormData({ ...formData, [name]: type === "checkbox" ? checked : value });
   };
+
+  // --- NEW: DYNAMIC SPONSOR LIST LOGIC ---
+  const sponsorsList = formData.additionalSponsors 
+    ? formData.additionalSponsors.split(",").map(s => s.trim()).filter(Boolean) 
+    : [];
+
+  const handleAddSponsor = (e) => {
+    e?.preventDefault();
+    if (!sponsorInput.trim()) return;
+
+    const newList = [...sponsorsList, sponsorInput.trim()];
+    
+    handleChange({
+      target: { name: "additionalSponsors", value: newList.join(", ") }
+    });
+    
+    setSponsorInput("");
+  };
+
+  const handleRemoveSponsor = (indexToRemove) => {
+    const newList = sponsorsList.filter((_, index) => index !== indexToRemove);
+    handleChange({
+      target: { name: "additionalSponsors", value: newList.join(", ") }
+    });
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAddSponsor();
+    }
+  };
+  // ---------------------------------------
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -234,9 +271,7 @@ function BaptismFormModal({ onClose }) {
                       pair of sponsors & certificate.
                     </li>
                     <li>
-                      <strong>B. Sunday Baptism:</strong> Php 1,500.00 (11:00am
-                      start). Includes 1 pair of sponsors. (No free
-                      certificate).
+                      <strong>B. Sunday Baptism</strong>
                     </li>
                     <li className="text-xs italic text-gray-500 mt-1">
                       Add-ons: Extra sponsor Php 50.00/head | Baptismal Candle
@@ -282,10 +317,10 @@ function BaptismFormModal({ onClose }) {
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
                   >
                     <option value="Sunday">
-                      Sunday Baptism (Php 1,500 - 11:00am)
+                      Sunday Baptism
                     </option>
                     <option value="Solo">
-                      Solo/Individual (Php 2,500 - Tue-Sat)
+                      Solo/Individual
                     </option>
                   </select>
                 </div>
@@ -523,19 +558,56 @@ function BaptismFormModal({ onClose }) {
                   />
                 </div>
               </div>
-              <div className="flex flex-col gap-1">
+              
+              {/* --- UPDATED DYNAMIC SPONSOR INPUT --- */}
+              <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-gray-600">
                   Additional Sponsors
                 </label>
-                <textarea
-                  rows="3"
-                  name="additionalSponsors"
-                  value={formData.additionalSponsors}
-                  onChange={handleChange}
-                  placeholder="List additional sponsors here..."
-                  className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 resize-none"
-                ></textarea>
+                
+                {sponsorsList.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {sponsorsList.map((sponsor, index) => (
+                      <div 
+                        key={index} 
+                        className="flex items-center gap-2 bg-[#F6F5ED] border border-[#B59E74]/30 text-[#B59E74] px-3 py-1.5 rounded-full text-sm font-medium animate-fade-in"
+                      >
+                        <span>{sponsor}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSponsor(index)}
+                          className="text-[#B59E74] hover:text-red-500 font-bold focus:outline-none"
+                          title="Remove sponsor"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={sponsorInput}
+                    onChange={(e) => setSponsorInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Type a name and hit Enter..."
+                    className="flex-1 p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddSponsor}
+                    disabled={!sponsorInput.trim()}
+                    className="w-12 h-12 flex items-center justify-center bg-[#B59E74] hover:bg-[#9c8760] text-white rounded-lg font-bold text-2xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Add Sponsor"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
+              {/* ------------------------------------- */}
+              
             </div>
 
             {/* DECLARATION & SIGNATURE */}

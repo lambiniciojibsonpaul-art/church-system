@@ -12,6 +12,9 @@ function ConfirmationFormModal({ onClose }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
 
+  // NEW: State for the dynamic sponsor input box
+  const [sponsorInput, setSponsorInput] = useState("");
+
   const [formData, setFormData] = useState({
     date_of_confirmation: "",
     time_of_confirmation: "",
@@ -44,6 +47,39 @@ function ConfirmationFormModal({ onClose }) {
     const { name, type, checked, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
   };
+
+  // --- NEW: DYNAMIC SPONSOR LIST LOGIC ---
+  const sponsorsList = formData.additional_sponsors 
+    ? formData.additional_sponsors.split(",").map(s => s.trim()).filter(Boolean) 
+    : [];
+
+  const handleAddSponsor = (e) => {
+    e?.preventDefault();
+    if (!sponsorInput.trim()) return;
+
+    const newList = [...sponsorsList, sponsorInput.trim()];
+    
+    handleChange({
+      target: { name: "additional_sponsors", value: newList.join(", ") }
+    });
+    
+    setSponsorInput("");
+  };
+
+  const handleRemoveSponsor = (indexToRemove) => {
+    const newList = sponsorsList.filter((_, index) => index !== indexToRemove);
+    handleChange({
+      target: { name: "additional_sponsors", value: newList.join(", ") }
+    });
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAddSponsor();
+    }
+  };
+  // ---------------------------------------
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -258,10 +294,54 @@ function ConfirmationFormModal({ onClose }) {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600">Additional Sponsors <span className="text-[11px] text-gray-400 normal-case font-normal">(Karagdagang Ninong at Ninang)</span></label>
-                <textarea rows="3" name="additional_sponsors" value={formData.additional_sponsors} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="List additional sponsors here..." />
+              {/* --- UPDATED DYNAMIC SPONSOR INPUT --- */}
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-gray-600">
+                  Additional Sponsors <span className="text-[11px] text-gray-400 normal-case font-normal">(Karagdagang Ninong at Ninang)</span>
+                </label>
+                
+                {sponsorsList.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {sponsorsList.map((sponsor, index) => (
+                      <div 
+                        key={index} 
+                        className="flex items-center gap-2 bg-[#F6F5ED] border border-[#B59E74]/30 text-[#B59E74] px-3 py-1.5 rounded-full text-sm font-medium animate-fade-in"
+                      >
+                        <span>{sponsor}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSponsor(index)}
+                          className="text-[#B59E74] hover:text-red-500 font-bold focus:outline-none"
+                          title="Remove sponsor"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={sponsorInput}
+                    onChange={(e) => setSponsorInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Type a name and hit Enter..."
+                    className="flex-1 p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddSponsor}
+                    disabled={!sponsorInput.trim()}
+                    className="w-12 h-12 flex items-center justify-center bg-[#B59E74] hover:bg-[#9c8760] text-white rounded-lg font-bold text-2xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Add Sponsor"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
+              {/* ------------------------------------- */}
             </div>
 
             {/* 6. CHECKLIST */}
