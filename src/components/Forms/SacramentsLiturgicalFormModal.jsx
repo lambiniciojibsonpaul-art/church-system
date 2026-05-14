@@ -46,7 +46,7 @@ function SacramentsLiturgicalFormModal({ onClose }) {
     setFormData((prev) => ({
       ...prev,
       request_type: value,
-      request_specify: "", // reset specify text when type changes
+      request_specify: "", 
     }));
 
   const handleSubmit = async (e) => {
@@ -187,6 +187,40 @@ function SacramentsLiturgicalFormModal({ onClose }) {
               </div>
             </div>
 
+            <hr className="border-gray-200" />
+
+            {/* --- STATIC LIST OF REQUIREMENTS & GOOGLE DRIVE UPLOAD --- */}
+            <div className="bg-[#B59E74]/10 p-6 sm:p-8 rounded-2xl border border-[#B59E74]/30 shadow-sm mt-8">
+              <h3 className="text-sm md:text-base font-bold text-[#B59E74] uppercase tracking-widest mb-2 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Important Notice: Requirements
+              </h3>
+              <p className="text-sm text-gray-700 font-medium mb-4">
+                Depending on your requested service, please ensure you secure any necessary original documents (such as permits or death certificates) prior to your schedule.
+              </p>
+              
+              {/* UPLOAD / GOOGLE DRIVE REDIRECT BOX */}
+              <div className="bg-white rounded-xl border-2 border-dashed border-[#B59E74]/50 p-6 flex flex-col items-center justify-center text-center mt-6">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-[#B59E74] mb-3">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                </svg>
+                <h4 className="text-sm font-bold text-gray-800 uppercase tracking-widest mb-1">Submit Your Documents</h4>
+                <p className="text-xs text-gray-500 mb-4 max-w-md">
+                  If your request requires documentation, please compile your scanned requirements and upload them to our secure Parish Google Drive folder.
+                </p>
+                <a
+                  href="https://drive.google.com/drive/folders/1Vx6VT1vWZjkEcSRpMZ3e_Dq_CFPLnIls?usp=sharing" 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-[#B59E74] hover:bg-[#9c8760] text-white px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-2"
+                >
+                  <span>📁</span> Open Upload Folder
+                </a>
+              </div>
+            </div>
+
             {/* DECLARATION & SIGNATURE */}
             <DeclarationBlock
               declaration="I declare that the information provided above is true and correct, and I respectfully request the sacrament or liturgical service indicated above."
@@ -197,7 +231,7 @@ function SacramentsLiturgicalFormModal({ onClose }) {
 
             {/* SUBMIT */}
             <div className="pt-4 pb-2">
-              <button type="submit" disabled={loading} className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-lg py-4 rounded-xl transition-colors shadow-md disabled:opacity-70 disabled:cursor-not-allowed">
+              <button type="submit" disabled={loading} className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-lg py-4 rounded-xl transition-colors shadow-md disabled:opacity-70 disabled:cursor-not-allowed uppercase tracking-widest">
                 {loading ? "Submitting..." : "Submit Request"}
               </button>
             </div>

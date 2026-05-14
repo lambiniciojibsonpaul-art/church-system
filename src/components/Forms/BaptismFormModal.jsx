@@ -569,7 +569,7 @@ function BaptismFormModal({ onClose }) {
                       Please compile your scanned requirements and upload them to our secure Parish Google Drive folder.
                     </p>
                     <a
-                      href="YOUR_GOOGLE_DRIVE_LINK_HERE" 
+                      href="https://drive.google.com/drive/folders/1K3j5gWyYykh6lTRJB0LjchlcT7As8Jox?usp=sharing" 
                       target="_blank"
                       rel="noopener noreferrer"
                       className="bg-[#B59E74] hover:bg-[#9c8760] text-white px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-2"
