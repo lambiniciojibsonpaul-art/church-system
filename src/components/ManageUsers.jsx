@@ -273,7 +273,7 @@ function ManageUsers() {
                     className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 bg-gray-50"
                   >
                     <option value="staff">Staff</option>
-                    <option value="ministry">Ministry</option>
+                    <option value="minister">Minister</option>
                     <option value="priest">Priest</option>
                     <option value="admin">Admin</option>
                     <option value="parishioner">Parishioner</option>
@@ -335,7 +335,7 @@ function ManageUsers() {
                   <option value="All">All Roles</option>
                   <option value="admin">Admin</option>
                   <option value="staff">Staff</option>
-                  <option value="ministry">Ministry</option>
+                  <option value="minister">Minister</option>
                   <option value="priest">Priest</option>
                   <option value="parishioner">Parishioner</option>
                 </select>
@@ -376,14 +376,14 @@ function ManageUsers() {
                             className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg border-2 cursor-pointer outline-none transition-colors ${
                               u.role === "admin" || u.role === "superadmin" ? "bg-red-50 border-red-200 text-red-700 focus:border-red-400" :
                               u.role === "staff" ? "bg-blue-50 border-blue-200 text-blue-700 focus:border-blue-400" :
-                              u.role === "ministry" ? "bg-purple-50 border-purple-200 text-purple-700 focus:border-purple-400" :
+                              u.role === "minister" ? "bg-purple-50 border-purple-200 text-purple-700 focus:border-purple-400" :
                               u.role === "priest" ? "bg-[#B59E74]/10 border-[#B59E74]/30 text-[#B59E74] focus:border-[#B59E74]" :
                               "bg-gray-50 border-gray-200 text-gray-600 focus:border-gray-400"
                             } ${u.id === user.id ? "opacity-50 cursor-not-allowed" : ""}`}
                           >
                             <option value="parishioner">Parishioner</option>
                             <option value="staff">Staff</option>
-                            <option value="ministry">Ministry</option>
+                            <option value="minister">Minister</option>
                             <option value="priest">Priest</option>
                             <option value="admin">Admin</option>
                           </select>

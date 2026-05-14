@@ -114,12 +114,14 @@ export async function restInsert(table, rows, opts = {}) {
 
     if (!res.ok) {
       const body = await res.text().catch(() => "");
+      console.error(`[restInsert] ${table} error (${res.status}):`, body);
       return { data: null, error: { status: res.status, message: body || res.statusText } };
     }
     const data = await res.json();
     return { data, error: null };
   } catch (err) {
     clearTimeout(timer);
+    console.error(`[restInsert] ${table} exception:`, err);
     return {
       data: null,
       error: {

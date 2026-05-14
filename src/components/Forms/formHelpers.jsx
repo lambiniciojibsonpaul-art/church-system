@@ -198,8 +198,18 @@ export async function submitRequest({
   restInsert,
   sendRequestEmail,
 }) {
+  // Clean up empty strings and convert to null for optional fields
+  const cleanPayload = Object.entries(payload).reduce((acc, [key, value]) => {
+    if (value === "" || value === null || value === undefined) {
+      // Don't include empty/null values to let the database defaults handle it
+      return acc;
+    }
+    acc[key] = value;
+    return acc;
+  }, {});
+
   const fullPayload = {
-    ...payload,
+    ...cleanPayload,
     status: "Pending",
     user_id: user.id,
     submitter_email: user.email || null,
@@ -207,14 +217,20 @@ export async function submitRequest({
       user.user_metadata?.contact_number || user.phone || null,
   };
 
+  console.log(`[submitRequest] Submitting to ${table}:`, fullPayload);
+
   let attempt = await restInsert(table, [fullPayload]);
   if (attempt.error) {
+    console.warn(`[submitRequest] Full payload failed, retrying without optional fields:`, attempt.error);
     const fallback = { ...fullPayload };
     delete fallback.user_id;
     delete fallback.submitter_email;
     delete fallback.submitter_phone;
     const retry = await restInsert(table, [fallback]);
-    if (retry.error) throw new Error(retry.error.message);
+    if (retry.error) {
+      console.error(`[submitRequest] Retry also failed:`, retry.error);
+      throw new Error(retry.error.message);
+    }
   }
 
   // Fire-and-forget email
