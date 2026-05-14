@@ -311,7 +311,8 @@ function LoginPage() {
 
     setRegisterLoading(true);
     try {
-      const { data: signupData, error } = await supabase.auth.signUp({
+      // 1. Sign up the user
+      const { data: signupData, error: signupError } = await supabase.auth.signUp({
         email: registerData.email,
         password: registerData.password,
         options: {
@@ -324,29 +325,41 @@ function LoginPage() {
         },
       });
       
-      if (error) {
-        if (/already registered|user already exists|already signed up/i.test(error.message)) {
+      if (signupError) {
+        if (/already registered|user already exists|already signed up/i.test(signupError.message)) {
           throw new Error("This email is already registered. Please sign in instead.");
         }
-        throw error;
+        throw signupError;
       }
 
-      const newUserId = signupData?.user?.id;
-
-      // Automatically assign the "ministry" role in the backend if selected
-      if (newUserId && registerData.accountType === "ministry") {
+      // 2. Assign Role if user was created successfully
+      const createdUser = signupData?.user;
+      if (createdUser?.id && registerData.accountType === "ministry") {
+        console.log("[Register] Assigning ministry role to user:", createdUser.id);
+        
+        // We use a standard insert into your user_roles table
         const { error: roleError } = await supabase
           .from("user_roles")
-          .upsert({ user_id: newUserId, role: "ministry" });
+          .insert({ 
+            user_id: createdUser.id, 
+            role: "ministry" 
+          });
           
-        if (roleError) console.error("Warning: Could not assign ministry role:", roleError);
+        if (roleError) {
+          console.error("Critical Error: Could not assign ministry role:", roleError.message);
+          // Optional: You might want to throw this error so the user knows something went wrong
+          // throw new Error("Account created, but failed to assign Ministry permissions. Please contact admin.");
+        }
       }
 
+      // 3. Handle immediate login vs confirmation email
       if (signupData?.session) {
+        // If "Confirm Email" is OFF in Supabase, they login immediately
         navigate("/", { replace: true });
         return;
       }
 
+      // If "Confirm Email" is ON, show the check inbox screen
       setRegisteredEmail(registerData.email);
     } catch (err) {
       setRegisterError(err.message);
