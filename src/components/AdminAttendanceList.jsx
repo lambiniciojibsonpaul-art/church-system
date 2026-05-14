@@ -11,6 +11,13 @@ function AdminAttendanceList() {
     fetchEvents();
   }, []);
 
+  // Fetch data whenever selectedEvent changes automatically
+  useEffect(() => {
+    if (selectedEvent) {
+      fetchAttendance();
+    }
+  }, [selectedEvent]);
+
   const fetchEvents = async () => {
     const { data } = await supabase.from("events").select("id, title").order("title");
     setEvents(data || []);
@@ -21,14 +28,17 @@ function AdminAttendanceList() {
     if (!selectedEvent) return;
     setLoading(true);
     
-    // We query the VIEW we created in SQL, not the raw table!
     const { data, error } = await supabase
       .from("attendance_details")
       .select("*")
       .eq("event_id", selectedEvent)
       .order("check_in_time", { ascending: false });
 
-    if (!error) setAttendance(data || []);
+    if (error) {
+      console.error("Fetch error:", error.message);
+    } else {
+      setAttendance(data || []);
+    }
     setLoading(false);
   };
 
@@ -49,7 +59,6 @@ function AdminAttendanceList() {
         </div>
 
         <div className="bg-white rounded-[2rem] shadow-xl border border-gray-100 overflow-hidden">
-          {/* Filter Bar */}
           <div className="p-8 bg-gray-50 border-b border-gray-100 flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-4 w-full md:w-auto">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
@@ -72,7 +81,6 @@ function AdminAttendanceList() {
             </button>
           </div>
 
-          {/* Data Table */}
           <div className="p-8">
             {!selectedEvent ? (
               <div className="text-center py-20 text-gray-400 italic font-serif">
@@ -97,20 +105,34 @@ function AdminAttendanceList() {
                         </td>
                       </tr>
                     ) : (
-                      attendance.map((row, idx) => (
-                        <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                          <td className="p-4 font-medium text-gray-800">{row.full_name || "Unnamed User"}</td>
-                          <td className="p-4 text-sm text-gray-500">{row.email}</td>
-                          <td className="p-4">
-                            <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase bg-gray-100 text-gray-600">
-                              {row.role || "Parishioner"}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right text-sm text-gray-500">
-                            {new Date(row.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </td>
-                        </tr>
-                      ))
+                      attendance.map((row, idx) => {
+                        // FIXED: Dynamic Name Detection
+                        // Checks for full_name, then first+last combinations
+                        const displayName = row.full_name 
+                          ? row.full_name 
+                          : (row.first_name || row.last_name) 
+                            ? `${row.first_name || ''} ${row.last_name || ''}`.trim()
+                            : row.email?.split('@')[0] || "Unnamed User";
+
+                        return (
+                          <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                            <td className="p-4 font-medium text-gray-800 capitalize">
+                              {displayName}
+                            </td>
+                            <td className="p-4 text-sm text-gray-500 lowercase">{row.email}</td>
+                            <td className="p-4">
+                              <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
+                                row.role === 'admin' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {row.role || "Parishioner"}
+                              </span>
+                            </td>
+                            <td className="p-4 text-right text-sm text-gray-500">
+                              {new Date(row.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
