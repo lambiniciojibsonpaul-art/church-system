@@ -16,10 +16,10 @@ import AdminQRCenter from './components/AdminQRCenter';
 import RequirePriest from './components/RequirePriest';
 import PriestDashboard from './components/PriestDashboard';
 import StaffDashboard from "./components/StaffDashboard";
+import ManageUsers from './components/ManageUsers'; // <-- Your new split-screen page
 
 // --- Auth Folder Imports ---
 import CheckInPage from './components/Auth/CheckInPage';
-import AdminManageUsers from './components/Auth/AdminManageUsers';
 import UpdatePassword from './components/Auth/UpdatePassword';
 
 function App() {
@@ -37,6 +37,8 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/ministries" element={<MinistriesPage />} />
             <Route path="/give" element={<GivePage />} />
+            
+            {/* Staff */}
             <Route path="/staff-dashboard" element={<StaffDashboard />} />
 
             {/* QR Check-In (component handles its own login gate) */}
@@ -45,10 +47,12 @@ function App() {
             {/* Admin (gated by RequireAdmin) */}
             <Route path="/admin" element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />
             <Route path="/admin/schedules" element={<RequireAdmin><AdminSchedules /></RequireAdmin>} />
-            <Route path="/admin/manage-users" element={<RequireAdmin><AdminManageUsers /></RequireAdmin>} />
             <Route path="/admin/reports" element={<RequireAdmin><AdminReports /></RequireAdmin>} />
             <Route path="/admin/attendance-list" element={<RequireAdmin><AdminAttendanceList /></RequireAdmin>} />
             <Route path="/admin/qr-generator" element={<RequireAdmin><AdminQRCenter /></RequireAdmin>} />
+            
+            {/* FIXED: The new ManageUsers is now the only route for this path, and it is properly protected */}
+            <Route path="/admin/manage-users" element={<RequireAdmin><ManageUsers /></RequireAdmin>} />
 
             {/* PRIEST DASHBOARD (gated by RequirePriest) */}
             <Route path="/priest-dashboard" element={<RequirePriest><PriestDashboard /></RequirePriest>} />
