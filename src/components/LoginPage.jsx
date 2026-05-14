@@ -311,7 +311,10 @@ function LoginPage() {
 
     setRegisterLoading(true);
     try {
-      const { data: signupData, error } = await supabase.auth.signUp({
+      console.log("[Register] Starting signup for:", registerData.email, "as", registerData.accountType);
+      
+      // 1. Sign up the user
+      const { data: signupData, error: signupError } = await supabase.auth.signUp({
         email: registerData.email,
         password: registerData.password,
         options: {
@@ -324,24 +327,54 @@ function LoginPage() {
         },
       });
       
-      if (error) {
-        if (/already registered|user already exists|already signed up/i.test(error.message)) {
+      if (signupError) {
+        console.error("[Register] Signup error:", signupError);
+        if (/already registered|user already exists|already signed up/i.test(signupError.message)) {
           throw new Error("This email is already registered. Please sign in instead.");
         }
-        throw error;
+        throw signupError;
       }
 
-      // NOTE: Manual role assignment removed from here! 
-      // The Supabase SQL Trigger handles assigning the 'ministry' role instantly and securely.
+      console.log("[Register] Signup successful, user ID:", signupData?.user?.id);
 
+      // 2. Ensure user_roles entry exists (upsert handles both create and update)
+      const createdUser = signupData?.user;
+      if (createdUser?.id) {
+        const userRole = registerData.accountType === "ministry" ? "ministry" : "parishioner";
+        console.log(`[Register] Ensuring user_roles entry for user: ${createdUser.id} with role: ${userRole}`);
+        
+        const { error: roleError } = await supabase
+          .from("user_roles")
+          .upsert(
+            { 
+              user_id: createdUser.id, 
+              role: userRole
+            },
+            { onConflict: "user_id" }
+          );
+          
+        if (roleError) {
+          console.error("[Register] Role assignment error:", roleError);
+          throw new Error(`Failed to set up user permissions: ${roleError.message}`);
+        }
+        
+        console.log("[Register] User role assigned successfully");
+      }
+
+      // 3. Handle immediate login vs confirmation email
       if (signupData?.session) {
+        // If "Confirm Email" is OFF in Supabase, they login immediately
+        console.log("[Register] Immediate session active, redirecting to home");
         navigate("/", { replace: true });
         return;
       }
 
+      // If "Confirm Email" is ON, show the check inbox screen
+      console.log("[Register] Confirmation email pending, showing check inbox screen");
       setRegisteredEmail(registerData.email);
     } catch (err) {
-      setRegisterError(err.message);
+      console.error("[Register] Caught error:", err);
+      setRegisterError(err.message || "An unexpected error occurred. Please try again.");
     } finally {
       setRegisterLoading(false);
     }
@@ -575,7 +608,7 @@ function LoginPage() {
                       onChange={handleRegisterChange}
                       className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]"
                     />
-                    Standard Parishioner
+                    Parishioner
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-700">
                     <input
