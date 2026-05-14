@@ -1,70 +1,254 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import Header from "./Header";
 import { supabase } from "../supabaseClient";
+import { restSelect, restUpdate, restInsert } from "../supabaseRest";
+import { useAuth } from "../contexts/useAuth";
+import { sendApprovalEmail } from "../emailNotifications";
 import { QRCodeCanvas } from "qrcode.react"; 
-import jsPDF from "jspdf"; // Ensure you ran: npm install jspdf
+import jsPDF from "jspdf"; 
+
+// ----------------------------------------------------------------------------
+// CLONED ADMIN CONFIGURATION FOR STAFF
+// ----------------------------------------------------------------------------
+const PRIEST_OPTIONS = [
+  "Rev. Fr. Pedro Bautista",
+  "Rev. Fr. Juan Dela Cruz",
+  "Rev. Fr. Michael Smith",
+  "Rev. Fr. Antonio Luna",
+  "Rev. Fr. Gabriel Santos"
+];
+
+function formatDate(d) {
+  if (!d) return "";
+  try {
+    return new Date(d).toLocaleDateString();
+  } catch {
+    return "";
+  }
+}
+
+const TAB_CONFIG = {
+  Baptisms: {
+    table: "baptisms",
+    isSacrament: true,
+    title: (r) => `${r.child_first_name || ""} ${r.child_last_name || ""}`.trim() || "Baptism",
+    columns: [
+      { label: "Child's Name", value: (r) => `${r.child_first_name || ""} ${r.child_last_name || ""}`.trim() },
+      { label: "Pref. Date", value: (r) => formatDate(r.preferred_date) },
+    ],
+    eventBuilder: (r, priest, userId) => ({
+      creator_id: userId,
+      title: `Baptism — ${r.child_first_name || ""} ${r.child_last_name || ""}`.trim(),
+      event_class: "Baptism",
+      priest_name: priest,
+      event_date: r.preferred_date,
+      event_time: "10:00",
+      location: "Main Altar",
+      description: `Baptism ceremony for ${r.child_first_name || ""} ${r.child_last_name || ""}.`,
+      status: "Active"
+    }),
+  },
+  "Holy Communion": {
+    table: "holy_communions",
+    isSacrament: true,
+    title: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() || "Communion",
+    columns: [
+      { label: "Candidate", value: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() },
+      { label: "Pref. Date", value: (r) => formatDate(r.date_of_communion) },
+    ],
+    eventBuilder: (r, priest, userId) => ({
+      creator_id: userId,
+      title: `First Holy Communion — ${r.child_first_name || ""} ${r.child_surname || ""}`.trim(),
+      event_class: "Holy Communion",
+      priest_name: priest,
+      event_date: r.date_of_communion,
+      event_time: r.time_of_communion || "09:00",
+      location: "Main Altar",
+      description: `First Holy Communion for ${r.child_first_name || ""} ${r.child_surname || ""}.`,
+      status: "Active"
+    }),
+  },
+  Confirmation: {
+    table: "confirmations",
+    isSacrament: true,
+    title: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() || "Confirmation",
+    columns: [
+      { label: "Candidate", value: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() },
+      { label: "Pref. Date", value: (r) => formatDate(r.date_of_confirmation) },
+    ],
+    eventBuilder: (r, priest, userId) => ({
+      creator_id: userId,
+      title: `Confirmation — ${r.child_first_name || ""} ${r.child_surname || ""}`.trim(),
+      event_class: "Confirmation",
+      priest_name: priest,
+      event_date: r.date_of_confirmation,
+      event_time: r.time_of_confirmation || "10:00",
+      location: "Main Altar",
+      description: `Confirmation for ${r.child_first_name || ""} ${r.child_surname || ""}.`,
+      status: "Active"
+    }),
+  },
+  Weddings: {
+    table: "weddings",
+    isSacrament: true,
+    title: (r) => `${r.groom_first_name || ""} ${r.groom_surname || ""} & ${r.bride_first_name || ""} ${r.bride_surname || ""}`.trim(),
+    columns: [
+      { label: "Couple", value: (r) => `${r.groom_first_name || ""} ${r.groom_surname || ""} & ${r.bride_first_name || ""} ${r.bride_surname || ""}`.trim() },
+      { label: "Pref. Date", value: (r) => formatDate(r.wedding_date) },
+    ],
+    eventBuilder: (r, priest, userId) => ({
+      creator_id: userId,
+      title: `Wedding — ${r.groom_first_name || ""} ${r.groom_surname || ""} & ${r.bride_first_name || ""} ${r.bride_surname || ""}`.trim(),
+      event_class: "Wedding",
+      priest_name: priest,
+      event_date: r.wedding_date,
+      event_time: r.wedding_time || "14:00",
+      location: "Main Altar",
+      description: `Wedding ceremony.`,
+      status: "Active"
+    }),
+  },
+  "Mass Intentions": {
+    table: "mass_intentions",
+    isSacrament: true,
+    title: (r) => `${r.intention_type || ""} for ${r.names_in_intention || r.full_name || ""}`.trim(),
+    columns: [
+      { label: "For", value: (r) => r.names_in_intention || "—" },
+      { label: "Pref. Date", value: (r) => formatDate(r.preferred_date) },
+    ],
+    eventBuilder: (r, priest, userId) => ({
+      creator_id: userId,
+      title: `Mass Intention — ${r.intention_type || ""}`.trim(),
+      event_class: "Mass",
+      priest_name: priest,
+      event_date: r.preferred_date,
+      event_time: r.preferred_time || "06:00",
+      location: r.location || "Parish Church",
+      description: `Mass intention: ${r.intention_type}. For: ${r.names_in_intention || ""}.`,
+      status: "Active"
+    }),
+  },
+  "Sacraments & Liturgical": {
+    table: "sacraments_liturgical",
+    isSacrament: true,
+    title: (r) => r.request_type || "Sacrament Service",
+    columns: [
+      { label: "Service", value: (r) => r.request_type },
+      { label: "Date", value: (r) => formatDate(r.request_date) },
+    ],
+    eventBuilder: (r, priest, userId) => ({
+      creator_id: userId,
+      title: `${r.request_type} — ${r.requested_by || ""}`.trim(),
+      event_class: r.request_type || "Liturgical",
+      priest_name: priest,
+      event_date: r.request_date,
+      event_time: r.request_time || "10:00",
+      location: r.address || "Parish",
+      description: r.notes || `${r.request_type} requested by ${r.requested_by}.`,
+      status: "Active"
+    }),
+  },
+  "Facilities Booking": {
+    table: "facilities_bookings",
+    isSacrament: false,
+    title: (r) => `${r.facility || "Facility"} — ${r.event_type || r.event_purpose || ""}`.trim(),
+    columns: [
+      { label: "Facility", value: (r) => r.facility },
+      { label: "Start", value: (r) => formatDate(r.start_date) },
+    ],
+  },
+  Certifications: {
+    table: "certification_requests",
+    isSacrament: false,
+    title: (r) => `${r.certificate_type || "Certificate"} — ${r.record_holder_first_name || ""} ${r.record_holder_surname || ""}`.trim(),
+    columns: [
+      { label: "Type", value: (r) => r.certificate_type },
+      { label: "Record Holder", value: (r) => `${r.record_holder_first_name || ""} ${r.record_holder_surname || ""}`.trim() },
+    ],
+  },
+};
+
+const TAB_NAMES = Object.keys(TAB_CONFIG);
 
 function StaffDashboard() {
-  const [activeTab, setActiveTab] = useState("events"); // "events" | "certificates" | "qr-generator"
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState("requests"); // "requests" | "events" | "certificates" | "qr-generator"
   
+  // States for Approved Items (Events, Certs, QR)
+  const [items, setItems] = useState([]);
+  const [itemsLoading, setItemsLoading] = useState(true);
   const [viewingDetails, setViewingDetails] = useState(null);
   const [activeQR, setActiveQR] = useState(null); 
 
+  // States for Pending Requests
+  const [requests, setRequests] = useState({});
+  const [requestsLoading, setRequestsLoading] = useState(true);
+  const [activeServiceTab, setActiveServiceTab] = useState("All Services");
+
+  // Approval/Rejection Modals
+  const [acceptingRequest, setAcceptingRequest] = useState(null);
+  const [assignedPriest, setAssignedPriest] = useState("");
+  const [acceptSubmitting, setAcceptSubmitting] = useState(false);
+
+  const [rejectingRequest, setRejectingRequest] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [rejectSubmitting, setRejectSubmitting] = useState(false);
+
   useEffect(() => {
+    fetchPendingRequests();
     fetchApprovedItems();
   }, []);
 
+  // --- FETCH PENDING REQUESTS ---
+  const fetchPendingRequests = async () => {
+    setRequestsLoading(true);
+    const entries = Object.entries(TAB_CONFIG);
+    const results = await Promise.allSettled(
+      entries.map(([, cfg]) =>
+        restSelect(cfg.table, {
+          match: { status: "Pending" },
+          order: "created_at.asc", // Oldest first
+          timeoutMs: 12000,
+        })
+      )
+    );
+
+    const merged = {};
+    entries.forEach(([tabName], idx) => {
+      const r = results[idx];
+      if (r.status === "fulfilled" && r.value?.data) {
+        merged[tabName] = r.value.data;
+      } else {
+        merged[tabName] = [];
+      }
+    });
+    setRequests(merged);
+    setRequestsLoading(false);
+  };
+
+  // --- FETCH APPROVED ITEMS ---
   const fetchApprovedItems = async () => {
-    setLoading(true);
+    setItemsLoading(true);
     let allItems = [];
     try {
-      // 1. Fetch Approved Baptisms
-      const { data: baptisms } = await supabase
-        .from("baptisms")
-        .select("*")
-        .eq("status", "Approved");
-      
+      const { data: baptisms } = await supabase.from("baptisms").select("*").eq("status", "Approved");
       if (baptisms) {
-        const mapped = baptisms.map((b) => ({
-          ...b,
-          request_type: "Baptism",
-          display_date: b.preferred_date || b.created_at,
-          display_name: `${b.child_first_name || ''} ${b.child_last_name || ''}`,
-        }));
-        allItems = [...allItems, ...mapped];
+        allItems = [...allItems, ...baptisms.map((b) => ({
+          ...b, request_type: "Baptism", display_date: b.preferred_date || b.created_at, display_name: `${b.child_first_name || ''} ${b.child_last_name || ''}`,
+        }))];
       }
 
-      // 2. Fetch Approved Weddings
-      const { data: weddings } = await supabase
-        .from("weddings")
-        .select("*")
-        .eq("status", "Approved");
-      
+      const { data: weddings } = await supabase.from("weddings").select("*").eq("status", "Approved");
       if (weddings) {
-        const mapped = weddings.map((w) => ({
-          ...w,
-          request_type: "Wedding",
-          display_date: w.wedding_date || w.created_at,
-          display_name: `${w.groom_name || 'Groom'} & ${w.bride_name || 'Bride'}`,
-        }));
-        allItems = [...allItems, ...mapped];
+        allItems = [...allItems, ...weddings.map((w) => ({
+          ...w, request_type: "Wedding", display_date: w.wedding_date || w.created_at, display_name: `${w.groom_name || 'Groom'} & ${w.bride_name || 'Bride'}`,
+        }))];
       }
 
-      // 3. Fetch Standard Events
-      const { data: events } = await supabase
-        .from("events")
-        .select("*")
-        .neq("status", "Cancelled");
+      const { data: events } = await supabase.from("events").select("*").eq("status", "Active");
       if (events) {
         allItems = [...allItems, ...events.map(e => ({ 
-          ...e, 
-          request_type: "Parish Event", 
-          display_date: e.event_date, 
-          display_name: e.title, 
-          preferred_time: e.event_time 
+          ...e, request_type: "Parish Event", display_date: e.event_date, display_name: e.title, preferred_time: e.event_time 
         }))];
       }
 
@@ -73,8 +257,102 @@ function StaffDashboard() {
     } catch (err) {
       console.error("Fetch error:", err);
     } finally {
-      setLoading(false);
+      setItemsLoading(false);
     }
+  };
+
+  // --- APPROVAL LOGIC ---
+  const resolveTabFor = (req) => req._tab || activeServiceTab;
+  const resolveConfigFor = (req) => req._config || TAB_CONFIG[resolveTabFor(req)];
+
+  const confirmAccept = async () => {
+    if (!acceptingRequest) return;
+    const reqTab = resolveTabFor(acceptingRequest);
+    const reqConfig = resolveConfigFor(acceptingRequest);
+    
+    if (reqConfig.isSacrament && !assignedPriest) {
+      return alert("Please assign a priest before approving.");
+    }
+
+    setAcceptSubmitting(true);
+
+    // 1. Update status
+    const { error: updateErr } = await restUpdate(
+      reqConfig.table,
+      { id: acceptingRequest.id },
+      { status: "Approved" }
+    );
+
+    if (updateErr) {
+      setAcceptSubmitting(false);
+      return alert("Error approving request: " + updateErr.message);
+    }
+
+    // 2. Create Event
+    if (reqConfig.isSacrament && reqConfig.eventBuilder) {
+      const eventPayload = {
+        ...reqConfig.eventBuilder(acceptingRequest, assignedPriest, user?.id || null),
+        source_table: reqConfig.table,
+        source_id: acceptingRequest.id,
+      };
+      if (eventPayload?.event_date) {
+        await restInsert("events", [eventPayload]);
+      }
+    }
+
+    // 3. Send Email
+    if (acceptingRequest.submitter_email) {
+      sendApprovalEmail({
+        to: acceptingRequest.submitter_email,
+        serviceName: reqTab.toLowerCase(),
+        eventDate: formatDate(
+          acceptingRequest.preferred_date || acceptingRequest.wedding_date || acceptingRequest.date_of_confirmation || acceptingRequest.date_of_communion || acceptingRequest.start_date || acceptingRequest.request_date
+        ),
+        eventTime: acceptingRequest.preferred_time || acceptingRequest.wedding_time || acceptingRequest.time_of_confirmation || acceptingRequest.time_of_communion || acceptingRequest.start_time || "",
+        location: acceptingRequest.location || "Parish",
+        priestName: assignedPriest,
+      });
+    }
+
+    // 4. Update UI
+    setRequests((prev) => ({
+      ...prev,
+      [reqTab]: prev[reqTab].filter((r) => r.id !== acceptingRequest.id),
+    }));
+    
+    fetchApprovedItems(); // Refresh events and certs
+    setAcceptingRequest(null);
+    setAssignedPriest("");
+    setAcceptSubmitting(false);
+  };
+
+  const confirmReject = async () => {
+    if (!rejectingRequest) return;
+    if (!rejectionReason.trim()) return alert("Please provide a reason for rejection.");
+    
+    const reqTab = resolveTabFor(rejectingRequest);
+    const reqConfig = resolveConfigFor(rejectingRequest);
+    setRejectSubmitting(true);
+
+    const { error } = await restUpdate(
+      reqConfig.table,
+      { id: rejectingRequest.id },
+      { status: "Rejected", rejection_remarks: rejectionReason }
+    );
+
+    if (error) {
+      setRejectSubmitting(false);
+      return alert("Error rejecting request: " + error.message);
+    }
+
+    setRequests((prev) => ({
+      ...prev,
+      [reqTab]: prev[reqTab].filter((r) => r.id !== rejectingRequest.id),
+    }));
+
+    setRejectingRequest(null);
+    setRejectionReason("");
+    setRejectSubmitting(false);
   };
 
   // --- PDF GENERATION LOGIC ---
@@ -83,14 +361,12 @@ function StaffDashboard() {
     const pageWidth = doc.internal.pageSize.getWidth();
     const centerX = pageWidth / 2;
 
-    // 1. Formal Border
-    doc.setDrawColor(181, 158, 116); // #B59E74 Gold
+    doc.setDrawColor(181, 158, 116);
     doc.setLineWidth(1.5);
     doc.rect(10, 10, pageWidth - 20, 287); 
     doc.setLineWidth(0.5);
     doc.rect(12, 12, pageWidth - 24, 283);
 
-    // 2. Header
     doc.setFont("times", "bold");
     doc.setFontSize(22);
     doc.setTextColor(181, 158, 116); 
@@ -101,14 +377,12 @@ function StaffDashboard() {
     doc.setFont("times", "italic");
     doc.text("Quezon City, Philippines", centerX, 48, { align: "center" });
 
-    // 3. Title
     doc.setFont("times", "bold");
     doc.setFontSize(32);
     doc.setTextColor(0, 0, 0);
     const title = item.request_type === "Baptism" ? "CERTIFICATE OF BAPTISM" : "CERTIFICATE OF MARRIAGE";
     doc.text(title, centerX, 80, { align: "center" });
 
-    // 4. Content
     doc.setFont("times", "normal");
     doc.setFontSize(16);
     doc.setTextColor(60, 60, 60);
@@ -135,7 +409,6 @@ function StaffDashboard() {
       doc.text(new Date(item.wedding_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), centerX, 150, { align: "center" });
     }
 
-    // 5. Footer
     doc.setFontSize(12);
     doc.setFont("times", "italic");
     doc.text("Given this day under the seal of the Parish.", centerX, 180, { align: "center" });
@@ -153,6 +426,7 @@ function StaffDashboard() {
     doc.save(fileName);
   };
 
+  // --- RENDER HELPERS ---
   const getVisibleItems = () => {
     if (activeTab === "certificates") {
       return items.filter(i => i.request_type === "Baptism" || i.request_type === "Wedding");
@@ -160,7 +434,11 @@ function StaffDashboard() {
     return items;
   };
 
-  const visibleItems = getVisibleItems();
+  const totalPending = TAB_NAMES.reduce((sum, t) => sum + (requests[t]?.length || 0), 0);
+  
+  const pendingData = activeServiceTab === "All Services"
+    ? TAB_NAMES.flatMap(t => (requests[t] || []).map(r => ({ ...r, _tab: t, _config: TAB_CONFIG[t] })))
+    : (requests[activeServiceTab] || []).map(r => ({ ...r, _tab: activeServiceTab, _config: TAB_CONFIG[activeServiceTab] }));
 
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans relative">
@@ -168,59 +446,181 @@ function StaffDashboard() {
 
       {!activeQR && (
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-28 sm:pt-32 pb-12">
-          <div className="mb-8 border-b border-gray-200 pb-6">
-            <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] uppercase tracking-widest font-medium">
-              Staff Portal
-            </h1>
-            <p className="text-gray-500 font-serif italic mt-2 text-sm sm:text-base">
-              Prepare for upcoming events, generate certificates, and manage attendance.
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 mb-8">
-            <button onClick={() => setActiveTab("events")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all w-full sm:w-auto ${activeTab === "events" ? "bg-[#B59E74] text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>📅 Approved Events</button>
-            <button onClick={() => setActiveTab("certificates")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all w-full sm:w-auto ${activeTab === "certificates" ? "bg-[#B59E74] text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>📜 Certificates</button>
-            <button onClick={() => setActiveTab("qr-generator")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all w-full sm:w-auto ${activeTab === "qr-generator" ? "bg-gray-800 text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>🔳 Generate QR</button>
-          </div>
-
-          {loading ? (
-            <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div></div>
-          ) : visibleItems.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center"><div className="text-4xl mb-4">📭</div><h3 className="text-xl font-serif text-gray-800">No events found.</h3></div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              {visibleItems.map((item) => (
-                <div key={`${item.request_type}-${item.id}`} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col h-full relative overflow-hidden">
-                  <div className={`absolute top-0 left-0 w-1.5 h-full ${item.request_type === "Wedding" ? "bg-rose-400" : item.request_type === "Baptism" ? "bg-blue-400" : "bg-[#B59E74]"}`}></div>
-                  <div className="flex justify-between items-start mb-3">
-                    <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-100 text-gray-600">{item.request_type}</span>
-                  </div>
-                  <h3 className="text-xl font-serif text-gray-800 font-medium leading-tight mb-2 pr-4">{item.display_name}</h3>
-                  <div className="text-sm text-gray-500 flex flex-col gap-1 mb-6 flex-grow">
-                    <div className="flex items-center gap-2"><span>🗓️</span> {new Date(item.display_date).toLocaleDateString()}</div>
-                    <div className="flex items-center gap-2"><span>⏰</span> {item.preferred_time || item.wedding_time || "TBD"}</div>
-                    {item.location && <div className="flex items-center gap-2"><span>📍</span> {item.location}</div>}
-                  </div>
-                  <div className="mt-auto border-t border-gray-100 pt-4">
-                    {activeTab === "events" && <button onClick={() => setViewingDetails(item)} className="w-full bg-gray-50 text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors">View Deep Details</button>}
-                    {activeTab === "certificates" && (
-                      <button onClick={() => generateCertificate(item)} className="w-full bg-white border-2 border-[#B59E74] text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2">
-                        📜 Download Certificate
-                      </button>
-                    )}
-                    {activeTab === "qr-generator" && (
-                      <button onClick={() => setActiveQR(item)} className="w-full bg-gray-800 hover:bg-black text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2">
-                        <span>🔳</span> Show QR Code
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+          <div className="mb-8 border-b border-gray-200 pb-6 flex justify-between items-end">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] uppercase tracking-widest font-medium">
+                Staff Portal
+              </h1>
+              <p className="text-gray-500 font-serif italic mt-2 text-sm sm:text-base">
+                Review requests, generate certificates, and manage attendance.
+              </p>
             </div>
+            {totalPending > 0 && (
+              <div className="hidden sm:flex items-center gap-2 bg-red-50 text-red-600 px-4 py-2 rounded-xl border border-red-100">
+                <span className="font-bold text-lg">{totalPending}</span>
+                <span className="text-xs uppercase tracking-widest font-bold">Pending<br/>Requests</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2 sm:gap-4 mb-8">
+            <button onClick={() => setActiveTab("requests")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all relative ${activeTab === "requests" ? "bg-[#B59E74] text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>
+              🔔 Pending Requests
+              {totalPending > 0 && <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white shadow-sm">{totalPending}</span>}
+            </button>
+            <button onClick={() => setActiveTab("events")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all ${activeTab === "events" ? "bg-[#B59E74] text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>📅 Approved Events</button>
+            <button onClick={() => setActiveTab("certificates")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all ${activeTab === "certificates" ? "bg-[#B59E74] text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>📜 Certificates</button>
+            <button onClick={() => setActiveTab("qr-generator")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all ${activeTab === "qr-generator" ? "bg-gray-800 text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>🔳 Generate QR</button>
+          </div>
+
+          {/* --- PENDING REQUESTS VIEW --- */}
+          {activeTab === "requests" && (
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 sm:p-8 animate-fade-in-up">
+              <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 border-b border-gray-100 pb-6">
+                <h2 className="text-xl font-serif text-gray-800 font-medium uppercase tracking-widest">Awaiting Approval</h2>
+                <select 
+                  value={activeServiceTab} 
+                  onChange={(e) => setActiveServiceTab(e.target.value)}
+                  className="w-full sm:w-auto p-3 rounded-xl border-2 border-[#B59E74]/40 hover:border-[#B59E74] outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-[#B59E74] cursor-pointer"
+                >
+                  <option value="All Services">All Services ({totalPending})</option>
+                  {TAB_NAMES.map(tab => (
+                    <option key={tab} value={tab}>{tab} ({(requests[tab] || []).length})</option>
+                  ))}
+                </select>
+              </div>
+
+              {requestsLoading ? (
+                <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div></div>
+              ) : pendingData.length === 0 ? (
+                <div className="text-center py-16 text-gray-400 italic font-serif">No pending requests for {activeServiceTab}.</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {pendingData.map((req) => (
+                    <div key={`${req._tab}-${req.id}`} className="border border-gray-100 rounded-2xl p-6 bg-gray-50/50 hover:bg-white transition-colors hover:shadow-md flex flex-col">
+                      <div className="flex justify-between items-start mb-3">
+                        <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-[#B59E74]/10 text-[#B59E74]">{req._tab}</span>
+                        <span className="text-xs text-gray-400 font-serif">{new Date(req.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <h3 className="text-lg font-serif text-gray-800 font-medium mb-4">{req._config.title(req)}</h3>
+                      
+                      <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
+                        {req._config.columns.map(col => (
+                          <div key={col.label}>
+                            <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-0.5">{col.label}</p>
+                            <p className="font-medium text-gray-700">{col.value(req) || "—"}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-auto flex gap-2 pt-4 border-t border-gray-200">
+                        <button onClick={() => setAcceptingRequest(req)} className="flex-1 bg-green-50 hover:bg-green-600 text-green-700 hover:text-white py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✓ Accept</button>
+                        <button onClick={() => setRejectingRequest(req)} className="flex-1 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✕ Reject</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* --- APPROVED ITEMS VIEW --- */}
+          {activeTab !== "requests" && (
+            itemsLoading ? (
+              <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div></div>
+            ) : getVisibleItems().length === 0 ? (
+              <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center"><div className="text-4xl mb-4">📭</div><h3 className="text-xl font-serif text-gray-800">No active records found.</h3></div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 animate-fade-in-up">
+                {getVisibleItems().map((item) => (
+                  <div key={`${item.request_type}-${item.id}`} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col h-full relative overflow-hidden group hover:shadow-md transition-shadow">
+                    <div className={`absolute top-0 left-0 w-1.5 h-full ${item.request_type === "Wedding" ? "bg-rose-400" : item.request_type === "Baptism" ? "bg-blue-400" : "bg-[#B59E74]"}`}></div>
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-100 text-gray-600">{item.request_type}</span>
+                    </div>
+                    <h3 className="text-xl font-serif text-gray-800 font-medium leading-tight mb-2 pr-4">{item.display_name}</h3>
+                    <div className="text-sm text-gray-500 flex flex-col gap-1 mb-6 flex-grow">
+                      <div className="flex items-center gap-2"><span>🗓️</span> {new Date(item.display_date).toLocaleDateString()}</div>
+                      <div className="flex items-center gap-2"><span>⏰</span> {item.preferred_time || item.wedding_time || "TBD"}</div>
+                      {item.location && <div className="flex items-center gap-2"><span>📍</span> {item.location}</div>}
+                    </div>
+                    <div className="mt-auto border-t border-gray-100 pt-4">
+                      {activeTab === "events" && <button onClick={() => setViewingDetails(item)} className="w-full bg-gray-50 text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors">View Details</button>}
+                      {activeTab === "certificates" && (
+                        <button onClick={() => generateCertificate(item)} className="w-full bg-white border-2 border-[#B59E74] text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2">
+                          📜 Download Certificate
+                        </button>
+                      )}
+                      {activeTab === "qr-generator" && (
+                        <button onClick={() => setActiveQR(item)} className="w-full bg-gray-800 hover:bg-black text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2">
+                          <span>🔳</span> Show QR Code
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
           )}
         </main>
       )}
 
+      {/* --- MODALS --- */}
+      {/* ACCEPT MODAL */}
+      {acceptingRequest && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+            <div className="bg-green-50 px-8 py-6 border-b border-green-100">
+              <h2 className="text-xl font-serif text-green-800 font-medium uppercase tracking-widest">Approve Request</h2>
+              <p className="text-sm text-green-700 italic">For {resolveConfigFor(acceptingRequest).title(acceptingRequest)}</p>
+            </div>
+            <div className="p-8 space-y-6">
+              {resolveConfigFor(acceptingRequest).isSacrament && (
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Assign Priest *</label>
+                  <select value={assignedPriest} onChange={(e) => setAssignedPriest(e.target.value)} className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white">
+                    <option value="" disabled>Select a priest…</option>
+                    {PRIEST_OPTIONS.map((p) => (<option key={p} value={p}>{p}</option>))}
+                  </select>
+                  <p className="text-xs text-gray-400 italic mt-1">The selected priest will host this on the parish events calendar.</p>
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button onClick={() => setAcceptingRequest(null)} disabled={acceptSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Cancel</button>
+                <button onClick={confirmAccept} disabled={acceptSubmitting || (resolveConfigFor(acceptingRequest).isSacrament && !assignedPriest)} className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                  {acceptSubmitting ? "Approving…" : "Approve"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REJECT MODAL */}
+      {rejectingRequest && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+            <div className="bg-red-50 px-8 py-6 border-b border-red-100">
+              <h2 className="text-xl font-serif text-red-800 font-medium uppercase tracking-widest">Reject Request</h2>
+              <p className="text-sm text-red-600 italic">For {resolveConfigFor(rejectingRequest).title(rejectingRequest)}</p>
+            </div>
+            <div className="p-8 space-y-6">
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Reason for Rejection *</label>
+                <textarea className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-red-500 outline-none h-32 text-sm resize-none" placeholder="Please specify why this request cannot be approved..." value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setRejectingRequest(null)} disabled={rejectSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Cancel</button>
+                <button onClick={confirmReject} disabled={rejectSubmitting || !rejectionReason.trim()} className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                  {rejectSubmitting ? "Rejecting..." : "Confirm"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR MODAL */}
       {activeQR && (
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center p-6 animate-fade-in">
           <button onClick={() => setActiveQR(null)} className="absolute top-6 right-6 w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors text-xl">✕</button>
@@ -236,6 +636,7 @@ function StaffDashboard() {
         </div>
       )}
 
+      {/* DETAILS MODAL */}
       {viewingDetails && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative">
@@ -252,11 +653,13 @@ function StaffDashboard() {
                   <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Child's Full Name</label><p className="font-medium text-gray-800">{viewingDetails.child_first_name} {viewingDetails.child_last_name}</p></div>
                   <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Date of Birth</label><p className="font-medium text-gray-800">{viewingDetails.child_dob ? new Date(viewingDetails.child_dob).toLocaleDateString() : "N/A"}</p></div>
                 </div>
-              ) : (
+              ) : viewingDetails.request_type === "Wedding" ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Groom's Name</label><p className="font-medium text-gray-800">{viewingDetails.groom_name || "N/A"}</p></div>
                   <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Bride's Name</label><p className="font-medium text-gray-800">{viewingDetails.bride_name || "N/A"}</p></div>
                 </div>
+              ) : (
+                <div className="text-gray-500 italic">Extended details not available for this event type.</div>
               )}
             </div>
           </div>

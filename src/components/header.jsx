@@ -96,11 +96,10 @@ function Header({ forceSolidBg = false }) {
             <Link to="/" className="hover:text-[#B59E74] transition-colors">Home</Link>
             <Link to="/about" className="hover:text-[#B59E74] transition-colors">About Us</Link>
             <Link to="/services" className="hover:text-[#B59E74] transition-colors">Services</Link>
-            <a href="#sermons" className="hover:text-[#B59E74] transition-colors">Sermons</a>
             <Link to="/events" className="hover:text-[#B59E74] transition-colors">Events</Link>
             <Link to="/ministries" className="hover:text-[#B59E74] transition-colors">Ministries</Link>
             <Link to="/give" className="hover:text-[#B59E74] transition-colors">Give</Link>
-            <Link to="/visit" className="hover:text-[#B59E74] transition-colors">Visit Us</Link>
+            <a href="https://www.google.com/maps/dir/?api=1&destination=69+San+Pedro+Bautista+St.%2C+San+Francisco+del+Monte%2C+Quezon+City%2C+Philippines%2C+1104" target="_blank" rel="noopener noreferrer" className="hover:text-[#B59E74] transition-colors">Visit Us</a>
           </nav>
 
           <div className="flex items-center gap-4 min-w-[120px] justify-end ml-auto lg:ml-0">
@@ -184,8 +183,7 @@ function Header({ forceSolidBg = false }) {
               <li><Link to="/" onClick={() => setIsOpen(false)}>Home</Link></li>
               <li><Link to="/about" onClick={() => setIsOpen(false)}>About Us</Link></li>
               <li><Link to="/services" onClick={() => setIsOpen(false)}>Services</Link></li>
-              <li><Link to="/events" onClick={() => setIsOpen(false)}>Events</Link></li>
-              <li><a href="#sermons" onClick={() => setIsOpen(false)}>Sermons</a></li>
+              <li><Link to="/events" onClick={() => setIsOpen(false)}>Events</Link></li>       
               <li><Link to="/ministries" onClick={() => setIsOpen(false)}>Ministries</Link></li>
 
               <hr className="border-gray-300/30 my-2" />
