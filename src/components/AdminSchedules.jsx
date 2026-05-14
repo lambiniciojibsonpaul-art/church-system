@@ -21,11 +21,24 @@ const EVENT_CLASSES = [
   "General Event"
 ];
 
+// The exact list of indoor facilities provided
+const INDOOR_FACILITIES = [
+  "St. Francis of Assisi Hall (2nd Floor)",
+  "St. Peter of Alcantara (Peach Room)",
+  "St. Margaret of Cortona (Green Room)",
+  "St. Louis IX (Blue Room)",
+  "Main Church",
+  "Holy Cave",
+  "Portiuncula Formation and Renewal Hall",
+  "Brother Sun Sister Moon Garden",
+  "San Damiano Garden",
+  "Chamber Room"
+];
+
 function AdminSchedules() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState([]);
-  const [facilitiesList, setFacilitiesList] = useState([]); 
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -46,12 +59,12 @@ function AdminSchedules() {
     eventTime: "",
     location: "Main Church",
     description: "",
+    isInside: true, // NEW: Tracks the Indoor/Outdoor toggle
     setting: "", 
   });
 
   useEffect(() => {
     fetchEvents();
-    fetchFacilities();
   }, []);
 
   const fetchEvents = async () => {
@@ -61,14 +74,6 @@ function AdminSchedules() {
     });
     if (data) setEvents(data);
     setLoading(false);
-  };
-
-  const fetchFacilities = async () => {
-    const { data } = await restSelect("facilities");
-    if (data) {
-      const sorted = data.map(f => f.name).sort((a, b) => a.localeCompare(b));
-      setFacilitiesList(sorted);
-    }
   };
 
   const handleChange = (e) => {
@@ -85,6 +90,7 @@ function AdminSchedules() {
       eventTime: "",
       location: "Main Church",
       description: "",
+      isInside: true, // Defaults to Indoor
       setting: "", 
     });
     setIsModalOpen(true);
@@ -461,39 +467,76 @@ function AdminSchedules() {
                 </div>
               </div>
 
+              {/* DYNAMIC INDOOR/OUTDOOR TOGGLE */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">
-                    Facility / Setting *
-                  </label>
-                  <select
-                    name="setting"
-                    required
-                    value={formData.setting}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
-                  >
-                    <option value="" disabled>Select a room or garden...</option>
-                    {facilitiesList.map(facility => (
-                      <option key={facility} value={facility}>{facility}</option>
-                    ))}
-                  </select>
+                  <label className="text-xs font-bold text-gray-600 uppercase">Setting Type</label>
+                  <div className="flex items-center gap-4 mt-2 h-full">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input 
+                        type="radio" 
+                        checked={formData.isInside === true} 
+                        onChange={() => setFormData({ ...formData, isInside: true, setting: "" })} 
+                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" 
+                      /> 
+                      Indoor
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input 
+                        type="radio" 
+                        checked={formData.isInside === false} 
+                        onChange={() => setFormData({ ...formData, isInside: false, setting: "" })} 
+                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" 
+                      /> 
+                      Outdoor
+                    </label>
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">
-                    General Location *
+                    {formData.isInside ? "Select Facility *" : "Outdoor Location *"}
                   </label>
-                  <input
-                    type="text"
-                    name="location"
-                    required
-                    value={formData.location}
-                    onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none"
-                    placeholder="e.g., Parish Grounds"
-                  />
+                  {formData.isInside ? (
+                    <select 
+                      name="setting" 
+                      required 
+                      value={formData.setting} 
+                      onChange={handleChange} 
+                      className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
+                    >
+                      <option value="" disabled>Select a Facility</option>
+                      {INDOOR_FACILITIES.map(facility => (
+                        <option key={facility} value={facility}>{facility}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input 
+                      type="text" 
+                      name="setting" 
+                      required 
+                      value={formData.setting} 
+                      onChange={handleChange} 
+                      className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" 
+                      placeholder="e.g., Parish Courtyard" 
+                    />
+                  )}
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-gray-600 uppercase">
+                  General Location *
+                </label>
+                <input
+                  type="text"
+                  name="location"
+                  required
+                  value={formData.location}
+                  onChange={handleChange}
+                  className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none"
+                  placeholder="e.g., Parish Grounds"
+                />
               </div>
 
               <div className="flex flex-col gap-1">
