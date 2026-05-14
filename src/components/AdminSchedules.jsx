@@ -3,14 +3,6 @@ import { Link } from "react-router-dom";
 import { restSelect, restInsert, restUpdate, restDelete } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
 
-const priestNames = [
-  "Rev. Fr. Pedro Bautista",
-  "Rev. Fr. Juan Dela Cruz",
-  "Rev. Fr. Michael Smith",
-  "Rev. Fr. Antonio Luna",
-  "Rev. Fr. Gabriel Santos"
-];
-
 const EVENT_CLASSES = [
   "Mass",
   "Parish Event",
@@ -37,6 +29,9 @@ function AdminSchedules() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState([]);
+  
+  // NEW: State to hold the dynamic list of priests
+  const [priestNames, setPriestNames] = useState([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -62,7 +57,10 @@ function AdminSchedules() {
   });
 
   useEffect(() => {
-    fetchEvents();
+    // Fetch both events and priests when the component mounts
+    Promise.all([fetchEvents(), fetchPriests()]).finally(() => {
+      setLoading(false);
+    });
   }, []);
 
   const fetchEvents = async () => {
@@ -76,8 +74,33 @@ function AdminSchedules() {
       if (data) setEvents(data);
     } catch (err) {
       console.error("Failed to load events:", err);
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  // NEW: Function to fetch priests from the database
+  const fetchPriests = async () => {
+    try {
+      const { data, error } = await restSelect("priests", {
+        match: { is_active: true }, // Only get active priests
+        order: "name.asc",
+        timeoutMs: 10000,
+      });
+
+      if (error) throw error;
+      if (data) {
+        // Extract just the names into a simple array
+        setPriestNames(data.map(p => p.name));
+      }
+    } catch (err) {
+      console.error("Failed to load priests:", err);
+      // Fallback list just in case the database fetch fails
+      setPriestNames([
+        "Rev. Fr. Pedro Bautista",
+        "Rev. Fr. Juan Dela Cruz",
+        "Rev. Fr. Michael Smith",
+        "Rev. Fr. Antonio Luna",
+        "Rev. Fr. Gabriel Santos"
+      ]);
     }
   };
 

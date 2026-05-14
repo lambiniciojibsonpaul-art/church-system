@@ -19,6 +19,9 @@ export const AuthContext = createContext(null);
 const ROLE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SIGN_IN_TIMEOUT_MS = 15000;
 
+// Any authenticated user with no row in user_roles is treated as a parishioner.
+const DEFAULT_ROLE = "parishioner";
+
 // ---- localStorage helpers --------------------------------------------------
 
 function readStoredSession() {
@@ -84,12 +87,14 @@ function purgeSupabaseLocalStorage() {
 
 export function AuthProvider({ children }) {
   const initialSession = readStoredSession();
-  const initialUser = initialSession?.user || null;
-  const initialRole = readCachedRole(initialUser?.email);
+  const initialUser    = initialSession?.user || null;
+  // Fall back to DEFAULT_ROLE if the cache is empty (e.g. first load after
+  // clearing storage, or the user has no user_roles row yet).
+  const initialRole    = readCachedRole(initialUser?.email) ?? (initialUser ? DEFAULT_ROLE : null);
 
   const [session, setSession] = useState(initialSession);
-  const [user, setUser] = useState(initialUser);
-  const [role, setRole] = useState(initialRole);
+  const [user,    setUser]    = useState(initialUser);
+  const [role,    setRole]    = useState(initialRole);
   // True until the first session+role resolution completes. Consumers gating
   // protected routes should wait for `loading === false` before redirecting.
   const [loading, setLoading] = useState(true);
@@ -97,6 +102,8 @@ export function AuthProvider({ children }) {
   const isAdmin = role === "admin";
 
   // Fetch role from the database. Updates state and cache. Returns the row.
+  // If the user exists but has no user_roles row (406 / empty result),
+  // we fall back to DEFAULT_ROLE so they always get a valid role.
   const refreshRole = useCallback(async (userId, email) => {
     if (!userId) return null;
 
@@ -109,14 +116,23 @@ export function AuthProvider({ children }) {
 
     if (error) {
       console.warn("[Auth] role refresh failed:", error.message);
-      // Leave cached role in place — don't downgrade on transient failure.
+      // On a transient network/RLS failure keep the cached role rather than
+      // downgrading. If there is no cache yet, fall back to DEFAULT_ROLE so
+      // the user still gets a usable session.
+      const fallback = readCachedRole(email) ?? DEFAULT_ROLE;
+      setRole(fallback);
+      if (email) writeCachedRole(email, fallback);
       return null;
     }
 
-    const normalised = data ? String(data.role || "").toLowerCase() : null;
+    // `data` is null when the user has no row in user_roles.
+    const normalised = data?.role
+      ? String(data.role).toLowerCase()
+      : DEFAULT_ROLE;
+
     setRole(normalised);
     if (email) writeCachedRole(email, normalised);
-    return data;
+    return data ?? { role: normalised };
   }, []);
 
   // Mount-time: sync session from SDK (background) and subscribe to changes.
@@ -204,9 +220,14 @@ export function AuthProvider({ children }) {
       signedInSession.user.email
     );
 
+    // refreshRole already set state and cache; derive the string for the caller.
+    const resolvedRole = roleRow
+      ? String(roleRow.role || "").toLowerCase()
+      : DEFAULT_ROLE;
+
     return {
       session: signedInSession,
-      role: roleRow ? String(roleRow.role || "").toLowerCase() : null,
+      role: resolvedRole,
     };
   }, [refreshRole]);
 
