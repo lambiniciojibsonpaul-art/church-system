@@ -13,7 +13,7 @@ function BaptismFormModal({ onClose }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
   
-  // NEW: State for the dynamic sponsor input box
+  // State for the dynamic sponsor input box
   const [sponsorInput, setSponsorInput] = useState("");
 
   const [formData, setFormData] = useState({
@@ -49,7 +49,7 @@ function BaptismFormModal({ onClose }) {
     setFormData({ ...formData, [name]: type === "checkbox" ? checked : value });
   };
 
-  // --- NEW: DYNAMIC SPONSOR LIST LOGIC ---
+  // --- DYNAMIC SPONSOR LIST LOGIC ---
   const sponsorsList = formData.additionalSponsors 
     ? formData.additionalSponsors.split(",").map(s => s.trim()).filter(Boolean) 
     : [];
@@ -92,10 +92,6 @@ function BaptismFormModal({ onClose }) {
     setLoading(true);
 
     try {
-      // Build the row. We include user_id, submitter_email, submitter_phone
-      // so admins know who submitted the request and can contact them.
-      // These columns must exist in the `baptisms` table — see the SQL
-      // migration in the project README/setup notes.
       const payload = {
         baptism_type: formData.baptismType,
         preferred_date: formData.preferredDate,
@@ -113,19 +109,12 @@ function BaptismFormModal({ onClose }) {
         godfather_name: formData.godfatherName,
         godmother_name: formData.godmotherName,
         additional_sponsors: formData.additionalSponsors,
-        // The typed digital signature now serves as the submitter's name.
         submitter_name: formData.submitter_signature,
         user_id: user.id,
         submitter_email: user.email || null,
-        // Email-OTP signups store the contact number in user_metadata; older
-        // phone-OTP signups put it on user.phone. Fall back so both work.
-        submitter_phone:
-          user.user_metadata?.contact_number || user.phone || null,
+        submitter_phone: user.user_metadata?.contact_number || user.phone || null,
       };
 
-      // Strategy: try with the new optional metadata columns first. On ANY
-      // failure, retry once with those columns stripped. If the second
-      // attempt also fails, that's a real problem and we surface it.
       const first = await restInsert("baptisms", [payload]);
 
       if (first.error) {
@@ -143,19 +132,15 @@ function BaptismFormModal({ onClose }) {
           console.error("[Baptism] retry also failed:", retry.error);
           throw new Error(retry.error.message);
         }
-        console.log(
-          "[Baptism] retry succeeded. To capture submitter email/phone in admin, add user_id, submitter_email, submitter_phone columns to the baptisms table."
-        );
       }
 
       setSuccess(true);
 
-      // Fire-and-forget email notification. No-op if email is not yet
-      // configured on the Supabase project.
       const childName = [
         formData.childFirstName,
         formData.childLastName,
       ].filter(Boolean).join(" ").trim();
+      
       sendRequestEmail({
         to: user.email,
         serviceName: "baptism",
@@ -212,92 +197,6 @@ function BaptismFormModal({ onClose }) {
                 Error: {error}
               </div>
             )}
-
-            {/* --- IMPORTANT GUIDELINES & FEES PANEL --- */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                    className="w-5 h-5"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Requirements for Baptism
-                </h3>
-                <ul className="flex flex-col gap-2 text-sm text-gray-600 font-serif">
-                  <li>
-                    <strong>1. Birth Certificate</strong> with Registry No.
-                    (from City Hall or PSA). Present original and submit
-                    photocopy.
-                  </li>
-                  <li>
-                    <strong>2. Marriage Certificate of Parents</strong> (If
-                    married). Present original and submit photocopy.
-                  </li>
-                  <li>
-                    <strong>3. Permit for Baptism</strong> (for
-                    non-parishioners) from a parish near your residence.
-                  </li>
-                  <li>
-                    <strong>4. Certificate of No Records</strong> (for 2 yrs old
-                    & above) from 3 neighboring parishes.
-                  </li>
-                </ul>
-                <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold text-center border border-red-100">
-                  "NO SEMINAR, NO BAPTISM" <br />
-                  <span className="text-xs font-normal">
-                    Be on time: 30 minutes before schedule.
-                  </span>
-                </div>
-              </div>
-              <div className="bg-[#B59E74]/10 p-6 rounded-xl border border-[#B59E74]/30 shadow-sm flex flex-col gap-4">
-                <div>
-                  <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-2">
-                    Schedule & Fees
-                  </h3>
-                  <ul className="text-sm text-gray-700 font-serif space-y-2">
-                    <li>
-                      <strong>A. Solo/Individual:</strong> Php 2,500.00
-                      (Tue-Sat: 9:30am, 10:00am, 10:30am, 11:00am). Includes 1
-                      pair of sponsors & certificate.
-                    </li>
-                    <li>
-                      <strong>B. Sunday Baptism</strong>
-                    </li>
-                    <li className="text-xs italic text-gray-500 mt-1">
-                      Add-ons: Extra sponsor Php 50.00/head | Baptismal Candle
-                      Php 80.00/set
-                    </li>
-                  </ul>
-                </div>
-                <div className="border-t border-[#B59E74]/20 pt-4">
-                  <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-2">
-                    Dress Code
-                  </h3>
-                  <ul className="text-sm text-gray-700 font-serif space-y-1">
-                    <li>
-                      <strong>Child:</strong> Baptismal gown/White dress (girls)
-                      / White polo (boys) / White cloth.
-                    </li>
-                    <li>
-                      <strong>Adults:</strong> Sunday Best. NO shorts, sandos,
-                      sleeveless, spaghetti blouses, leggings, or slippers.
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <hr className="border-gray-200" />
 
             {/* 1. Schedule Selection */}
             <div>
@@ -559,7 +458,7 @@ function BaptismFormModal({ onClose }) {
                 </div>
               </div>
               
-              {/* --- UPDATED DYNAMIC SPONSOR INPUT --- */}
+              {/* --- DYNAMIC SPONSOR INPUT --- */}
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-gray-600">
                   Additional Sponsors
@@ -606,8 +505,118 @@ function BaptismFormModal({ onClose }) {
                   </button>
                 </div>
               </div>
-              {/* ------------------------------------- */}
               
+            </div>
+
+            <hr className="border-gray-200" />
+
+            {/* --- MOVED: IMPORTANT GUIDELINES & FEES PANEL --- */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              
+              {/* Requirements & Upload */}
+              <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col h-full">
+                <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    className="w-5 h-5"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Requirements for Baptism
+                </h3>
+                <ul className="flex flex-col gap-2 text-sm text-gray-600 font-serif">
+                  <li>
+                    <strong>1. Birth Certificate</strong> with Registry No.
+                    (from City Hall or PSA). Present original and submit
+                    photocopy.
+                  </li>
+                  <li>
+                    <strong>2. Marriage Certificate of Parents</strong> (If
+                    married). Present original and submit photocopy.
+                  </li>
+                  <li>
+                    <strong>3. Permit for Baptism</strong> (for
+                    non-parishioners) from a parish near your residence.
+                  </li>
+                  <li>
+                    <strong>4. Certificate of No Records</strong> (for 2 yrs old
+                    & above) from 3 neighboring parishes.
+                  </li>
+                </ul>
+                <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold text-center border border-red-100">
+                  "NO SEMINAR, NO BAPTISM" <br />
+                  <span className="text-xs font-normal">
+                    Be on time: 30 minutes before schedule.
+                  </span>
+                </div>
+
+                {/* GOOGLE DRIVE UPLOAD BOX */}
+                <div className="mt-6 flex-grow flex flex-col justify-end">
+                  <div className="bg-[#B59E74]/10 rounded-xl border-2 border-dashed border-[#B59E74]/50 p-6 flex flex-col items-center justify-center text-center h-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-[#B59E74] mb-3">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                    </svg>
+                    <h4 className="text-sm font-bold text-gray-800 uppercase tracking-widest mb-1">Submit Your Documents</h4>
+                    <p className="text-xs text-gray-500 mb-4 max-w-xs">
+                      Please compile your scanned requirements and upload them to our secure Parish Google Drive folder.
+                    </p>
+                    <a
+                      href="YOUR_GOOGLE_DRIVE_LINK_HERE" 
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-[#B59E74] hover:bg-[#9c8760] text-white px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-2"
+                    >
+                      <span>📁</span> Open Upload Folder
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* Schedule, Fees & Dress Code */}
+              <div className="bg-[#B59E74]/10 p-6 rounded-xl border border-[#B59E74]/30 shadow-sm flex flex-col gap-4 h-full">
+                <div>
+                  <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-2">
+                    Schedule & Fees
+                  </h3>
+                  <ul className="text-sm text-gray-700 font-serif space-y-2">
+                    <li>
+                      <strong>A. Solo/Individual:</strong> Php 2,500.00
+                      (Tue-Sat: 9:30am, 10:00am, 10:30am, 11:00am). Includes 1
+                      pair of sponsors & certificate.
+                    </li>
+                    <li>
+                      <strong>B. Sunday Baptism</strong>
+                    </li>
+                    <li className="text-xs italic text-gray-500 mt-1">
+                      Add-ons: Extra sponsor Php 50.00/head | Baptismal Candle
+                      Php 80.00/set
+                    </li>
+                  </ul>
+                </div>
+                <div className="border-t border-[#B59E74]/20 pt-4 mt-auto">
+                  <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-2">
+                    Dress Code
+                  </h3>
+                  <ul className="text-sm text-gray-700 font-serif space-y-1">
+                    <li>
+                      <strong>Child:</strong> Baptismal gown/White dress (girls)
+                      / White polo (boys) / White cloth.
+                    </li>
+                    <li>
+                      <strong>Adults:</strong> Sunday Best. NO shorts, sandos,
+                      sleeveless, spaghetti blouses, leggings, or slippers.
+                    </li>
+                  </ul>
+                </div>
+              </div>
             </div>
 
             {/* DECLARATION & SIGNATURE */}

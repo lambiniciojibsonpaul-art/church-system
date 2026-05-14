@@ -268,7 +268,7 @@ function ManageUsers() {
                 <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Role *</label>
                   <select 
-                    value={createForm.role} 
+                    value={createForm.role}
                     onChange={e => setCreateForm({...createForm, role: e.target.value})}
                     className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 bg-gray-50"
                   >

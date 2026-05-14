@@ -8,7 +8,6 @@ const EVENTS_CACHE_KEY = "eventsPage:events";
 const EVENTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const EVENTS_FETCH_TIMEOUT_MS = 12000;
 
-// The exact list of indoor facilities provided
 const INDOOR_FACILITIES = [
   "St. Francis of Assisi Hall (2nd Floor)",
   "St. Peter of Alcantara (Peach Room)",
@@ -60,11 +59,9 @@ function EventsPage() {
   
   const [viewMode, setViewMode] = useState("Active");
 
-  // Modal & Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   
-  // Collaboration State
   const [isCollaborating, setIsCollaborating] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -77,8 +74,8 @@ function EventsPage() {
     eventTime: "",
     location: "",
     description: "",
-    isInside: true, // NEW: Tracks the Indoor/Outdoor toggle
-    setting: "",    // NEW: Stores either the dropdown value or typed text
+    isInside: true, 
+    setting: "", 
   });
 
   useEffect(() => {
@@ -96,18 +93,23 @@ function EventsPage() {
   }, [dropdownRef]);
 
   const fetchEvents = async () => {
-    const { data, error } = await restSelect("events", {
-      order: "event_time.asc",
-      timeoutMs: EVENTS_FETCH_TIMEOUT_MS,
-    });
+    try {
+      const { data, error } = await restSelect("events", {
+        order: "event_time.asc",
+        timeoutMs: EVENTS_FETCH_TIMEOUT_MS,
+      });
 
-    if (error) {
-      console.warn("Events fetch failed:", error.message, "— showing cached data if any.");
-    } else if (data) {
-      setEvents(data);
-      writeEventsCache(data);
+      if (error) {
+        console.warn("Events fetch failed:", error.message);
+      } else if (data) {
+        setEvents(data);
+        writeEventsCache(data);
+      }
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleChange = (e) => {
@@ -167,7 +169,7 @@ function EventsPage() {
           event_time: formData.eventTime,
           location: formData.location,
           description: finalDescription,
-          setting: formData.setting, // Saves whichever input they used
+          setting: formData.setting, 
           status: isMinistry ? "Pending" : "Active" 
         },
       ]);
@@ -222,11 +224,28 @@ function EventsPage() {
     if (day) setSelectedDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
   };
 
+  // --- BULLET-PROOF CHRONOLOGICAL SORTING FOR CALENDAR PAGE ---
   const isCancelledView = isAdmin && viewMode === "Cancelled";
-  const visibleEvents = events.filter((e) => {
-    const status = e.status || "Active";
-    return isCancelledView ? status === "Cancelled" : status === "Active";
-  });
+  
+  const visibleEvents = events
+    .filter((e) => {
+      const status = e.status || "Active";
+      return isCancelledView ? status === "Cancelled" : status === "Active";
+    })
+    .sort((a, b) => {
+      const dateA = a.event_date || "9999-12-31";
+      const timeA = a.event_time || "23:59:59";
+      const dateB = b.event_date || "9999-12-31";
+      const timeB = b.event_time || "23:59:59";
+      
+      const dtA = new Date(`${dateA}T${timeA}`).getTime();
+      const dtB = new Date(`${dateB}T${timeB}`).getTime();
+      
+      if (isNaN(dtA) || isNaN(dtB)) {
+        return `${dateA}T${timeA}`.localeCompare(`${dateB}T${timeB}`);
+      }
+      return dtA - dtB;
+    });
 
   const getEventsForDate = (dateToMatch) => {
     return visibleEvents.filter((e) => {
@@ -236,6 +255,7 @@ function EventsPage() {
   };
 
   const selectedEvents = getEventsForDate(selectedDate);
+  
   const formatTime = (timeStr) => {
     if (!timeStr) return "";
     const [h, m] = timeStr.split(":");

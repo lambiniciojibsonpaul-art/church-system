@@ -8,11 +8,12 @@ import { useAuth } from "../contexts/useAuth";
 const SOLID_BG_PREFIXES = [
   "/admin",
   "/priest-dashboard", 
-  "/staff-dashboard", // <-- Added staff dashboard to solid background list
+  "/staff-dashboard", 
   "/login",
   "/check-in",
   "/update-password",
   "/ministries",
+  "/events", // <-- ADDED: Forces the header to be solid white on the Events page to prevent overlap
 ];
 
 function Header({ forceSolidBg = false }) {
@@ -26,7 +27,7 @@ function Header({ forceSolidBg = false }) {
   const location = useLocation();
 
   const isPriest = role === "priest";
-  const isStaff = role === "staff"; // <-- Added staff check
+  const isStaff = role === "staff"; 
 
   useEffect(() => {
     const handleScroll = () => {
@@ -79,7 +80,7 @@ function Header({ forceSolidBg = false }) {
       </div>
 
       <header
-        className={`fixed top-0 w-full z-50 transition-all duration-300 ${
+        className={`fixed top-0 w-full z-[100] transition-all duration-300 ${ // <-- FIXED: Bumped z-index from 50 to 100 so it ALWAYS sits on top of page content
           isSolid
             ? "bg-white shadow-md py-4 text-gray-800"
             : "bg-transparent py-6 text-gray-800 lg:text-white"
@@ -183,7 +184,7 @@ function Header({ forceSolidBg = false }) {
               <li><Link to="/" onClick={() => setIsOpen(false)}>Home</Link></li>
               <li><Link to="/about" onClick={() => setIsOpen(false)}>About Us</Link></li>
               <li><Link to="/services" onClick={() => setIsOpen(false)}>Services</Link></li>
-              <li><Link to="/events" onClick={() => setIsOpen(false)}>Events</Link></li>       
+              <li><Link to="/events" onClick={() => setIsOpen(false)}>Events</Link></li>      
               <li><Link to="/ministries" onClick={() => setIsOpen(false)}>Ministries</Link></li>
 
               <hr className="border-gray-300/30 my-2" />

@@ -11,7 +11,6 @@ const priestNames = [
   "Rev. Fr. Gabriel Santos"
 ];
 
-// Standard event classes for the Parish
 const EVENT_CLASSES = [
   "Mass",
   "Parish Event",
@@ -21,7 +20,6 @@ const EVENT_CLASSES = [
   "General Event"
 ];
 
-// The exact list of indoor facilities provided
 const INDOOR_FACILITIES = [
   "St. Francis of Assisi Hall (2nd Floor)",
   "St. Peter of Alcantara (Peach Room)",
@@ -59,7 +57,7 @@ function AdminSchedules() {
     eventTime: "",
     location: "Main Church",
     description: "",
-    isInside: true, // NEW: Tracks the Indoor/Outdoor toggle
+    isInside: true, 
     setting: "", 
   });
 
@@ -68,12 +66,19 @@ function AdminSchedules() {
   }, []);
 
   const fetchEvents = async () => {
-    const { data } = await restSelect("events", {
-      order: "event_date.asc",
-      timeoutMs: 12000,
-    });
-    if (data) setEvents(data);
-    setLoading(false);
+    try {
+      const { data, error } = await restSelect("events", {
+        order: "event_date.asc",
+        timeoutMs: 12000,
+      });
+      
+      if (error) throw error;
+      if (data) setEvents(data);
+    } catch (err) {
+      console.error("Failed to load events:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleChange = (e) => {
@@ -84,13 +89,13 @@ function AdminSchedules() {
   const handleOpenEventModal = () => {
     setFormData({
       title: "",
-      eventClass: "Mass", // Default type
+      eventClass: "Mass",
       priestName: "",
       eventDate: "",
       eventTime: "",
       location: "Main Church",
       description: "",
-      isInside: true, // Defaults to Indoor
+      isInside: true,
       setting: "", 
     });
     setIsModalOpen(true);
@@ -177,11 +182,27 @@ function AdminSchedules() {
     }
   };
 
-  const visibleEvents = events.filter(ev => {
-    const status = ev.status || "Active";
-    if (activeTab === "All") return true;
-    return status === activeTab;
-  });
+  // --- BULLET-PROOF CHRONOLOGICAL SORTING ---
+  const visibleEvents = events
+    .filter(ev => {
+      const status = ev.status || "Active";
+      if (activeTab === "All") return true;
+      return status === activeTab;
+    })
+    .sort((a, b) => {
+      const dateA = a.event_date || "9999-12-31";
+      const timeA = a.event_time || "23:59:59";
+      const dateB = b.event_date || "9999-12-31";
+      const timeB = b.event_time || "23:59:59";
+      
+      const dtA = new Date(`${dateA}T${timeA}`).getTime();
+      const dtB = new Date(`${dateB}T${timeB}`).getTime();
+      
+      if (isNaN(dtA) || isNaN(dtB)) {
+        return `${dateA}T${timeA}`.localeCompare(`${dateB}T${timeB}`);
+      }
+      return dtA - dtB;
+    });
 
   const pendingCount = events.filter(ev => ev.status === "Pending").length;
 
@@ -249,7 +270,6 @@ function AdminSchedules() {
                     <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md shrink-0 ${isPending ? "bg-yellow-100 text-yellow-700" : isCancelledOrRejected ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
                       {ev.status || "Active"}
                     </span>
-                    {/* Event Class Badge */}
                     <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-100 text-gray-600 truncate text-right">
                       {ev.event_class}
                     </span>
@@ -284,7 +304,6 @@ function AdminSchedules() {
                     )}
                   </div>
 
-                  {/* ADMIN ACTIONS */}
                   <div className="mt-4 border-t border-gray-100 pt-4 flex gap-2">
                     {isPending && (
                       <>
@@ -467,7 +486,6 @@ function AdminSchedules() {
                 </div>
               </div>
 
-              {/* DYNAMIC INDOOR/OUTDOOR TOGGLE */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">Setting Type</label>

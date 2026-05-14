@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { restSelect } from "../supabaseRest";
 import church3 from "../assets/Images/church3.jpg";
+import { ministryNames } from "../data/ministries"; // Pulling the dynamic list
 
 // ----- helpers --------------------------------------------------------------
 
@@ -60,7 +61,6 @@ function validatePassword(password) {
   };
 }
 
-// Loose contact-number cleanup (no E.164 needed — we're not sending SMS).
 function cleanContactNumber(raw) {
   return (raw || "").trim();
 }
@@ -73,7 +73,7 @@ function LoginPage() {
   // "login" | "register"
   const [mode, setMode] = useState("login");
 
-  // ----- LOGIN STATE (unchanged from previous implementation) ----------------
+  // ----- LOGIN STATE --------------------------------------------------------
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [uiState, setUiState] = useState({
@@ -150,7 +150,6 @@ function LoginPage() {
         } catch { /* ignore */ }
       });
 
-      // Quick routing cache
       const dest = String(cachedRole).toLowerCase() === "admin" || String(cachedRole).toLowerCase() === "superadmin" ? "/admin" : 
                    String(cachedRole).toLowerCase() === "priest" ? "/priest-dashboard" :
                    String(cachedRole).toLowerCase() === "staff" ? "/staff-dashboard" : 
@@ -238,13 +237,16 @@ function LoginPage() {
 
   // ----- REGISTER STATE ------------------------------------------------------
   const [registerData, setRegisterData] = useState({
-    firstName: "",    // <-- ADDED
-    lastName: "",     // <-- ADDED
+    accountType: "parishioner", // "parishioner" | "ministry"
+    ministryGroup: "",          // Only needed if accountType is ministry
+    firstName: "",
+    lastName: "",
     email: "",
     password: "",
     confirmPassword: "",
     contactNumber: "",
   });
+
   const [showPassword, setShowPassword] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
   const [registerError, setRegisterError] = useState(null);
@@ -253,8 +255,14 @@ function LoginPage() {
   const passwordCheck = validatePassword(registerData.password);
 
   const handleRegisterChange = (e) => {
-    const { name, value } = e.target;
-    setRegisterData((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    
+    // Auto-clear ministry selection if they switch back to parishioner
+    if (name === "accountType" && value === "parishioner") {
+      setRegisterData((prev) => ({ ...prev, accountType: value, ministryGroup: "" }));
+    } else {
+      setRegisterData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
+    }
   };
 
   const switchToLogin = () => {
@@ -272,7 +280,11 @@ function LoginPage() {
     e?.preventDefault?.();
     setRegisterError(null);
 
-    // Validate.
+    // Form Validations
+    if (registerData.accountType === "ministry" && !registerData.ministryGroup) {
+      setRegisterError("Please select the Ministry you represent.");
+      return;
+    }
     if (!registerData.firstName.trim() || !registerData.lastName.trim()) {
       setRegisterError("Please enter your full name.");
       return;
@@ -304,23 +316,30 @@ function LoginPage() {
         password: registerData.password,
         options: {
           data: { 
-            first_name: registerData.firstName.trim(), // <-- SAVING FIRST NAME
-            last_name: registerData.lastName.trim(),   // <-- SAVING LAST NAME
-            contact_number: contact 
+            first_name: registerData.firstName.trim(),
+            last_name: registerData.lastName.trim(),
+            contact_number: contact,
+            ministry_group: registerData.accountType === "ministry" ? registerData.ministryGroup : null
           },
         },
       });
+      
       if (error) {
-        if (
-          /already registered|user already exists|already signed up/i.test(
-            error.message
-          )
-        ) {
-          throw new Error(
-            "This email is already registered. Please sign in instead."
-          );
+        if (/already registered|user already exists|already signed up/i.test(error.message)) {
+          throw new Error("This email is already registered. Please sign in instead.");
         }
         throw error;
+      }
+
+      const newUserId = signupData?.user?.id;
+
+      // Automatically assign the "ministry" role in the backend if selected
+      if (newUserId && registerData.accountType === "ministry") {
+        const { error: roleError } = await supabase
+          .from("user_roles")
+          .upsert({ user_id: newUserId, role: "ministry" });
+          
+        if (roleError) console.error("Warning: Could not assign ministry role:", roleError);
       }
 
       if (signupData?.session) {
@@ -550,6 +569,54 @@ function LoginPage() {
                   {registerError}
                 </div>
               )}
+
+              {/* ACCOUNT TYPE TOGGLE */}
+              <div className="mb-6 p-4 bg-white rounded-2xl border border-gray-200">
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider block mb-3">Account Type</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-700">
+                    <input
+                      type="radio"
+                      name="accountType"
+                      value="parishioner"
+                      checked={registerData.accountType === "parishioner"}
+                      onChange={handleRegisterChange}
+                      className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]"
+                    />
+                    Parishioner
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-700">
+                    <input
+                      type="radio"
+                      name="accountType"
+                      value="ministry"
+                      checked={registerData.accountType === "ministry"}
+                      onChange={handleRegisterChange}
+                      className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]"
+                    />
+                    Ministry Account
+                  </label>
+                </div>
+                
+                {/* MINISTRY DROPDOWN */}
+                {registerData.accountType === "ministry" && (
+                  <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in-up">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider block mb-2">Select Your Ministry *</label>
+                    <select
+                      name="ministryGroup"
+                      required
+                      value={registerData.ministryGroup}
+                      onChange={handleRegisterChange}
+                      className="w-full p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74] bg-gray-50 text-sm"
+                    >
+                      <option value="" disabled>Choose an organization...</option>
+                      {ministryNames.map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
