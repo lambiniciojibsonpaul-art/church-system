@@ -156,10 +156,6 @@ function WeddingRegistryFormModal({ onClose }) {
                     <label className="text-xs font-bold text-gray-600">Address <span className="text-[11px] text-gray-400 normal-case font-normal">(Tirahan)</span></label>
                     <input type="text" name="groom_address" value={formData.groom_address} onChange={handleChange} className={inputClass} placeholder="Complete Address" />
                   </div>
-                  <div className="flex flex-col gap-1 md:col-span-2">
-                    <label className="text-xs font-bold text-gray-600">Current Age <span className="text-[11px] text-gray-400 normal-case font-normal">(Kasalukuyang Edad)</span></label>
-                    <input type="number" name="groom_age" value={formData.groom_age} onChange={handleChange} className={inputClass} />
-                  </div>
                   <div className="flex flex-col gap-1 md:col-span-4">
                     <label className="text-xs font-bold text-gray-600">Contact Nos.</label>
                     <input type="tel" name="groom_contact" value={formData.groom_contact} onChange={handleChange} className={inputClass} placeholder="Phone Number/s" />
@@ -187,10 +183,6 @@ function WeddingRegistryFormModal({ onClose }) {
                   <div className="flex flex-col gap-1 md:col-span-6">
                     <label className="text-xs font-bold text-gray-600">Address <span className="text-[11px] text-gray-400 normal-case font-normal">(Tirahan)</span></label>
                     <input type="text" name="bride_address" value={formData.bride_address} onChange={handleChange} className={inputClass} placeholder="Complete Address" />
-                  </div>
-                  <div className="flex flex-col gap-1 md:col-span-2">
-                    <label className="text-xs font-bold text-gray-600">Current Age <span className="text-[11px] text-gray-400 normal-case font-normal">(Kasalukuyang Edad)</span></label>
-                    <input type="number" name="bride_age" value={formData.bride_age} onChange={handleChange} className={inputClass} />
                   </div>
                   <div className="flex flex-col gap-1 md:col-span-4">
                     <label className="text-xs font-bold text-gray-600">Contact Nos.</label>

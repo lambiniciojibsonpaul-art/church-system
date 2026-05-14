@@ -218,10 +218,6 @@ function ConfirmationFormModal({ onClose }) {
                       </label>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Current Age: <span className="text-[11px] text-gray-400 normal-case font-normal">(Kasalukuyang Edad)</span></label>
-                    <input type="number" name="current_age" value={formData.current_age} onChange={handleChange} className={`${inputClass} md:w-1/3`} />
-                  </div>
                 </div>
               </div>
             </div>
