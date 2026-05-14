@@ -28,13 +28,13 @@ function WeddingRegistryFormModal({ onClose }) {
   const [formData, setFormData] = useState({
     groom_first_name: "",
     groom_middle_name: "",
-    groom_surname: "",
+    groom_last_name: "",
     groom_address: "",
     groom_age: "",
     groom_contact: "",
     bride_first_name: "",
     bride_middle_name: "",
-    bride_surname: "",
+    bride_last_name: "",
     bride_address: "",
     bride_age: "",
     bride_contact: "",
@@ -67,10 +67,12 @@ function WeddingRegistryFormModal({ onClose }) {
         table: "weddings",
         payload: {
           ...formData,
+          // The DB column is "preferred_date" (NOT NULL); map wedding_date to it
+          preferred_date: formData.wedding_date,
         },
         user,
         serviceName: "wedding",
-        summary: `Wedding registration for ${formData.groom_first_name} ${formData.groom_surname} & ${formData.bride_first_name} ${formData.bride_surname}.`,
+        summary: `Wedding registration for ${formData.groom_first_name} ${formData.groom_last_name} & ${formData.bride_first_name} ${formData.bride_last_name}.`,
         restInsert,
         sendRequestEmail,
       });
@@ -129,7 +131,7 @@ function WeddingRegistryFormModal({ onClose }) {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <input type="text" name="groom_first_name" value={formData.groom_first_name} onChange={handleChange} required className={inputClass} placeholder="First Name" />
                     <input type="text" name="groom_middle_name" value={formData.groom_middle_name} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
-                    <input type="text" name="groom_surname" value={formData.groom_surname} onChange={handleChange} required className={inputClass} placeholder="Surname" />
+                    <input type="text" name="groom_last_name" value={formData.groom_last_name} onChange={handleChange} required className={inputClass} placeholder="Surname" />
                   </div>
                 </div>
 
@@ -157,7 +159,7 @@ function WeddingRegistryFormModal({ onClose }) {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <input type="text" name="bride_first_name" value={formData.bride_first_name} onChange={handleChange} required className={inputClass} placeholder="First Name" />
                     <input type="text" name="bride_middle_name" value={formData.bride_middle_name} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
-                    <input type="text" name="bride_surname" value={formData.bride_surname} onChange={handleChange} required className={inputClass} placeholder="Surname" />
+                    <input type="text" name="bride_last_name" value={formData.bride_last_name} onChange={handleChange} required className={inputClass} placeholder="Surname" />
                   </div>
                 </div>
 
@@ -192,10 +194,6 @@ function WeddingRegistryFormModal({ onClose }) {
                   <input type="text" name="reservation_fee" value={formData.reservation_fee} onChange={handleChange} className={`${inputClass} bg-gray-50`} placeholder="₱" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Official Receipt No.</label>
-                    <input type="text" name="official_receipt_no" value={formData.official_receipt_no} onChange={handleChange} className={`${inputClass} bg-gray-50`} />
-                  </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">Date of Reservation</label>
                     <input type="date" name="reservation_date" value={formData.reservation_date} onChange={handleChange} className={`${inputClass} bg-gray-50`} />
