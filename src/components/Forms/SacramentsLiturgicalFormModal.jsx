@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { restInsert } from "../../supabaseRest";
+import { useState, useEffect } from "react";
+import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
@@ -21,6 +21,9 @@ function SacramentsLiturgicalFormModal({ onClose }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
 
+  // NEW: State to hold the dynamic list of priests
+  const [priests, setPriests] = useState([]);
+
   const [formData, setFormData] = useState({
     request_type: "",
     request_specify: "",
@@ -29,11 +32,29 @@ function SacramentsLiturgicalFormModal({ onClose }) {
     request_time: "",
     requested_by: "",
     contact_number: "",
-    minister_name: "",
+    preferred_priest: "", // CHANGED from minister_name to match other forms
     notes: "",
     submitter_signature: "",
     declaration_consent: false,
   });
+
+  // NEW: Fetch priests when the modal opens
+  useEffect(() => {
+    const fetchPriests = async () => {
+      try {
+        const { data, error } = await restSelect("priests", {
+          match: { is_active: true },
+          order: "name.asc",
+        });
+        if (!error && data) {
+          setPriests(data);
+        }
+      } catch (err) {
+        console.error("Error fetching priests:", err);
+      }
+    };
+    fetchPriests();
+  }, []);
 
   if (!user) return <SignInPrompt onClose={onClose} serviceName="this sacrament request" />;
 
@@ -64,7 +85,12 @@ function SacramentsLiturgicalFormModal({ onClose }) {
     try {
       await submitRequest({
         table: "sacraments_liturgical",
-        payload: formData,
+        payload: {
+          ...formData,
+          // Map to database columns and ensure null if empty
+          minister_name: formData.preferred_priest || null,
+          preferred_priest: formData.preferred_priest || null, 
+        },
         user,
         serviceName: formData.request_type || "sacrament service",
         summary: `${formData.request_type}${formData.request_specify ? ` (${formData.request_specify})` : ""} on ${formData.request_date || "(date pending)"}.`,
@@ -176,10 +202,25 @@ function SacramentsLiturgicalFormModal({ onClose }) {
                 Additional Details
               </h3>
               <div className="grid grid-cols-1 gap-6">
+                
+                {/* CHANGED: Now a dynamic dropdown */}
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Name of Minister:</label>
-                  <input type="text" name="minister_name" value={formData.minister_name} onChange={handleChange} className={inputClass} placeholder="If known or preferred" />
+                  <label className="text-xs font-bold text-gray-600">Preferred Minister / Priest (Optional):</label>
+                  <select
+                    name="preferred_priest"
+                    value={formData.preferred_priest}
+                    onChange={handleChange}
+                    className={inputClass}
+                  >
+                    <option value="">No Preference / Any Available</option>
+                    {priests.map((priest) => (
+                      <option key={priest.id} value={priest.name}>
+                        {priest.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+                
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Notes:</label>
                   <textarea rows="4" name="notes" value={formData.notes} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Any special instructions or additional context..." />

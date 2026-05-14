@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { restInsert } from "../../supabaseRest";
+import { useState, useEffect } from "react";
+import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
@@ -12,12 +12,16 @@ function ConfirmationFormModal({ onClose }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
 
+  // NEW: State to hold the dynamic list of priests
+  const [priests, setPriests] = useState([]);
+
   // State for the dynamic sponsor input box
   const [sponsorInput, setSponsorInput] = useState("");
 
   const [formData, setFormData] = useState({
     date_of_confirmation: "",
     time_of_confirmation: "",
+    preferred_priest: "", // NEW field for the form state
     child_first_name: "",
     child_middle_name: "",
     child_surname: "",
@@ -40,6 +44,24 @@ function ConfirmationFormModal({ onClose }) {
     submitter_signature: "",
     declaration_consent: false,
   });
+
+  // NEW: Fetch priests when the modal opens
+  useEffect(() => {
+    const fetchPriests = async () => {
+      try {
+        const { data, error } = await restSelect("priests", {
+          match: { is_active: true },
+          order: "name.asc",
+        });
+        if (!error && data) {
+          setPriests(data);
+        }
+      } catch (err) {
+        console.error("Error fetching priests:", err);
+      }
+    };
+    fetchPriests();
+  }, []);
 
   if (!user) return <SignInPrompt onClose={onClose} serviceName="confirmation" />;
 
@@ -92,7 +114,8 @@ function ConfirmationFormModal({ onClose }) {
     try {
       await submitRequest({
         table: "confirmations",
-        payload: formData,
+        // Ensure preferred_priest is sent or null if empty
+        payload: { ...formData, preferred_priest: formData.preferred_priest || null },
         user,
         serviceName: "confirmation",
         summary: `Confirmation request for ${formData.child_first_name} ${formData.child_surname}.`,
@@ -148,7 +171,7 @@ function ConfirmationFormModal({ onClose }) {
             )}
 
             {/* TOP DETAILS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-white rounded-xl border border-gray-100">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-white rounded-xl border border-gray-100 shadow-sm">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-bold text-gray-600">Date of Confirmation:</label>
                 <input
@@ -169,6 +192,24 @@ function ConfirmationFormModal({ onClose }) {
                   onChange={handleChange}
                   className={inputClass}
                 />
+              </div>
+              
+              {/* NEW: Preferred Priest Dropdown */}
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-bold text-gray-600">Preferred Priest (Optional):</label>
+                <select
+                  name="preferred_priest"
+                  value={formData.preferred_priest}
+                  onChange={handleChange}
+                  className={inputClass}
+                >
+                  <option value="">No Preference / Any Available</option>
+                  {priests.map((priest) => (
+                    <option key={priest.id} value={priest.name}>
+                      {priest.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

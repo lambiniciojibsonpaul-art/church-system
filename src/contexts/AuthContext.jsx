@@ -99,7 +99,7 @@ export function AuthProvider({ children }) {
   // protected routes should wait for `loading === false` before redirecting.
   const [loading, setLoading] = useState(true);
 
-  const isAdmin = role === "admin";
+  const isAdmin = role === "admin" || role === "superadmin";
 
   // Fetch role from the database. Updates state and cache. Returns the row.
   // If the user exists but has no user_roles row (406 / empty result),
@@ -107,10 +107,11 @@ export function AuthProvider({ children }) {
   const refreshRole = useCallback(async (userId, email) => {
     if (!userId) return null;
 
+    // FIX: Removed `single: true` to prevent 406 errors when zero rows exist.
+    // It will now return an empty array [] if no role is found.
     const { data, error } = await restSelect("user_roles", {
       select: "role",
       match: { user_id: userId },
-      single: true,
       timeoutMs: 12000,
     });
 
@@ -125,14 +126,17 @@ export function AuthProvider({ children }) {
       return null;
     }
 
-    // `data` is null when the user has no row in user_roles.
-    const normalised = data?.role
-      ? String(data.role).toLowerCase()
+    // Extract the first row if it exists, otherwise undefined
+    const roleRow = data && data.length > 0 ? data[0] : null;
+
+    // `roleRow` is null when the user has no row in user_roles.
+    const normalised = roleRow?.role
+      ? String(roleRow.role).toLowerCase()
       : DEFAULT_ROLE;
 
     setRole(normalised);
     if (email) writeCachedRole(email, normalised);
-    return data ?? { role: normalised };
+    return roleRow ?? { role: normalised };
   }, []);
 
   // Mount-time: sync session from SDK (background) and subscribe to changes.

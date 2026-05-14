@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { restInsert } from "../../supabaseRest";
+import { useState, useEffect } from "react";
+import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
@@ -25,6 +25,9 @@ function WeddingRegistryFormModal({ onClose }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
 
+  // NEW: State to hold the dynamic list of priests
+  const [priests, setPriests] = useState([]);
+
   const [formData, setFormData] = useState({
     groom_first_name: "",
     groom_middle_name: "",
@@ -40,12 +43,31 @@ function WeddingRegistryFormModal({ onClose }) {
     bride_contact: "",
     wedding_date: "",
     wedding_time: "",
+    preferred_priest: "", // NEW field for the form state
     reservation_fee: "",
     official_receipt_no: "",
     reservation_date: "",
     submitter_signature: "",
     declaration_consent: false,
   });
+
+  // NEW: Fetch priests when the modal opens
+  useEffect(() => {
+    const fetchPriests = async () => {
+      try {
+        const { data, error } = await restSelect("priests", {
+          match: { is_active: true },
+          order: "name.asc",
+        });
+        if (!error && data) {
+          setPriests(data);
+        }
+      } catch (err) {
+        console.error("Error fetching priests:", err);
+      }
+    };
+    fetchPriests();
+  }, []);
 
   if (!user) return <SignInPrompt onClose={onClose} serviceName="a wedding" />;
 
@@ -69,6 +91,8 @@ function WeddingRegistryFormModal({ onClose }) {
           ...formData,
           // The DB column is "preferred_date" (NOT NULL); map wedding_date to it
           preferred_date: formData.wedding_date,
+          // Ensure preferred_priest is sent or null if empty
+          preferred_priest: formData.preferred_priest || null,
         },
         user,
         serviceName: "wedding",
@@ -179,7 +203,7 @@ function WeddingRegistryFormModal({ onClose }) {
             {/* WEDDING DETAILS */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4 mt-8">Wedding & Reservation Details</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Date of Wedding <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa ng Kasal)</span></label>
                   <input type="date" name="wedding_date" value={formData.wedding_date} onChange={handleChange} required className={inputClass} />
@@ -188,12 +212,30 @@ function WeddingRegistryFormModal({ onClose }) {
                   <label className="text-xs font-bold text-gray-600">Time of Wedding <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Kasal)</span></label>
                   <input type="time" name="wedding_time" value={formData.wedding_time} onChange={handleChange} className={inputClass} />
                 </div>
-
+                
+                {/* NEW: Preferred Priest Dropdown */}
                 <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600">Preferred Priest (Optional)</label>
+                  <select
+                    name="preferred_priest"
+                    value={formData.preferred_priest}
+                    onChange={handleChange}
+                    className={inputClass}
+                  >
+                    <option value="">No Preference / Any Available</option>
+                    {priests.map((priest) => (
+                      <option key={priest.id} value={priest.name}>
+                        {priest.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1 md:col-span-2">
                   <label className="text-xs font-bold text-gray-600">Reservation Fee <span className="text-[11px] text-gray-400 normal-case font-normal">(Non-refundable)</span></label>
                   <input type="text" name="reservation_fee" value={formData.reservation_fee} onChange={handleChange} className={`${inputClass} bg-gray-50`} placeholder="₱" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">Date of Reservation</label>
                     <input type="date" name="reservation_date" value={formData.reservation_date} onChange={handleChange} className={`${inputClass} bg-gray-50`} />

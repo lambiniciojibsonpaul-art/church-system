@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { restInsert } from "../../supabaseRest";
+import { useState, useEffect } from "react";
+import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
@@ -13,12 +13,16 @@ function BaptismFormModal({ onClose }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
   
+  // NEW: State to hold the dynamic list of priests
+  const [priests, setPriests] = useState([]);
+  
   // State for the dynamic sponsor input box
   const [sponsorInput, setSponsorInput] = useState("");
 
   const [formData, setFormData] = useState({
     baptismType: "Sunday",
     preferredDate: "",
+    preferredPriest: "", // NEW field for the form state
     childFirstName: "",
     childMiddleName: "",
     childLastName: "",
@@ -37,6 +41,24 @@ function BaptismFormModal({ onClose }) {
     submitter_signature: "",
     declaration_consent: false,
   });
+
+  // NEW: Fetch priests when the modal opens
+  useEffect(() => {
+    const fetchPriests = async () => {
+      try {
+        const { data, error } = await restSelect("priests", {
+          match: { is_active: true },
+          order: "name.asc",
+        });
+        if (!error && data) {
+          setPriests(data);
+        }
+      } catch (err) {
+        console.error("Error fetching priests:", err);
+      }
+    };
+    fetchPriests();
+  }, []);
 
   // Guest visitors must sign in/register before submitting a request.
   if (!user) {
@@ -95,6 +117,7 @@ function BaptismFormModal({ onClose }) {
       const payload = {
         baptism_type: formData.baptismType,
         preferred_date: formData.preferredDate,
+        preferred_priest: formData.preferredPriest || null, // NEW: Add to payload
         child_first_name: formData.childFirstName,
         child_middle_name: formData.childMiddleName,
         child_last_name: formData.childLastName,
@@ -201,9 +224,9 @@ function BaptismFormModal({ onClose }) {
             {/* 1. Schedule Selection */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                Baptism Schedule
+                Baptism Schedule & Officiant
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">
                     Type of Baptism *
@@ -215,12 +238,8 @@ function BaptismFormModal({ onClose }) {
                     required
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
                   >
-                    <option value="Sunday">
-                      Sunday Baptism
-                    </option>
-                    <option value="Solo">
-                      Solo/Individual
-                    </option>
+                    <option value="Sunday">Sunday Baptism</option>
+                    <option value="Solo">Solo/Individual</option>
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -236,6 +255,27 @@ function BaptismFormModal({ onClose }) {
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
                   />
                 </div>
+                
+                {/* NEW: Preferred Priest Dropdown */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600">
+                    Preferred Priest (Optional)
+                  </label>
+                  <select
+                    name="preferredPriest"
+                    value={formData.preferredPriest}
+                    onChange={handleChange}
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                  >
+                    <option value="">No Preference / Any Available</option>
+                    {priests.map((priest) => (
+                      <option key={priest.id} value={priest.name}>
+                        {priest.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
               </div>
             </div>
 
@@ -510,7 +550,7 @@ function BaptismFormModal({ onClose }) {
 
             <hr className="border-gray-200" />
 
-            {/* --- MOVED: IMPORTANT GUIDELINES & FEES PANEL --- */}
+            {/* --- IMPORTANT GUIDELINES & FEES PANEL --- */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
               
               {/* Requirements & Upload */}

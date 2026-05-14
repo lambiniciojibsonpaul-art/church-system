@@ -1,12 +1,17 @@
 import { useState, useEffect } from "react";
 import Header from "./Header";
 import { supabase } from "../supabaseClient";
+import { useAuth } from "../contexts/useAuth";
 
 function PriestDashboard() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("pending"); // "pending" | "schedule"
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
+  
+  // Priest Identity State
+  const [priestName, setPriestName] = useState(null);
 
   // Rejection State
   const [rejectingId, setRejectingId] = useState(null);
@@ -16,47 +21,112 @@ function PriestDashboard() {
   const [viewingDetails, setViewingDetails] = useState(null);
 
   useEffect(() => {
-    fetchRequests();
-  }, []);
+    if (user) {
+      fetchPriestIdentityAndRequests();
+    }
+  }, [user]);
 
-  const fetchRequests = async () => {
+  const fetchPriestIdentityAndRequests = async () => {
     setLoading(true);
-    let allRequests = [];
-
     try {
-      // 1. Fetch Baptisms (Using actual DB columns: child_first_name, child_last_name)
-      const { data: baptisms, error: bError } = await supabase
+      // 1. Find this user's official priest name from the database
+      const { data: priestData, error: priestError } = await supabase
+        .from("priests")
+        .select("name")
+        .eq("user_id", user.id)
+        .single();
+
+      if (priestError || !priestData) {
+        console.warn("Could not find official priest name for this user.");
+        setLoading(false);
+        return;
+      }
+
+      const officialName = priestData.name;
+      setPriestName(officialName);
+
+      // 2. Fetch requests assigned ONLY to this priest across all sacrament tables
+      let allRequests = [];
+
+      // A. Baptisms
+      const { data: baptisms } = await supabase
         .from("baptisms")
-        .select("*");
+        .select("*")
+        .eq("preferred_priest", officialName);
       
-      if (!bError && baptisms) {
-        const mapped = baptisms.map((b) => ({
+      if (baptisms) {
+        allRequests = [...allRequests, ...baptisms.map(b => ({
           ...b,
           request_type: "Baptism",
           display_date: b.preferred_date || b.created_at,
-          display_name: `${b.child_first_name || ''} ${b.child_last_name || ''}`,
-        }));
-        allRequests = [...allRequests, ...mapped];
+          display_name: `${b.child_first_name || ''} ${b.child_last_name || ''}`.trim(),
+        }))];
       }
 
-      // 2. Fetch Weddings (Using actual DB columns: groom_name, bride_name)
-      const { data: weddings, error: wError } = await supabase
+      // B. Weddings
+      const { data: weddings } = await supabase
         .from("weddings")
-        .select("*");
+        .select("*")
+        .eq("preferred_priest", officialName);
       
-      if (!wError && weddings) {
-        const mapped = weddings.map((w) => ({
+      if (weddings) {
+        allRequests = [...allRequests, ...weddings.map(w => ({
           ...w,
           request_type: "Wedding",
-          display_date: w.wedding_date || w.created_at,
-          display_name: `${w.groom_name || 'Groom'} & ${w.bride_name || 'Bride'}`,
-        }));
-        allRequests = [...allRequests, ...mapped];
+          display_date: w.preferred_date || w.wedding_date || w.created_at,
+          display_name: `${w.groom_first_name || 'Groom'} & ${w.bride_first_name || 'Bride'}`,
+        }))];
+      }
+
+      // C. Holy Communions
+      const { data: communions } = await supabase
+        .from("holy_communions")
+        .select("*")
+        .eq("preferred_priest", officialName);
+      
+      if (communions) {
+        allRequests = [...allRequests, ...communions.map(c => ({
+          ...c,
+          request_type: "Holy Communion",
+          display_date: c.date_of_communion || c.created_at,
+          display_name: `${c.child_first_name || ''} ${c.child_surname || ''}`.trim(),
+        }))];
+      }
+
+      // D. Confirmations
+      const { data: confirmations } = await supabase
+        .from("confirmations")
+        .select("*")
+        .eq("preferred_priest", officialName);
+      
+      if (confirmations) {
+        allRequests = [...allRequests, ...confirmations.map(c => ({
+          ...c,
+          request_type: "Confirmation",
+          display_date: c.date_of_confirmation || c.created_at,
+          display_name: `${c.child_first_name || ''} ${c.child_surname || ''}`.trim(),
+        }))];
+      }
+
+      // E. Sacraments Liturgical
+      const { data: liturgical } = await supabase
+        .from("sacraments_liturgical")
+        .select("*")
+        .eq("preferred_priest", officialName);
+      
+      if (liturgical) {
+        allRequests = [...allRequests, ...liturgical.map(l => ({
+          ...l,
+          request_type: l.request_type || "Liturgical Service",
+          display_date: l.request_date || l.created_at,
+          display_name: `${l.request_type || 'Service'} requested by ${l.requested_by || 'Parishioner'}`,
+        }))];
       }
 
       // Sort by date (Upcoming first)
       allRequests.sort((a, b) => new Date(a.display_date) - new Date(b.display_date));
       setRequests(allRequests);
+      
     } catch (err) {
       console.error("Error fetching requests:", err);
     } finally {
@@ -64,9 +134,19 @@ function PriestDashboard() {
     }
   };
 
+  const getTableName = (type) => {
+    switch (type) {
+      case "Baptism": return "baptisms";
+      case "Wedding": return "weddings";
+      case "Holy Communion": return "holy_communions";
+      case "Confirmation": return "confirmations";
+      default: return "sacraments_liturgical";
+    }
+  };
+
   const handleStatusUpdate = async (id, type, newStatus) => {
     setProcessingId(id);
-    const tableName = type === "Baptism" ? "baptisms" : "weddings";
+    const tableName = getTableName(type);
     
     const updatePayload = { status: newStatus };
     if (newStatus === "Rejected") {
@@ -92,8 +172,8 @@ function PriestDashboard() {
     }
   };
 
-  const pendingRequests = requests.filter((r) => r.status === "Pending");
-  const approvedRequests = requests.filter((r) => r.status === "Approved");
+  const pendingRequests = requests.filter((r) => r.status === "Pending" || !r.status);
+  const approvedRequests = requests.filter((r) => r.status === "Approved" || r.status === "Active");
 
   const currentList = activeTab === "pending" ? pendingRequests : approvedRequests;
 
@@ -109,7 +189,7 @@ function PriestDashboard() {
               Priest Dashboard
             </h1>
             <p className="text-gray-500 font-serif italic mt-2 text-lg">
-              Review sacrament requests and manage your officiating schedule.
+              {priestName ? `Welcome, ${priestName}. Review your assigned requests and schedule.` : "Loading profile..."}
             </p>
           </div>
         </div>
@@ -148,6 +228,16 @@ function PriestDashboard() {
           <div className="flex justify-center py-20">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div>
           </div>
+        ) : !priestName ? (
+           <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-16 text-center animate-fade-in-up">
+            <div className="text-5xl mb-4">⚠️</div>
+            <h3 className="text-2xl font-serif text-gray-800 uppercase tracking-widest mb-2">
+              Profile Not Linked
+            </h3>
+            <p className="text-gray-500 font-serif italic">
+              Your account is marked as a priest, but your official name has not been set up in the database yet. Please contact the administrator.
+            </p>
+          </div>
         ) : currentList.length === 0 ? (
           <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-16 text-center animate-fade-in-up">
             <div className="text-5xl mb-4">🕊️</div>
@@ -167,13 +257,20 @@ function PriestDashboard() {
                 key={`${req.request_type}-${req.id}`}
                 className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden group"
               >
-                <div className={`absolute top-0 left-0 w-1.5 h-full ${req.request_type === "Wedding" ? "bg-rose-400" : "bg-blue-400"}`}></div>
+                <div className={`absolute top-0 left-0 w-1.5 h-full ${
+                  req.request_type === "Wedding" ? "bg-rose-400" : 
+                  req.request_type === "Baptism" ? "bg-blue-400" : 
+                  req.request_type === "Holy Communion" ? "bg-amber-400" : 
+                  req.request_type === "Confirmation" ? "bg-red-500" : "bg-[#B59E74]"
+                }`}></div>
 
                 <div className="flex justify-between items-start mb-4">
-                  <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-md ${
-                      req.request_type === "Wedding" 
-                        ? "bg-rose-50 text-rose-600 border border-rose-100" 
-                        : "bg-blue-50 text-blue-600 border border-blue-100"
+                  <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-md border ${
+                      req.request_type === "Wedding" ? "bg-rose-50 text-rose-600 border-rose-100" : 
+                      req.request_type === "Baptism" ? "bg-blue-50 text-blue-600 border-blue-100" :
+                      req.request_type === "Holy Communion" ? "bg-amber-50 text-amber-600 border-amber-100" :
+                      req.request_type === "Confirmation" ? "bg-red-50 text-red-600 border-red-100" :
+                      "bg-[#F6F5ED] text-[#B59E74] border-[#B59E74]/30"
                     }`}
                   >
                     {req.request_type}
@@ -183,7 +280,7 @@ function PriestDashboard() {
                   </span>
                 </div>
 
-                <h3 className="text-2xl font-serif text-gray-800 font-medium mb-1">
+                <h3 className="text-2xl font-serif text-gray-800 font-medium mb-1 truncate">
                   {req.display_name}
                 </h3>
                 
@@ -194,7 +291,7 @@ function PriestDashboard() {
                   </div>
                   <div className="flex items-center gap-3 text-gray-600 text-sm">
                     <span className="text-lg">⏰</span>
-                    <span>{req.preferred_time || req.wedding_time || "Time TBD"}</span>
+                    <span>{req.time_of_communion || req.time_of_confirmation || req.request_time || req.wedding_time || "Time TBD"}</span>
                   </div>
                 </div>
 
@@ -229,20 +326,28 @@ function PriestDashboard() {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex gap-3">
+                      <div className="flex gap-3 flex-col sm:flex-row">
                         <button
-                          onClick={() => handleStatusUpdate(req.id, req.request_type, "Approved")}
-                          disabled={processingId === req.id}
-                          className="flex-1 bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-3 rounded-xl uppercase tracking-widest text-sm shadow-md transition-transform hover:-translate-y-1"
+                          onClick={() => setViewingDetails(req)}
+                          className="w-full sm:flex-1 bg-gray-50 border-2 border-[#B59E74] text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors"
                         >
-                          {processingId === req.id ? "Processing..." : "Approve Schedule"}
+                          View Details
                         </button>
-                        <button
-                          onClick={() => setRejectingId(req.id)}
-                          className="px-6 bg-white border-2 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-200 font-bold py-3 rounded-xl uppercase tracking-widest text-sm transition-colors"
-                        >
-                          Reject
-                        </button>
+                        <div className="flex gap-2 w-full sm:flex-1">
+                          <button
+                            onClick={() => handleStatusUpdate(req.id, req.request_type, "Approved")}
+                            disabled={processingId === req.id}
+                            className="flex-1 bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs shadow-md transition-transform hover:-translate-y-1"
+                          >
+                            {processingId === req.id ? "..." : "Approve"}
+                          </button>
+                          <button
+                            onClick={() => setRejectingId(req.id)}
+                            className="px-4 bg-white border-2 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-200 font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors"
+                          >
+                            Reject
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -270,19 +375,22 @@ function PriestDashboard() {
 
       {/* --- VIEW DETAILS MODAL --- */}
       {viewingDetails && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative animate-fade-in-up">
-            <div className={`p-8 border-b-4 ${viewingDetails.request_type === "Wedding" ? "border-rose-400 bg-rose-50/30" : "border-blue-400 bg-blue-50/30"}`}>
+            <div className={`p-8 border-b-4 sticky top-0 z-10 backdrop-blur-md ${
+              viewingDetails.request_type === "Wedding" ? "border-rose-400 bg-rose-50/90" : 
+              viewingDetails.request_type === "Baptism" ? "border-blue-400 bg-blue-50/90" :
+              viewingDetails.request_type === "Holy Communion" ? "border-amber-400 bg-amber-50/90" :
+              viewingDetails.request_type === "Confirmation" ? "border-red-500 bg-red-50/90" :
+              "border-[#B59E74] bg-[#F6F5ED]/90"
+            }`}>
               <button 
                 onClick={() => setViewingDetails(null)}
                 className="absolute top-6 right-6 w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-50 transition-colors shadow-sm"
               >
                 ✕
               </button>
-              <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-md mb-4 inline-block ${
-                  viewingDetails.request_type === "Wedding" ? "bg-rose-100 text-rose-700" : "bg-blue-100 text-blue-700"
-                }`}
-              >
+              <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-md mb-4 inline-block bg-white/60`}>
                 {viewingDetails.request_type} Details
               </span>
               <h2 className="text-3xl font-serif text-gray-800 font-medium">
@@ -291,46 +399,94 @@ function PriestDashboard() {
             </div>
 
             <div className="p-8 space-y-8">
-              {viewingDetails.request_type === "Baptism" ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Child's Full Name</label>
-                    <p className="font-medium text-gray-800">{viewingDetails.child_first_name} {viewingDetails.child_last_name}</p>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Date of Birth</label>
-                    <p className="font-medium text-gray-800">{viewingDetails.child_dob ? new Date(viewingDetails.child_dob).toLocaleDateString() : "N/A"}</p>
-                  </div>
-                  <div className="md:col-span-2 border-t border-gray-100 pt-4">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Father's Name</label>
-                    <p className="font-medium text-gray-800">{viewingDetails.father_name || "N/A"}</p>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Mother's Name</label>
-                    <p className="font-medium text-gray-800">{viewingDetails.mother_maiden_name || "N/A"}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Groom's Name</label>
-                    <p className="font-medium text-gray-800">{viewingDetails.groom_name || "N/A"}</p>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Bride's Name</label>
-                    <p className="font-medium text-gray-800">{viewingDetails.bride_name || "N/A"}</p>
-                  </div>
+              
+              {/* Dynamic Details based on Request Type */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* --- BAPTISM, COMMUNION, CONFIRMATION FIELDS --- */}
+                {(viewingDetails.request_type === "Baptism" || viewingDetails.request_type === "Holy Communion" || viewingDetails.request_type === "Confirmation") && (
+                  <>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Child's Full Name</label>
+                      <p className="font-medium text-gray-800">{viewingDetails.child_first_name} {viewingDetails.child_middle_name} {viewingDetails.child_surname || viewingDetails.child_last_name}</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Date of Birth</label>
+                      <p className="font-medium text-gray-800">{viewingDetails.date_of_birth || viewingDetails.child_dob ? new Date(viewingDetails.date_of_birth || viewingDetails.child_dob).toLocaleDateString() : "N/A"}</p>
+                    </div>
+                    <div className="md:col-span-2 border-t border-gray-100 pt-4">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Father's Name</label>
+                      <p className="font-medium text-gray-800">{viewingDetails.father_name || "N/A"}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Mother's Maiden Name</label>
+                      <p className="font-medium text-gray-800">{viewingDetails.mother_maiden_name || "N/A"}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Contact Number</label>
+                      <p className="font-medium text-gray-800">{viewingDetails.contact_numbers || viewingDetails.contact_number_1 || viewingDetails.contact_number || "N/A"}</p>
+                    </div>
+                  </>
+                )}
+
+                {/* --- WEDDING FIELDS --- */}
+                {viewingDetails.request_type === "Wedding" && (
+                  <>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Groom's Name</label>
+                      <p className="font-medium text-gray-800">{viewingDetails.groom_first_name} {viewingDetails.groom_last_name}</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Bride's Name</label>
+                      <p className="font-medium text-gray-800">{viewingDetails.bride_first_name} {viewingDetails.bride_last_name}</p>
+                    </div>
+                    <div className="md:col-span-2 border-t border-gray-100 pt-4">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Groom Contact</label>
+                      <p className="font-medium text-gray-800">{viewingDetails.groom_contact || "N/A"}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Bride Contact</label>
+                      <p className="font-medium text-gray-800">{viewingDetails.bride_contact || "N/A"}</p>
+                    </div>
+                  </>
+                )}
+
+                {/* --- LITURGICAL FIELDS --- */}
+                {(viewingDetails.request_type !== "Baptism" && viewingDetails.request_type !== "Wedding" && viewingDetails.request_type !== "Holy Communion" && viewingDetails.request_type !== "Confirmation") && (
+                   <>
+                    <div className="md:col-span-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Requested By</label>
+                      <p className="font-medium text-gray-800">{viewingDetails.requested_by || "N/A"}</p>
+                    </div>
+                    <div className="md:col-span-2 border-t border-gray-100 pt-4">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Location / Address</label>
+                      <p className="font-medium text-gray-800">{viewingDetails.address || "Parish Grounds"}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Contact Number</label>
+                      <p className="font-medium text-gray-800">{viewingDetails.contact_number || "N/A"}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+              
+              {/* Optional General Remarks / Notes */}
+              {(viewingDetails.notes || viewingDetails.remarks) && (
+                <div className="p-4 bg-gray-50 rounded-xl italic text-sm text-gray-600 border-l-4 border-[#B59E74]">
+                  <strong>Notes: </strong> {viewingDetails.notes || viewingDetails.remarks}
                 </div>
               )}
-              
-              {viewingDetails.remarks && (
-                <div className="p-4 bg-gray-50 rounded-xl italic text-sm text-gray-600 border-l-4 border-[#B59E74]">
-                  {viewingDetails.remarks}
+
+              {/* Status Specific Messages */}
+              {viewingDetails.status === "Rejected" && viewingDetails.rejection_remarks && (
+                 <div className="p-4 bg-red-50 rounded-xl text-sm text-red-700 border border-red-100">
+                  <strong>Rejection Reason: </strong> {viewingDetails.rejection_remarks}
                 </div>
               )}
             </div>
+            
             <div className="p-6 bg-gray-50 border-t border-gray-100 text-center rounded-b-[2rem]">
-               <button onClick={() => setViewingDetails(null)} className="px-8 py-3 bg-[#B59E74] text-white font-bold uppercase tracking-widest rounded-full hover:bg-[#9c8760] transition-colors">
+               <button onClick={() => setViewingDetails(null)} className="px-8 py-3 bg-[#B59E74] text-white font-bold uppercase tracking-widest rounded-full hover:bg-[#9c8760] transition-colors shadow-sm">
                  Close Details
                </button>
             </div>

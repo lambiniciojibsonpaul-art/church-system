@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { restInsert } from "../../supabaseRest";
+import { useState, useEffect } from "react";
+import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
@@ -12,9 +12,13 @@ function HolyCommunionFormModal({ onClose }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
 
+  // NEW: State to hold the dynamic list of priests
+  const [priests, setPriests] = useState([]);
+
   const [formData, setFormData] = useState({
     date_of_communion: "",
     time_of_communion: "",
+    preferred_priest: "", // NEW field for the form state
     child_first_name: "",
     child_middle_name: "",
     child_surname: "",
@@ -36,6 +40,24 @@ function HolyCommunionFormModal({ onClose }) {
     declaration_consent: false,
   });
 
+  // NEW: Fetch priests when the modal opens
+  useEffect(() => {
+    const fetchPriests = async () => {
+      try {
+        const { data, error } = await restSelect("priests", {
+          match: { is_active: true },
+          order: "name.asc",
+        });
+        if (!error && data) {
+          setPriests(data);
+        }
+      } catch (err) {
+        console.error("Error fetching priests:", err);
+      }
+    };
+    fetchPriests();
+  }, []);
+
   if (!user) return <SignInPrompt onClose={onClose} serviceName="holy communion" />;
 
   const handleChange = (e) => {
@@ -54,7 +76,8 @@ function HolyCommunionFormModal({ onClose }) {
     try {
       await submitRequest({
         table: "holy_communions",
-        payload: formData,
+        // Ensure preferred_priest is sent or null if empty
+        payload: { ...formData, preferred_priest: formData.preferred_priest || null },
         user,
         serviceName: "holy communion",
         summary: `First Holy Communion request for ${formData.child_first_name} ${formData.child_surname}.`,
@@ -70,7 +93,7 @@ function HolyCommunionFormModal({ onClose }) {
     }
   };
 
-  const inputClass = "p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700";
+  const inputClass = "p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 h-screen w-screen">
@@ -98,7 +121,7 @@ function HolyCommunionFormModal({ onClose }) {
             {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200">{error}</div>}
 
             {/* TOP DETAILS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-white rounded-xl border border-gray-100">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-white rounded-xl border border-gray-100 shadow-sm">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-bold text-gray-600">Date of Holy Communion:</label>
                 <input type="date" name="date_of_communion" value={formData.date_of_communion} onChange={handleChange} required className={inputClass} />
@@ -106,6 +129,24 @@ function HolyCommunionFormModal({ onClose }) {
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-bold text-gray-600">Time:</label>
                 <input type="time" name="time_of_communion" value={formData.time_of_communion} onChange={handleChange} className={inputClass} />
+              </div>
+              
+              {/* NEW: Preferred Priest Dropdown */}
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-bold text-gray-600">Preferred Priest (Optional):</label>
+                <select
+                  name="preferred_priest"
+                  value={formData.preferred_priest}
+                  onChange={handleChange}
+                  className={inputClass}
+                >
+                  <option value="">No Preference / Any Available</option>
+                  {priests.map((priest) => (
+                    <option key={priest.id} value={priest.name}>
+                      {priest.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
