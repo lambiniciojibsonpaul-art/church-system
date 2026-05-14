@@ -8,6 +8,20 @@ const EVENTS_CACHE_KEY = "eventsPage:events";
 const EVENTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const EVENTS_FETCH_TIMEOUT_MS = 12000;
 
+// The exact list of indoor facilities provided
+const INDOOR_FACILITIES = [
+  "St. Francis of Assisi Hall (2nd Floor)",
+  "St. Peter of Alcantara (Peach Room)",
+  "St. Margaret of Cortona (Green Room)",
+  "St. Louis IX (Blue Room)",
+  "Main Church",
+  "Holy Cave",
+  "Portiuncula Formation and Renewal Hall",
+  "Brother Sun Sister Moon Garden",
+  "San Damiano Garden",
+  "Chamber Room"
+];
+
 function readEventsCache() {
   try {
     const raw = sessionStorage.getItem(EVENTS_CACHE_KEY);
@@ -46,9 +60,6 @@ function EventsPage() {
   
   const [viewMode, setViewMode] = useState("Active");
 
-  // Dynamic Facilities List
-  const [facilitiesList, setFacilitiesList] = useState([]);
-
   // Modal & Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -66,12 +77,12 @@ function EventsPage() {
     eventTime: "",
     location: "",
     description: "",
-    setting: "", // <-- Changed from isInside
+    isInside: true, // NEW: Tracks the Indoor/Outdoor toggle
+    setting: "",    // NEW: Stores either the dropdown value or typed text
   });
 
   useEffect(() => {
     fetchEvents();
-    fetchFacilities();
   }, []);
 
   useEffect(() => {
@@ -89,22 +100,14 @@ function EventsPage() {
       order: "event_time.asc",
       timeoutMs: EVENTS_FETCH_TIMEOUT_MS,
     });
+
     if (error) {
-      console.warn("Events fetch failed:", error.message);
+      console.warn("Events fetch failed:", error.message, "— showing cached data if any.");
     } else if (data) {
       setEvents(data);
       writeEventsCache(data);
     }
     setLoading(false);
-  };
-
-  const fetchFacilities = async () => {
-    const { data } = await restSelect("facilities");
-    if (data) {
-      // Sort alphabetically for convenience
-      const sorted = data.map(f => f.name).sort((a, b) => a.localeCompare(b));
-      setFacilitiesList(sorted);
-    }
   };
 
   const handleChange = (e) => {
@@ -131,6 +134,8 @@ function EventsPage() {
     setFormData({
       ...formData,
       eventDate: `${yyyy}-${mm}-${dd}`,
+      isInside: true,
+      setting: "",
     });
     setIsCollaborating(false);
     setIsDropdownOpen(false);
@@ -162,7 +167,7 @@ function EventsPage() {
           event_time: formData.eventTime,
           location: formData.location,
           description: finalDescription,
-          setting: formData.setting, // <-- Saving new text field
+          setting: formData.setting, // Saves whichever input they used
           status: isMinistry ? "Pending" : "Active" 
         },
       ]);
@@ -183,13 +188,14 @@ function EventsPage() {
         eventTime: "",
         location: "",
         description: "",
+        isInside: true,
         setting: "",
       });
       setIsCollaborating(false);
       
     } catch (error) {
       console.error("Database Error:", error.message);
-      alert("Failed to create event: " + error.message);
+      alert("Failed to create event. The system said: " + error.message);
     } finally {
       setSubmitting(false);
     }
@@ -372,6 +378,7 @@ function EventsPage() {
         </div>
       </section>
 
+      {/* --- ADD EVENT MODAL (With Checkbox Collaboration) --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">
@@ -403,6 +410,7 @@ function EventsPage() {
                   </select>
                 </div>
                 
+                {/* CUSTOM CHECKBOX COLLABORATION DROPDOWN */}
                 <div className="flex flex-col gap-1 relative" ref={dropdownRef}>
                   <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-2 h-[18px]">
                     <input type="checkbox" checked={isCollaborating} onChange={(e) => { setIsCollaborating(e.target.checked); if (!e.target.checked) setFormData({...formData, collaborators: []}); }} className="accent-[#B59E74]" />
@@ -438,6 +446,7 @@ function EventsPage() {
                 </div>
               </div>
 
+              {/* Show selected pills directly under the dropdown if they have chosen any */}
               {isCollaborating && formData.collaborators.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
                   {formData.collaborators.map(partner => (
@@ -460,22 +469,66 @@ function EventsPage() {
                 </div>
               </div>
 
+              {/* DYNAMIC INDOOR/OUTDOOR TOGGLE */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Location *</label>
-                  <input type="text" name="location" required value={formData.location} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" placeholder="e.g., San Pedro Bautista" />
+                  <label className="text-xs font-bold text-gray-600 uppercase">Setting Type</label>
+                  <div className="flex items-center gap-4 mt-2 h-full">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input 
+                        type="radio" 
+                        checked={formData.isInside === true} 
+                        onChange={() => setFormData({ ...formData, isInside: true, setting: "" })} 
+                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" 
+                      /> 
+                      Indoor
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input 
+                        type="radio" 
+                        checked={formData.isInside === false} 
+                        onChange={() => setFormData({ ...formData, isInside: false, setting: "" })} 
+                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" 
+                      /> 
+                      Outdoor
+                    </label>
+                  </div>
                 </div>
-                
-                {/* NEW SETTING DROPDOWN */}
+
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Facility / Setting *</label>
-                  <select name="setting" required value={formData.setting} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]">
-                    <option value="" disabled>Select a room or garden...</option>
-                    {facilitiesList.map(facility => (
-                      <option key={facility} value={facility}>{facility}</option>
-                    ))}
-                  </select>
+                  <label className="text-xs font-bold text-gray-600 uppercase">
+                    {formData.isInside ? "Select Facility *" : "Outdoor Location *"}
+                  </label>
+                  {formData.isInside ? (
+                    <select 
+                      name="setting" 
+                      required 
+                      value={formData.setting} 
+                      onChange={handleChange} 
+                      className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
+                    >
+                      <option value="" disabled>Select a Facility</option>
+                      {INDOOR_FACILITIES.map(facility => (
+                        <option key={facility} value={facility}>{facility}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input 
+                      type="text" 
+                      name="setting" 
+                      required 
+                      value={formData.setting} 
+                      onChange={handleChange} 
+                      className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" 
+                      placeholder="e.g., Parish Courtyard" 
+                    />
+                  )}
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-gray-600 uppercase">General Address *</label>
+                <input type="text" name="location" required value={formData.location} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" placeholder="e.g., San Pedro Bautista" />
               </div>
 
               <div className="flex flex-col gap-1">

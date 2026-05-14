@@ -11,11 +11,21 @@ const priestNames = [
   "Rev. Fr. Gabriel Santos"
 ];
 
+// Standard event classes for the Parish
+const EVENT_CLASSES = [
+  "Mass",
+  "Parish Event",
+  "Liturgical",
+  "Meeting",
+  "Seminar / Formation",
+  "General Event"
+];
+
 function AdminSchedules() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState([]);
-  const [facilitiesList, setFacilitiesList] = useState([]); // Dynamic facilities
+  const [facilitiesList, setFacilitiesList] = useState([]); 
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -30,12 +40,13 @@ function AdminSchedules() {
 
   const [formData, setFormData] = useState({
     title: "",
+    eventClass: "Mass", 
     priestName: "",
     eventDate: "",
     eventTime: "",
     location: "Main Church",
     description: "",
-    setting: "", // <-- Changed from isInside
+    setting: "", 
   });
 
   useEffect(() => {
@@ -63,6 +74,20 @@ function AdminSchedules() {
   const handleChange = (e) => {
     const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
     setFormData({ ...formData, [e.target.name]: value });
+  };
+
+  const handleOpenEventModal = () => {
+    setFormData({
+      title: "",
+      eventClass: "Mass", // Default type
+      priestName: "",
+      eventDate: "",
+      eventTime: "",
+      location: "Main Church",
+      description: "",
+      setting: "", 
+    });
+    setIsModalOpen(true);
   };
 
   // --- ACTIONS ---
@@ -122,13 +147,13 @@ function AdminSchedules() {
         {
           creator_id: user.id,
           title: formData.title,
-          event_class: "General Event",
+          event_class: formData.eventClass, 
           priest_name: formData.priestName, 
           event_date: formData.eventDate,
           event_time: formData.eventTime,
           location: formData.location,
           description: formData.description,
-          setting: formData.setting, // <-- Save the setting string
+          setting: formData.setting, 
           status: "Active"
         },
       ]);
@@ -137,16 +162,6 @@ function AdminSchedules() {
 
       setIsModalOpen(false);
       fetchEvents();
-      
-      setFormData({
-        title: "",
-        priestName: "",
-        eventDate: "",
-        eventTime: "",
-        location: "Main Church",
-        description: "",
-        setting: "",
-      });
       
     } catch (error) {
       console.error("Database Error:", error.message);
@@ -181,13 +196,18 @@ function AdminSchedules() {
           <Link to="/admin/schedules" className="text-[#B59E74] font-bold uppercase tracking-widest text-sm border-b-2 border-[#B59E74] pb-4 -mb-[18px]">Schedules & Events</Link>
         </div>
 
-        <div className="flex justify-between items-end mb-8">
+        {/* --- HEADER --- */}
+        <div className="flex flex-col md:flex-row justify-between md:items-end mb-8 gap-6">
           <div>
             <h1 className="text-3xl md:text-4xl font-serif text-gray-800 uppercase tracking-wide">Parish Schedules</h1>
             <p className="text-gray-500 font-serif italic mt-1">Manage parish events, review ministry proposals, and assign priests.</p>
           </div>
-          <button onClick={() => setIsModalOpen(true)} className="bg-[#B59E74] hover:bg-[#9c8760] text-white px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-sm shadow-md transition-colors flex items-center gap-2">
-            <span>+</span> Create Schedule
+          
+          <button 
+            onClick={handleOpenEventModal} 
+            className="bg-[#B59E74] border-2 border-[#B59E74] hover:bg-[#9c8760] hover:border-[#9c8760] text-white px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-sm shadow-md transition-colors flex items-center gap-2 h-fit"
+          >
+            <span className="text-lg leading-none">+</span> Add Event
           </button>
         </div>
 
@@ -207,7 +227,7 @@ function AdminSchedules() {
             <div className="text-center text-gray-400 py-12">
               <div className="text-4xl mb-4">📅</div>
               <h3 className="text-lg font-serif">No {activeTab !== "All" ? activeTab.toLowerCase() : ""} schedules found.</h3>
-              <p className="text-sm">Click "Create Schedule" to add a new event.</p>
+              <p className="text-sm">Click "Add Event" to create a new schedule.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -223,11 +243,10 @@ function AdminSchedules() {
                     <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md shrink-0 ${isPending ? "bg-yellow-100 text-yellow-700" : isCancelledOrRejected ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
                       {ev.status || "Active"}
                     </span>
-                    {ev.setting && (
-                      <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-blue-50 text-blue-600 truncate text-right">
-                        {ev.setting}
-                      </span>
-                    )}
+                    {/* Event Class Badge */}
+                    <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-100 text-gray-600 truncate text-right">
+                      {ev.event_class}
+                    </span>
                   </div>
                   
                   <h3 className={`text-xl font-serif font-medium leading-tight mb-1 ${isCancelledOrRejected ? "text-gray-500 line-through" : "text-gray-800"}`}>
@@ -242,6 +261,8 @@ function AdminSchedules() {
                   <div className="space-y-2 text-sm text-gray-600 border-t border-gray-50 pt-4 flex-1">
                     <div className="flex items-center gap-2"><span>🗓️</span> {new Date(ev.event_date).toLocaleDateString()}</div>
                     <div className="flex items-center gap-2"><span>⏰</span> {ev.event_time}</div>
+                    
+                    {ev.setting && <div className="flex items-center gap-2"><span>🚪</span> {ev.setting}</div>}
                     <div className="flex items-center gap-2"><span>📍</span> {ev.location}</div>
                     
                     {ev.description && (
@@ -257,6 +278,7 @@ function AdminSchedules() {
                     )}
                   </div>
 
+                  {/* ADMIN ACTIONS */}
                   <div className="mt-4 border-t border-gray-100 pt-4 flex gap-2">
                     {isPending && (
                       <>
@@ -346,59 +368,151 @@ function AdminSchedules() {
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">
             <div className="sticky top-0 bg-white px-8 py-6 z-10 flex justify-between items-center border-b border-gray-100">
-              <h2 className="text-xl font-serif text-[#B59E74] uppercase tracking-widest">Create New Schedule</h2>
-              <button onClick={() => setIsModalOpen(false)} className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-600">✕</button>
+              <h2 className="text-xl font-serif text-[#B59E74] uppercase tracking-widest">
+                Create New Schedule
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors"
+              >
+                ✕
+              </button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-8 space-y-6">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600 uppercase">Event Title *</label>
-                <input type="text" name="title" required value={formData.title} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none" placeholder="e.g., Sunday Morning Mass" />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600 uppercase">Hosting Priest *</label>
-                <select name="priestName" required value={formData.priestName} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]">
-                  <option value="" disabled>Select a priest...</option>
-                  {priestNames.map((name) => (<option key={name} value={name}>{name}</option>))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Date *</label>
-                  <input type="date" name="eventDate" required value={formData.eventDate} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Start Time *</label>
-                  <input type="time" name="eventTime" required value={formData.eventTime} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" />
-                </div>
-              </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Location / Address *</label>
-                  <input type="text" name="location" required value={formData.location} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none" placeholder="e.g., Parish Grounds" />
+                  <label className="text-xs font-bold text-gray-600 uppercase">
+                    Event Title *
+                  </label>
+                  <input
+                    type="text"
+                    name="title"
+                    required
+                    value={formData.title}
+                    onChange={handleChange}
+                    className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none"
+                    placeholder="e.g., Sunday Morning Mass"
+                  />
                 </div>
-                
-                {/* NEW FACILITY / SETTING DROPDOWN */}
+
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Facility / Setting *</label>
-                  <select name="setting" required value={formData.setting} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]">
-                    <option value="" disabled>Select a room or garden...</option>
-                    {facilitiesList.map(facility => (
-                      <option key={facility} value={facility}>{facility}</option>
+                  <label className="text-xs font-bold text-gray-600 uppercase">
+                    Event Type *
+                  </label>
+                  <select
+                    name="eventClass"
+                    required
+                    value={formData.eventClass}
+                    onChange={handleChange}
+                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74] font-bold text-[#B59E74]"
+                  >
+                    {EVENT_CLASSES.map((cls) => (
+                      <option key={cls} value={cls}>
+                        {cls}
+                      </option>
                     ))}
                   </select>
                 </div>
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600 uppercase">Description (Optional)</label>
-                <textarea name="description" value={formData.description} onChange={handleChange} rows="3" className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none resize-none" placeholder="Additional details..."></textarea>
+                <label className="text-xs font-bold text-gray-600 uppercase">
+                  Hosting Priest / Lead *
+                </label>
+                <select
+                  name="priestName"
+                  required
+                  value={formData.priestName}
+                  onChange={handleChange}
+                  className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
+                >
+                  <option value="" disabled>Select a priest...</option>
+                  {priestNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <button type="submit" disabled={submitting} className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-xl uppercase tracking-widest mt-4 shadow-md transition-colors disabled:opacity-70">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600 uppercase">Date *</label>
+                  <input
+                    type="date"
+                    name="eventDate"
+                    required
+                    value={formData.eventDate}
+                    onChange={handleChange}
+                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600 uppercase">Start Time *</label>
+                  <input
+                    type="time"
+                    name="eventTime"
+                    required
+                    value={formData.eventTime}
+                    onChange={handleChange}
+                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600 uppercase">
+                    Facility / Setting *
+                  </label>
+                  <select
+                    name="setting"
+                    required
+                    value={formData.setting}
+                    onChange={handleChange}
+                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
+                  >
+                    <option value="" disabled>Select a room or garden...</option>
+                    {facilitiesList.map(facility => (
+                      <option key={facility} value={facility}>{facility}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600 uppercase">
+                    General Location *
+                  </label>
+                  <input
+                    type="text"
+                    name="location"
+                    required
+                    value={formData.location}
+                    onChange={handleChange}
+                    className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none"
+                    placeholder="e.g., Parish Grounds"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-gray-600 uppercase">Description (Optional)</label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleChange}
+                  rows="3"
+                  className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none resize-none"
+                  placeholder="Additional details..."
+                ></textarea>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-xl uppercase tracking-widest mt-4 shadow-md transition-colors disabled:opacity-70"
+              >
                 {submitting ? "Saving..." : "Post Schedule"}
               </button>
             </form>

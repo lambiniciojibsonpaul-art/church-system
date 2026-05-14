@@ -19,7 +19,7 @@ function ManageUsers() {
     email: "",
     contact_number: "",
     password: "",
-    role: "staff" // Default role for new admin creations
+    role: "staff" 
   });
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState(null);
@@ -30,6 +30,10 @@ function ManageUsers() {
   const [editForm, setEditForm] = useState({ first_name: "", last_name: "", contact_number: "" });
   const [saving, setSaving] = useState(false);
 
+  // Delete Modal State
+  const [deletingUser, setDeletingUser] = useState(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -37,7 +41,6 @@ function ManageUsers() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      // 1. Fetch all profiles
       const { data: profiles, error: profileErr } = await supabase
         .from("profiles")
         .select("*")
@@ -45,19 +48,24 @@ function ManageUsers() {
 
       if (profileErr) throw profileErr;
 
-      // 2. Fetch all assigned roles
       const { data: roles, error: rolesErr } = await supabase
         .from("user_roles")
         .select("*");
 
       if (rolesErr) throw rolesErr;
 
-      // 3. Merge them together
       const mergedUsers = profiles.map(profile => {
         const userRoleRow = roles?.find(r => r.user_id === profile.id);
+        let assignedRole = userRoleRow ? userRoleRow.role.toLowerCase() : "parishioner";
+        
+        // NEW FIX: Catch legacy "user" roles from the database and treat them as "parishioner"
+        if (assignedRole === "user") {
+          assignedRole = "parishioner";
+        }
+
         return {
           ...profile,
-          role: userRoleRow ? userRoleRow.role.toLowerCase() : "user"
+          role: assignedRole
         };
       });
 
@@ -83,7 +91,6 @@ function ManageUsers() {
     }
 
     try {
-      // 1. Create the user in Supabase Auth
       const { data: authData, error: authErr } = await supabase.auth.signUp({
         email: createForm.email,
         password: createForm.password,
@@ -101,8 +108,8 @@ function ManageUsers() {
       const newUserId = authData.user?.id;
 
       if (newUserId) {
-        // 2. Assign the role in user_roles table if it's not a standard user
-        if (createForm.role !== "user") {
+        // Only assign a special role if they are NOT a basic parishioner
+        if (createForm.role !== "parishioner") {
           const { error: roleErr } = await supabase
             .from("user_roles")
             .upsert({ user_id: newUserId, role: createForm.role });
@@ -110,7 +117,6 @@ function ManageUsers() {
           if (roleErr) throw roleErr;
         }
 
-        // 3. Refresh the list and reset form
         setCreateSuccess(true);
         fetchUsers();
         setCreateForm({
@@ -134,14 +140,28 @@ function ManageUsers() {
   // --- ROLE MANAGEMENT ---
   const handleRoleChange = async (userId, newRole) => {
     try {
-      if (newRole === "user") {
-        await supabase.from("user_roles").delete().eq("user_id", userId);
+      if (newRole === "parishioner") {
+        // Delete the special role row
+        const { error } = await supabase.from("user_roles").delete().eq("user_id", userId);
+        if (error) throw error;
       } else {
-        await supabase.from("user_roles").upsert({ user_id: userId, role: newRole });
+        // Upsert the new role. We specifically tell it that user_id is the conflict column.
+        const { error } = await supabase
+          .from("user_roles")
+          .upsert({ user_id: userId, role: newRole }, { onConflict: 'user_id' });
+        
+        if (error) throw error;
       }
+      
+      // If no error, update the UI
       setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      
     } catch (err) {
+      console.error("Role Update Error:", err);
       alert("Failed to update role: " + err.message);
+      
+      // If it fails, instantly fetch the real data again to reset the UI
+      fetchUsers(); 
     }
   };
 
@@ -179,15 +199,29 @@ function ManageUsers() {
     }
   };
 
+  // --- ACCOUNT DELETION LOGIC ---
+  const confirmDelete = async () => {
+    if (!deletingUser) return;
+    setDeleteSubmitting(true);
+    try {
+      const { error } = await supabase.rpc('delete_user_account', { target_user_id: deletingUser.id });
+      if (error) throw error;
+
+      setUsers(users.filter(u => u.id !== deletingUser.id));
+      setDeletingUser(null);
+    } catch (err) {
+      alert("Failed to delete user: " + err.message);
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
   // --- FILTERING LOGIC ---
   const filteredUsers = users.filter(u => {
     const searchStr = searchQuery.toLowerCase();
     const fullName = `${u.first_name || ""} ${u.last_name || ""}`.toLowerCase();
     
-    // Filter by search text
     const matchesSearch = fullName.includes(searchStr) || (u.email && u.email.toLowerCase().includes(searchStr));
-    
-    // Filter by role dropdown
     const matchesRole = roleFilter === "All" || u.role === roleFilter.toLowerCase();
 
     return matchesSearch && matchesRole;
@@ -199,13 +233,8 @@ function ManageUsers() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans h-screen overflow-hidden">
-      {/* NOTE: Added h-screen and overflow-hidden to the main wrapper. 
-        This stops the entire page from scrolling and forces the scrolling 
-        into the specific left/right columns below.
-      */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-24 pb-6 flex flex-col h-full">
         
-        {/* Navigation Breadcrumbs & Header - Kept Static */}
         <div className="shrink-0">
           <div className="flex gap-4 mb-4 border-b border-gray-200 pb-2">
             <Link to="/admin" className="text-gray-500 hover:text-[#B59E74] font-bold uppercase tracking-widest text-sm transition-colors">Dashboard</Link>
@@ -215,14 +244,13 @@ function ManageUsers() {
 
           <div className="mb-6">
             <h1 className="text-3xl md:text-4xl font-serif text-gray-800 uppercase tracking-wide">Manage Accounts</h1>
-            <p className="text-gray-500 font-serif italic mt-1">Create new staff accounts and manage existing user roles.</p>
+            <p className="text-gray-500 font-serif italic mt-1">Create new staff accounts, manage roles, and remove users.</p>
           </div>
         </div>
 
-        {/* SPLIT LAYOUT: Left Form, Right Table - INDEPENDENT SCROLLING */}
         <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 flex-1 min-h-0 overflow-hidden pb-4">
           
-          {/* LEFT SIDE: CREATE ACCOUNT FORM (Scrolls Independently) */}
+          {/* LEFT SIDE: CREATE ACCOUNT */}
           <div className="lg:w-[400px] shrink-0 h-full overflow-y-auto scrollbar-thin pr-1">
             <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 sm:p-8">
               <div className="mb-6 border-b border-gray-100 pb-4">
@@ -248,7 +276,7 @@ function ManageUsers() {
                     <option value="ministry">Ministry</option>
                     <option value="priest">Priest</option>
                     <option value="admin">Admin</option>
-                    <option value="user">Standard User</option>
+                    <option value="parishioner">Parishioner</option>
                   </select>
                 </div>
 
@@ -285,10 +313,9 @@ function ManageUsers() {
             </div>
           </div>
 
-          {/* RIGHT SIDE: DATABASE TABLE (Scrolls Independently) */}
+          {/* RIGHT SIDE: DATABASE TABLE */}
           <div className="flex-1 flex flex-col h-full bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
             
-            {/* Table Header & Filters - Static at Top */}
             <div className="shrink-0 p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row justify-between items-center gap-4">
               <div className="flex items-center gap-3 w-full sm:w-auto">
                 <span className="text-xl">🗄️</span>
@@ -299,25 +326,22 @@ function ManageUsers() {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                {/* Search Bar */}
                 <div className="relative flex-1 sm:w-64">
                   <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.85-5.4a7.25 7.25 0 11-14.5 0 7.25 7.25 0 0114.5 0z" /></svg>
                   <input type="text" placeholder="Search name or email..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm" />
                 </div>
                 
-                {/* Filter Dropdown */}
                 <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="py-2.5 pl-4 pr-8 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-600 bg-white cursor-pointer outline-none">
                   <option value="All">All Roles</option>
                   <option value="admin">Admin</option>
                   <option value="staff">Staff</option>
                   <option value="ministry">Ministry</option>
                   <option value="priest">Priest</option>
-                  <option value="user">User</option>
+                  <option value="parishioner">Parishioner</option>
                 </select>
               </div>
             </div>
 
-            {/* Table Content - Scrolls */}
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               {loading ? (
                 <div className="flex h-full items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#B59E74]"></div></div>
@@ -348,7 +372,7 @@ function ManageUsers() {
                           <select
                             value={u.role}
                             onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                            disabled={u.id === user.id} // Don't let the admin change their own role accidentally
+                            disabled={u.id === user.id}
                             className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg border-2 cursor-pointer outline-none transition-colors ${
                               u.role === "admin" || u.role === "superadmin" ? "bg-red-50 border-red-200 text-red-700 focus:border-red-400" :
                               u.role === "staff" ? "bg-blue-50 border-blue-200 text-blue-700 focus:border-blue-400" :
@@ -357,7 +381,7 @@ function ManageUsers() {
                               "bg-gray-50 border-gray-200 text-gray-600 focus:border-gray-400"
                             } ${u.id === user.id ? "opacity-50 cursor-not-allowed" : ""}`}
                           >
-                            <option value="user">User</option>
+                            <option value="parishioner">Parishioner</option>
                             <option value="staff">Staff</option>
                             <option value="ministry">Ministry</option>
                             <option value="priest">Priest</option>
@@ -365,12 +389,22 @@ function ManageUsers() {
                           </select>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button
-                            onClick={() => openEditModal(u)}
-                            className="text-gray-400 hover:text-[#B59E74] hover:bg-[#B59E74]/10 text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-[#B59E74]/30"
-                          >
-                            ✎ Edit
-                          </button>
+                          <div className="flex justify-end items-center gap-2">
+                            <button
+                              onClick={() => openEditModal(u)}
+                              className="text-gray-400 hover:text-[#B59E74] hover:bg-[#B59E74]/10 text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-[#B59E74]/30"
+                            >
+                              ✎ Edit
+                            </button>
+                            {u.id !== user.id && (
+                              <button
+                                onClick={() => setDeletingUser(u)}
+                                className="text-gray-400 hover:text-red-600 hover:bg-red-50 text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-red-200"
+                              >
+                                🗑️ Delete
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -443,6 +477,40 @@ function ManageUsers() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- DELETE CONFIRMATION MODAL --- */}
+      {deletingUser && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
+            <div className="bg-red-50 px-8 py-6 border-b border-red-100 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-serif text-red-800 font-medium uppercase tracking-widest">Delete Account</h2>
+                <p className="text-xs text-red-600 italic mt-1">{deletingUser.email}</p>
+              </div>
+              <button onClick={() => setDeletingUser(null)} className="text-red-400 hover:text-red-600 text-xl">✕</button>
+            </div>
+            
+            <div className="p-8 space-y-6">
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-800 space-y-2">
+                <p className="font-bold uppercase tracking-wider text-xs">⚠ Warning: Permanent Action</p>
+                <p>
+                  You are about to permanently delete <strong>{deletingUser.first_name} {deletingUser.last_name}</strong> from the system.
+                  This action cannot be undone and will immediately revoke their access.
+                </p>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button type="button" onClick={() => setDeletingUser(null)} disabled={deleteSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">
+                  Cancel
+                </button>
+                <button type="button" onClick={confirmDelete} disabled={deleteSubmitting} className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-md disabled:opacity-50">
+                  {deleteSubmitting ? "Deleting..." : "Confirm Delete"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
