@@ -34,7 +34,7 @@ function PriestDashboard() {
         .from("priests")
         .select("name")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle(); // FIX: Changed from .single() to .maybeSingle()
 
       if (priestError || !priestData) {
         console.warn("Could not find official priest name for this user.");

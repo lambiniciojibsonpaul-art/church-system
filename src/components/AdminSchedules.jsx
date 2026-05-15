@@ -491,6 +491,7 @@ function AdminSchedules() {
                     type="date"
                     name="eventDate"
                     required
+                    min={new Date().toISOString().split('T')[0]}
                     value={formData.eventDate}
                     onChange={handleChange}
                     className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"

@@ -42,7 +42,11 @@ serve(async (req) => {
     const { data, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: email,
       password: password,
-      email_confirm: true 
+      email_confirm: true,
+      // FIX: Add the flag to the user's metadata here!
+      user_metadata: {
+        requires_password_change: true 
+      }
     });
 
     if (authError) throw authError;
@@ -55,7 +59,7 @@ serve(async (req) => {
     const { error: roleError } = await supabaseAdmin
       .from('user_roles')
       .upsert(
-        { user_id: data.user.id, role: normalizedRole },
+        { user_id: data.user.id, role: normalizedRole }, // FIX: Removed the flag from here
         { onConflict: 'user_id' }
       );
 

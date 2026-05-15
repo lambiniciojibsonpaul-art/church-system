@@ -481,7 +481,7 @@ function EventsPage() {
               <div className="grid grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">Date *</label>
-                  <input type="date" name="eventDate" required value={formData.eventDate} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" />
+                  <input type="date" name="eventDate" required min={new Date().toISOString().split('T')[0]} value={formData.eventDate} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">Time *</label>

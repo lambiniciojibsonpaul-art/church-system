@@ -78,6 +78,7 @@ function ManageUsers() {
   };
 
   // --- ACCOUNT CREATION LOGIC ---
+  // --- ACCOUNT CREATION LOGIC ---
   const handleCreateAccount = async (e) => {
     e.preventDefault();
     setCreateError(null);
@@ -98,7 +99,8 @@ function ManageUsers() {
           data: {
             first_name: createForm.first_name,
             last_name: createForm.last_name,
-            contact_number: createForm.contact_number
+            contact_number: createForm.contact_number,
+            requires_password_change: true // ✨ ADDED THIS FLAG HERE!
           }
         }
       });
@@ -200,13 +202,19 @@ function ManageUsers() {
   };
 
   // --- ACCOUNT DELETION LOGIC ---
+  // --- ACCOUNT DELETION LOGIC ---
   const confirmDelete = async () => {
     if (!deletingUser) return;
     setDeleteSubmitting(true);
     try {
-      const { error } = await supabase.rpc('delete_user_account', { target_user_id: deletingUser.id });
+      // NEW FIX: Call the Edge Function instead of the raw SQL RPC
+      const { data, error } = await supabase.functions.invoke("delete-user", {
+        body: { target_user_id: deletingUser.id },
+      });
+
       if (error) throw error;
 
+      // Remove the user from the local UI state
       setUsers(users.filter(u => u.id !== deletingUser.id));
       setDeletingUser(null);
     } catch (err) {
