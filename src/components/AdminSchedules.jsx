@@ -30,7 +30,7 @@ function AdminSchedules() {
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState([]);
   
-  // NEW: State to hold the dynamic list of priests
+  // State to hold the dynamic list of priests
   const [priestNames, setPriestNames] = useState([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -77,7 +77,7 @@ function AdminSchedules() {
     }
   };
 
-  // NEW: Function to fetch priests from the database
+  // Function to fetch priests from the database
   const fetchPriests = async () => {
     try {
       const { data, error } = await restSelect("priests", {
@@ -174,6 +174,34 @@ function AdminSchedules() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // 1. DATE VALIDATION: Prevent past dates
+    const today = new Date().toISOString().split("T")[0];
+    if (formData.eventDate < today) {
+      alert("Error: You cannot schedule an event in the past. Please select today or a future date.");
+      return;
+    }
+
+    // 2. CONFLICT DETECTION
+    const conflict = events.find(ev => {
+      // Ignore events that are already cancelled or rejected
+      if (ev.status === "Cancelled" || ev.status === "Rejected") return false;
+      
+      // If the date and time don't match exactly, there's no conflict
+      if (ev.event_date !== formData.eventDate || ev.event_time !== formData.eventTime) return false;
+
+      // Check if it's the exact same priest OR the exact same indoor room
+      const isSamePriest = ev.priest_name === formData.priestName;
+      const isSameRoom = formData.isInside && formData.setting && ev.setting === formData.setting;
+
+      return isSamePriest || isSameRoom;
+    });
+
+    if (conflict) {
+      alert(`Scheduling Conflict! "${conflict.title}" is already booked at this time for this priest or location.`);
+      return; // Stop the submission!
+    }
+
     setSubmitting(true);
 
     try {
@@ -491,7 +519,7 @@ function AdminSchedules() {
                     type="date"
                     name="eventDate"
                     required
-                    min={new Date().toISOString().split('T')[0]}
+                    min={new Date().toISOString().split('T')[0]} // Front-end calendar restriction
                     value={formData.eventDate}
                     onChange={handleChange}
                     className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
