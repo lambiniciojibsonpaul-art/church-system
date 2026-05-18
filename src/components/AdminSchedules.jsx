@@ -77,23 +77,20 @@ function AdminSchedules() {
     }
   };
 
-  // Function to fetch priests from the database
   const fetchPriests = async () => {
     try {
       const { data, error } = await restSelect("priests", {
-        match: { is_active: true }, // Only get active priests
         order: "name.asc",
         timeoutMs: 10000,
       });
 
       if (error) throw error;
       if (data) {
-        // Extract just the names into a simple array
         setPriestNames(data.map(p => p.name));
       }
     } catch (err) {
       console.error("Failed to load priests:", err);
-      // Fallback list just in case the database fetch fails
+      // Fallback list
       setPriestNames([
         "Rev. Fr. Pedro Bautista",
         "Rev. Fr. Juan Dela Cruz",

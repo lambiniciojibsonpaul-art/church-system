@@ -142,12 +142,16 @@ function ManageUsers() {
   // --- ROLE MANAGEMENT ---
   const handleRoleChange = async (userId, newRole) => {
     try {
+      // 1. Find the user's name from your local state so we can add them to the priests table
+      const targetUser = users.find(u => u.id === userId);
+      const fullName = `${targetUser?.first_name || ""} ${targetUser?.last_name || ""}`.trim() || "Unknown Priest";
+
       if (newRole === "parishioner") {
         // Delete the special role row
         const { error } = await supabase.from("user_roles").delete().eq("user_id", userId);
         if (error) throw error;
       } else {
-        // Upsert the new role. We specifically tell it that user_id is the conflict column.
+        // Upsert the new role.
         const { error } = await supabase
           .from("user_roles")
           .upsert({ user_id: userId, role: newRole }, { onConflict: 'user_id' });
@@ -155,6 +159,32 @@ function ManageUsers() {
         if (error) throw error;
       }
       
+      // ✨ THE ULTIMATE PRIEST LIFECYCLE FIX ✨
+      
+      if (newRole === "priest") {
+        const { error: priestAddErr } = await supabase
+                  .from("priests")
+                  .upsert({ 
+                    user_id: userId, 
+                    name: fullName 
+                  }, { onConflict: 'user_id' });
+          
+        if (priestAddErr) console.warn("Could not activate priest profile:", priestAddErr.message);
+        
+      } else {
+        // 2. THEY STOPPED BEING A PRIEST: Completely DELETE them from the priests table
+        const { error: priestRemoveErr } = await supabase
+          .from("priests")
+          .delete() // 💥 FIX: Hard delete instead of just deactivating
+          .eq("user_id", userId);
+          
+        if (priestRemoveErr) {
+          console.warn("Could not remove priest profile:", priestRemoveErr.message);
+        } else {
+          console.log(`Successfully wiped ${fullName} from the priests table.`);
+        }
+      }
+
       // If no error, update the UI
       setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
       

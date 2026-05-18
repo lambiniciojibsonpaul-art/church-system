@@ -5,18 +5,7 @@ import { restSelect, restUpdate, restInsert, restDelete } from "../supabaseRest"
 import { useAuth } from "../contexts/useAuth";
 import { sendApprovalEmail } from "../emailNotifications";
 import { QRCodeCanvas } from "qrcode.react"; 
-import jsPDF from "jspdf"; 
-
-// ----------------------------------------------------------------------------
-// CLONED ADMIN CONFIGURATION FOR STAFF
-// ----------------------------------------------------------------------------
-const PRIEST_OPTIONS = [
-  "Rev. Fr. Pedro Bautista",
-  "Rev. Fr. Juan Dela Cruz",
-  "Rev. Fr. Michael Smith",
-  "Rev. Fr. Antonio Luna",
-  "Rev. Fr. Gabriel Santos"
-];
+import jsPDF from "jspdf";
 
 function formatDate(d) {
   if (!d) return "";
@@ -208,6 +197,9 @@ function StaffDashboard() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("requests"); 
   
+  // NEW: State for Dynamic Priests
+  const [priestNames, setPriestNames] = useState([]);
+
   // States for Approved Items (Events, Certs, QR)
   const [items, setItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(true);
@@ -236,7 +228,25 @@ function StaffDashboard() {
   useEffect(() => {
     fetchPendingRequests();
     fetchApprovedItems();
+    fetchPriests(); // NEW: Fetch priests on mount
   }, []);
+
+  // --- FETCH DYNAMIC PRIESTS ---
+  const fetchPriests = async () => {
+    try {
+      const { data, error } = await restSelect("priests", {
+        order: "name.asc",
+        timeoutMs: 10000,
+      });
+
+      if (error) throw error;
+      if (data) {
+        setPriestNames(data.map(p => p.name));
+      }
+    } catch (err) {
+      console.error("Failed to load priests:", err);
+    }
+  };
 
   // --- FETCH PENDING REQUESTS ---
   const fetchPendingRequests = async () => {
@@ -683,7 +693,8 @@ function StaffDashboard() {
                   <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Assign Priest *</label>
                   <select value={assignedPriest} onChange={(e) => setAssignedPriest(e.target.value)} className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white">
                     <option value="" disabled>Select a priest…</option>
-                    {PRIEST_OPTIONS.map((p) => (<option key={p} value={p}>{p}</option>))}
+                    {/* NEW: Dynamic Mapping */}
+                    {priestNames.map((p) => (<option key={p} value={p}>{p}</option>))}
                   </select>
                   <p className="text-xs text-gray-400 italic mt-1">The selected priest will host this on the parish events calendar.</p>
                 </div>
@@ -766,7 +777,7 @@ function StaffDashboard() {
         </div>
       )}
 
-      {/* DETAILS MODAL (Now fully dynamic to show ALL fields) */}
+      {/* DETAILS MODAL */}
       {viewingDetails && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative">
