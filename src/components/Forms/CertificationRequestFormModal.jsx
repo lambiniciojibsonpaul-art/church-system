@@ -173,15 +173,9 @@ function CertificationRequestFormModal({ onClose }) {
                   <textarea rows="2" name="address" value={formData.address} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Street, Barangay, City" />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Contact Number</label>
-                    <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} required className={inputClass} placeholder="09XX XXX XXXX" />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Email Address</label>
-                    <input type="email" name="email_address" value={formData.email_address} onChange={handleChange} className={inputClass} placeholder="email@example.com" />
-                  </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600">Contact Number</label>
+                  <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} required className={inputClass} placeholder="09XX XXX XXXX" />
                 </div>
               </div>
             </div>
@@ -276,6 +270,22 @@ function CertificationRequestFormModal({ onClose }) {
                     </select>
                   </div>
                 </div>
+
+                {/* DYNAMIC EMAIL INPUT CONDITIONALLY RENDERED */}
+                {formData.delivery_method === "Email Scan" && (
+                  <div className="flex flex-col gap-1 animate-fade-in-up">
+                    <label className="text-xs font-bold text-gray-600">Email Address for Delivery</label>
+                    <input 
+                      type="email" 
+                      name="email_address" 
+                      value={formData.email_address} 
+                      onChange={handleChange} 
+                      required 
+                      className={inputClass} 
+                      placeholder="email@example.com" 
+                    />
+                  </div>
+                )}
 
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Additional Notes</label>
