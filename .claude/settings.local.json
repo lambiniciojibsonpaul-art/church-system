@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm run *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Lambinicio \\(Work\\)\\\\Documents\\\\HPL PROJECTS\\\\GitHub\\\\church-system\" -Force)",
-      "Bash(Select-Object Name, FullName)"
+      "Bash(Select-Object Name, FullName)",
+      "Bash(git stash *)"
     ]
   }
 }
