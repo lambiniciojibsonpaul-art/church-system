@@ -161,41 +161,59 @@ function ManageUsers() {
       const fullName = `${targetUser?.first_name || ""} ${targetUser?.last_name || ""}`.trim() || "Unknown Priest";
 
       if (newRole === "parishioner") {
-        // Delete the special role row
+        // Parishioner = no special role row needed — delete it
         const { error } = await supabase.from("user_roles").delete().eq("user_id", userId);
         if (error) throw error;
       } else {
-        // Upsert the new role.
-        const { error } = await supabase
+        // Update existing row first; insert if none exists
+        const { data: updated, error: updateErr } = await supabase
           .from("user_roles")
-          .upsert({ user_id: userId, role: newRole }, { onConflict: 'user_id' });
-        
-        if (error) throw error;
+          .update({ role: newRole })
+          .eq("user_id", userId)
+          .select();
+        if (updateErr) throw updateErr;
+
+        if (!updated || updated.length === 0) {
+          const { error: insertErr } = await supabase
+            .from("user_roles")
+            .insert({ user_id: userId, role: newRole });
+          if (insertErr) throw insertErr;
+        }
       }
-      
-      // ✨ THE ULTIMATE PRIEST LIFECYCLE FIX ✨
-      
+
       if (newRole === "priest") {
-        const { error: priestAddErr } = await supabase
-                  .from("priests")
-                  .upsert({ 
-                    user_id: userId, 
-                    name: fullName 
-                  }, { onConflict: 'user_id' });
-          
-        if (priestAddErr) console.warn("Could not activate priest profile:", priestAddErr.message);
+        // Add to priests table so they appear in dropdowns; is_active defaults to true
+        const { data: existingPriest } = await supabase
+          .from("priests")
+          .select("user_id")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (existingPriest) {
+          const { error: priestUpdateErr } = await supabase
+            .from("priests")
+            .update({ name: fullName, is_active: true })
+            .eq("user_id", userId);
+          if (priestUpdateErr) console.warn("Could not update priest profile:", priestUpdateErr.message);
+        } else {
+          const { error: priestInsertErr } = await supabase
+            .from("priests")
+            .insert({ user_id: userId, name: fullName, is_active: true });
+          if (priestInsertErr) console.warn("Could not create priest profile:", priestInsertErr.message);
+          else console.log(`[ManageUsers] ${fullName} added to priests table.`);
+        }
         
       } else {
-        // 2. THEY STOPPED BEING A PRIEST: Completely DELETE them from the priests table
-        const { error: priestRemoveErr } = await supabase
+        // Not a priest anymore — deactivate so they vanish from all dropdowns
+        const { error: priestDeactivateErr } = await supabase
           .from("priests")
-          .delete() // 💥 FIX: Hard delete instead of just deactivating
+          .update({ is_active: false })
           .eq("user_id", userId);
-          
-        if (priestRemoveErr) {
-          console.warn("Could not remove priest profile:", priestRemoveErr.message);
+
+        if (priestDeactivateErr) {
+          console.warn("Could not deactivate priest profile:", priestDeactivateErr.message);
         } else {
-          console.log(`Successfully wiped ${fullName} from the priests table.`);
+          console.log(`[ManageUsers] ${fullName} deactivated in priests table.`);
         }
       }
 

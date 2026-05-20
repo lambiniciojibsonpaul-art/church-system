@@ -243,6 +243,7 @@ function StaffDashboard() {
   const fetchPriests = async () => {
     try {
       const { data, error } = await restSelect("priests", {
+        match: { is_active: true },
         order: "name.asc",
         timeoutMs: 10000,
       });

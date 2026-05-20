@@ -311,7 +311,7 @@ function AdminDashboard() {
             })
           )
         ),
-        restSelect("priests", { order: "name.asc", timeoutMs: 10000 }),
+        restSelect("priests", { match: { is_active: true }, order: "name.asc", timeoutMs: 10000 }),
       ]);
       if (cancelled) return;
 
