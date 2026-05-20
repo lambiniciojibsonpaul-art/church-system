@@ -92,31 +92,45 @@ function ManageUsers() {
     }
 
     try {
-      const { data: authData, error: authErr } = await supabase.auth.signUp({
-        email: createForm.email,
-        password: createForm.password,
-        options: {
-          data: {
-            first_name: createForm.first_name,
-            last_name: createForm.last_name,
-            contact_number: createForm.contact_number,
-            requires_password_change: true // ✨ ADDED THIS FLAG HERE!
-          }
-        }
+      // Use the create-user edge function so the current admin session is NOT
+      // replaced by a new session for the newly-created user. signUp() from the
+      // client would log out the admin — the edge function uses the service-role
+      // key and avoids that entirely.
+      const { data: edgeData, error: edgeErr } = await supabase.functions.invoke("create-user", {
+        body: {
+          email: createForm.email,
+          password: createForm.password,
+          role: createForm.role,
+        },
       });
 
-      if (authErr) throw authErr;
+      if (edgeErr) throw edgeErr;
+      if (edgeData?.error) throw new Error(edgeData.error);
 
-      const newUserId = authData.user?.id;
+      const newUserId = edgeData?.user?.id;
 
       if (newUserId) {
-        // Only assign a special role if they are NOT a basic parishioner
-        if (createForm.role !== "parishioner") {
-          const { error: roleErr } = await supabase
-            .from("user_roles")
-            .upsert({ user_id: newUserId, role: createForm.role });
-          
-          if (roleErr) throw roleErr;
+        // Insert profile data — the edge function only handles auth + role.
+        const { error: profileErr } = await supabase
+          .from("profiles")
+          .upsert({
+            id: newUserId,
+            first_name: createForm.first_name,
+            last_name: createForm.last_name,
+            email: createForm.email,
+            contact_number: createForm.contact_number,
+          }, { onConflict: "id" });
+
+        if (profileErr) {
+          console.warn("[ManageUsers] profile insert failed:", profileErr.message);
+        }
+
+        // If role is priest, add to priests table so they appear in dropdowns.
+        if (createForm.role === "priest") {
+          const fullName = `${createForm.first_name} ${createForm.last_name}`.trim();
+          await supabase
+            .from("priests")
+            .upsert({ user_id: newUserId, name: fullName }, { onConflict: "user_id" });
         }
 
         setCreateSuccess(true);
@@ -127,9 +141,9 @@ function ManageUsers() {
           email: "",
           contact_number: "",
           password: "",
-          role: "staff"
+          role: "staff",
         });
-        
+
         setTimeout(() => setCreateSuccess(false), 4000);
       }
     } catch (err) {

@@ -5,7 +5,7 @@ import { useAuth } from "../contexts/useAuth";
 import { sendApprovalEmail } from "../emailNotifications";
 
 const QUERY_TIMEOUT_MS = 12000;
-const PRIEST_OPTIONS = ["Priest 1", "Priest 2", "Priest 3"];
+// Priest list is fetched from the `priests` table on mount — see useEffect below.
 
 // ----------------------------------------------------------------------------
 // TAB CONFIG
@@ -246,6 +246,8 @@ function AdminDashboard() {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
+  const [priestOptions, setPriestOptions] = useState([]);
+
   // requests is keyed by tab name, value is array of records.
   const [requests, setRequests] = useState(
     Object.fromEntries(TAB_NAMES.map((t) => [t, []]))
@@ -295,24 +297,32 @@ function AdminDashboard() {
   const [deletingEvent, setDeletingEvent] = useState(null);
   const [deleteEventSubmitting, setDeleteEventSubmitting] = useState(false);
 
-  // Fetch all 8 tables in parallel on mount.
+  // Fetch all 8 tables + priests list in parallel on mount.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const entries = Object.entries(TAB_CONFIG);
-      const results = await Promise.allSettled(
-        entries.map(([, cfg]) =>
-          restSelect(cfg.table, {
-            order: "created_at.desc",
-            timeoutMs: QUERY_TIMEOUT_MS,
-          })
-        )
-      );
+      const [tabResults, priestsResult] = await Promise.all([
+        Promise.allSettled(
+          entries.map(([, cfg]) =>
+            restSelect(cfg.table, {
+              order: "created_at.desc",
+              timeoutMs: QUERY_TIMEOUT_MS,
+            })
+          )
+        ),
+        restSelect("priests", { order: "name.asc", timeoutMs: 10000 }),
+      ]);
       if (cancelled) return;
+
+      // Populate priest dropdown from DB; fall back to empty (UI will show no options)
+      if (priestsResult.data && priestsResult.data.length > 0) {
+        setPriestOptions(priestsResult.data.map((p) => p.name));
+      }
 
       const merged = {};
       entries.forEach(([tabName], idx) => {
-        const r = results[idx];
+        const r = tabResults[idx];
         if (r.status === "fulfilled" && r.value?.data) {
           merged[tabName] = r.value.data;
         } else {
@@ -1583,18 +1593,18 @@ function AdminDashboard() {
             <div className="bg-green-50 px-8 py-6 border-b border-green-100">
               <h2 className="text-xl font-serif text-green-800 font-medium uppercase tracking-widest">Approve Request</h2>
               <p className="text-sm text-green-700 italic">
-                For {activeConfig.title(acceptingRequest)}
+                For {resolveConfigFor(acceptingRequest).title(acceptingRequest)}
               </p>
             </div>
             <div className="p-8 space-y-6">
               <div className="bg-gray-50 rounded-2xl p-4 text-sm text-gray-600 space-y-1 border border-gray-100">
                 <div>
                   <span className="text-gray-400 uppercase text-[10px] tracking-widest mr-2">Tab</span>
-                  {activeTab}
+                  {resolveTabFor(acceptingRequest)}
                 </div>
               </div>
 
-              {activeConfig.isSacrament && (
+              {resolveConfigFor(acceptingRequest).isSacrament && (
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
                     Assign Priest *
@@ -1605,9 +1615,13 @@ function AdminDashboard() {
                     className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white"
                   >
                     <option value="" disabled>Select a priest…</option>
-                    {PRIEST_OPTIONS.map((p) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
+                    {priestOptions.length > 0 ? (
+                      priestOptions.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))
+                    ) : (
+                      <option value="" disabled>No priests configured — add one in Manage Users</option>
+                    )}
                   </select>
                   <p className="text-xs text-gray-400 italic mt-1">
                     The selected priest will host this on the parish events calendar.
@@ -1625,10 +1639,10 @@ function AdminDashboard() {
                 </button>
                 <button
                   onClick={confirmAccept}
-                  disabled={acceptSubmitting || (activeConfig.isSacrament && !assignedPriest)}
+                  disabled={acceptSubmitting || (resolveConfigFor(acceptingRequest).isSacrament && !assignedPriest)}
                   className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {acceptSubmitting ? "Approving…" : activeConfig.isSacrament ? "Approve & Schedule" : "Approve"}
+                  {acceptSubmitting ? "Approving…" : resolveConfigFor(acceptingRequest).isSacrament ? "Approve & Schedule" : "Approve"}
                 </button>
               </div>
             </div>
