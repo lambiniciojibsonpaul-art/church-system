@@ -135,22 +135,34 @@ function Header({ forceSolidBg = false }) {
             </div>
           </div>
 
-          {/* Center: nav — no longer absolute, sits naturally between the two flex-1 sides */}
-          <nav className="hidden lg:flex gap-5 xl:gap-7 font-serif italic text-lg justify-center whitespace-nowrap shrink-0">
-            <Link to="/" className="hover:text-[#B59E74] transition-colors">Home</Link>
-            <Link to="/about" className="hover:text-[#B59E74] transition-colors">About Us</Link>
-            <Link to="/services" className="hover:text-[#B59E74] transition-colors">Services</Link>
-            <Link to="/events" className="hover:text-[#B59E74] transition-colors">Events</Link>
-            <Link to="/ministries" className="hover:text-[#B59E74] transition-colors">Ministries</Link>
-            <Link to="/give" className="hover:text-[#B59E74] transition-colors">Give</Link>
-            <a
-              href="https://www.google.com/maps/dir/?api=1&destination=69+San+Pedro+Bautista+St.%2C+San+Francisco+del+Monte%2C+Quezon+City%2C+Philippines%2C+1104"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-[#B59E74] transition-colors"
-            >
-              Visit Us
-            </a>
+          {/* Center: nav */}
+          <nav className="hidden lg:flex justify-center whitespace-nowrap shrink-0">
+            {isAdmin ? (
+              /* Admin nav — sans-serif, uppercase, matching dashboard style */
+              <div className="flex gap-6 xl:gap-8 items-center">
+                <Link to="/events"     className={`text-[11px] font-bold uppercase tracking-widest transition-colors hover:text-[#B59E74] ${isSolid ? "text-gray-600" : "text-white"}`}>Events</Link>
+                <Link to="/services"   className={`text-[11px] font-bold uppercase tracking-widest transition-colors hover:text-[#B59E74] ${isSolid ? "text-gray-600" : "text-white"}`}>Services</Link>
+                <Link to="/ministries" className={`text-[11px] font-bold uppercase tracking-widest transition-colors hover:text-[#B59E74] ${isSolid ? "text-gray-600" : "text-white"}`}>Ministries</Link>
+              </div>
+            ) : (
+              /* Public nav — serif italic */
+              <div className="flex gap-5 xl:gap-7 font-serif italic text-lg items-center">
+                <Link to="/"           className="hover:text-[#B59E74] transition-colors">Home</Link>
+                <Link to="/about"      className="hover:text-[#B59E74] transition-colors">About Us</Link>
+                <Link to="/services"   className="hover:text-[#B59E74] transition-colors">Services</Link>
+                <Link to="/events"     className="hover:text-[#B59E74] transition-colors">Events</Link>
+                <Link to="/ministries" className="hover:text-[#B59E74] transition-colors">Ministries</Link>
+                <Link to="/give"       className="hover:text-[#B59E74] transition-colors">Give</Link>
+                <a
+                  href="https://www.google.com/maps/dir/?api=1&destination=69+San+Pedro+Bautista+St.%2C+San+Francisco+del+Monte%2C+Quezon+City%2C+Philippines%2C+1104"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-[#B59E74] transition-colors"
+                >
+                  Visit Us
+                </a>
+              </div>
+            )}
           </nav>
 
           {/* Right: auth area — flex-1 + justify-end mirrors the left side */}
@@ -212,11 +224,21 @@ function Header({ forceSolidBg = false }) {
         {isOpen && (
           <div className="lg:hidden absolute top-full left-0 w-full px-4 pb-4">
             <ul className={`mt-2 flex flex-col gap-4 p-6 rounded-2xl shadow-xl ${isSolid ? "bg-gray-50" : "bg-black/90 text-white"}`}>
-              <li><Link to="/" onClick={() => setIsOpen(false)}>Home</Link></li>
-              <li><Link to="/about" onClick={() => setIsOpen(false)}>About Us</Link></li>
-              <li><Link to="/services" onClick={() => setIsOpen(false)}>Services</Link></li>
-              <li><Link to="/events" onClick={() => setIsOpen(false)}>Events</Link></li>
-              <li><Link to="/ministries" onClick={() => setIsOpen(false)}>Ministries</Link></li>
+              {isAdmin ? (
+                <>
+                  <li><Link to="/events"     onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Events</Link></li>
+                  <li><Link to="/services"   onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Services</Link></li>
+                  <li><Link to="/ministries" onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Ministries</Link></li>
+                </>
+              ) : (
+                <>
+                  <li><Link to="/"           onClick={() => setIsOpen(false)}>Home</Link></li>
+                  <li><Link to="/about"      onClick={() => setIsOpen(false)}>About Us</Link></li>
+                  <li><Link to="/services"   onClick={() => setIsOpen(false)}>Services</Link></li>
+                  <li><Link to="/events"     onClick={() => setIsOpen(false)}>Events</Link></li>
+                  <li><Link to="/ministries" onClick={() => setIsOpen(false)}>Ministries</Link></li>
+                </>
+              )}
 
               <hr className="border-gray-300/30 my-2" />
 
