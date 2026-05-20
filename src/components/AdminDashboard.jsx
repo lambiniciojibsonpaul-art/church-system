@@ -1758,7 +1758,7 @@ function AdminDashboard() {
                 <p className="font-bold uppercase tracking-wider text-xs">⚠ Warning — this cannot be undone</p>
                 <p>
                   This will permanently remove the record from the{" "}
-                  <span className="font-mono font-bold">{activeConfig.table}</span> table in the database.
+                  <span className="font-mono font-bold">{resolveConfigFor(deletingRequest)?.table || "database"}</span> table in the database.
                   All submitted information will be lost.
                 </p>
               </div>

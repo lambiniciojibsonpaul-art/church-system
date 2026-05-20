@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import Header from "./Header";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/useAuth";
 
@@ -179,8 +178,6 @@ function PriestDashboard() {
 
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans relative">
-      <Header forceSolidBg={true} />
-
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-32 pb-12">
         {/* --- HEADER SECTION --- */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-6 border-b border-gray-200 pb-6">

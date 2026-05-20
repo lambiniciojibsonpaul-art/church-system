@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
-import Header from "./Header";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { restSelect, restUpdate, restInsert, restDelete } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
 import { sendApprovalEmail } from "../emailNotifications";
-import { QRCodeCanvas } from "qrcode.react"; 
+import { QRCodeCanvas } from "qrcode.react";
 import jsPDF from "jspdf";
 
 function formatDate(d) {
@@ -194,9 +194,17 @@ function formatValue(key, val) {
 }
 
 function StaffDashboard() {
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState("requests"); 
-  
+  const { user, role, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("requests");
+
+  // Role guard — only staff (and admin/superadmin) may access this page
+  useEffect(() => {
+    if (!authLoading && role && role !== "staff" && role !== "admin" && role !== "superadmin") {
+      navigate("/", { replace: true });
+    }
+  }, [authLoading, role, navigate]);
+
   // NEW: State for Dynamic Priests
   const [priestNames, setPriestNames] = useState([]);
 
@@ -290,7 +298,8 @@ function StaffDashboard() {
       const { data: weddings } = await supabase.from("weddings").select("*").eq("status", "Approved");
       if (weddings) {
         allItems = [...allItems, ...weddings.map((w) => ({
-          ...w, request_type: "Wedding", display_date: w.wedding_date || w.created_at, display_name: `${w.groom_name || 'Groom'} & ${w.bride_name || 'Bride'}`,
+          ...w, request_type: "Wedding", display_date: w.wedding_date || w.created_at,
+          display_name: `${w.groom_first_name || ''} ${w.groom_surname || ''}`.trim() + ` & ${w.bride_first_name || ''} ${w.bride_surname || ''}`.trim() || 'Wedding',
         }))];
       }
 
@@ -535,7 +544,6 @@ function StaffDashboard() {
 
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans relative">
-      <Header forceSolidBg={true} />
 
       {!activeQR && (
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-28 sm:pt-32 pb-12">
@@ -770,7 +778,7 @@ function StaffDashboard() {
             <h2 className="text-3xl font-serif text-gray-800 font-medium uppercase tracking-widest mb-2">{activeQR.display_name}</h2>
             <p className="text-gray-500 italic mb-10">{activeQR.location || "Main Church"}</p>
             <div className="bg-white p-8 rounded-[3rem] shadow-2xl border-4 border-[#B59E74] inline-block mx-auto">
-              <QRCodeCanvas value={`${window.location.origin}/#/check-in/${activeQR.id}`} size={280} level="H" includeMargin={true} />
+              <QRCodeCanvas value={`${window.location.href.split("#")[0].replace(/\/$/, "")}/#/check-in/${activeQR.id}`} size={280} level="H" includeMargin={true} />
             </div>
             <p className="mt-10 text-sm font-bold text-gray-400 uppercase tracking-[0.2em]">Scan to mark attendance</p>
           </div>
