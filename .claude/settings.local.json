@@ -4,7 +4,9 @@
       "Bash(npm run *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Lambinicio \\(Work\\)\\\\Documents\\\\HPL PROJECTS\\\\GitHub\\\\church-system\" -Force)",
       "Bash(Select-Object Name, FullName)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
