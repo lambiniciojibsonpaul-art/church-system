@@ -2,8 +2,6 @@ import React from "react";
 import { QRCodeCanvas } from "qrcode.react";
 
 function GenerateEventQR({ eventId, eventTitle }) {
-  // Dynamically capture the base URL (including the GitHub Pages repo name)
-  // This splits the URL at the hash, removes any trailing slash, and ensures a perfect route
   const baseUrl = window.location.href.split('#')[0].replace(/\/$/, "");
   const checkInUrl = `${baseUrl}/#/check-in/${eventId}`;
 

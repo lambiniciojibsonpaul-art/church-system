@@ -14,17 +14,27 @@ function AdminQRCenter() {
   const fetchEvents = async () => {
     const { data } = await supabase
       .from("events")
-      .select("id, title")
+      .select("id, title, event_date") // ✅ IMPORTANT: include event_date
       .order("title", { ascending: true });
+
     setEvents(data || []);
     setLoading(false);
   };
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F6F5ED]">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div>
-    </div>
-  );
+  // ✅ COMPUTE QR AVAILABILITY
+  const now = new Date();
+  const eventTime = selectedEvent?.event_date
+    ? new Date(selectedEvent.event_date)
+    : null;
+
+  const canGenerateQR = eventTime ? now >= eventTime : false;
+
+  if (loading)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F6F5ED]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div>
+      </div>
+    );
 
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans">
@@ -33,28 +43,36 @@ function AdminQRCenter() {
           <h1 className="text-3xl font-serif text-[#B59E74] uppercase tracking-widest mb-2">
             QR Code Generator
           </h1>
-          <p className="text-gray-500 italic">Generate printable check-in codes for your events.</p>
+          <p className="text-gray-500 italic">
+            Generate printable check-in codes for your events.
+          </p>
         </div>
 
         <div className="bg-white rounded-[2rem] shadow-xl border border-gray-100 p-8 md:p-12">
           <div className="flex flex-col items-center gap-8">
-            
+
             {/* Event Selection */}
             <div className="w-full max-w-md space-y-3">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block text-center">
                 Select Event to Generate QR
               </label>
-              <select 
+
+              <select
                 className="w-full p-4 rounded-2xl border-2 border-gray-100 focus:border-[#B59E74] outline-none bg-gray-50 text-center font-medium transition-all appearance-none cursor-pointer"
                 value={selectedEvent?.id || ""}
                 onChange={(e) => {
-                  const event = events.find(ev => ev.id === e.target.value);
+                  const event = events.find(
+                    (ev) => ev.id.toString() === e.target.value
+                  );
                   setSelectedEvent(event);
                 }}
               >
                 <option value="">-- Select an Event --</option>
-                {events.map(ev => (
-                  <option key={ev.id} value={ev.id}>{ev.title}</option>
+
+                {events.map((ev) => (
+                  <option key={ev.id} value={ev.id}>
+                    {ev.title}
+                  </option>
                 ))}
               </select>
             </div>
@@ -62,16 +80,26 @@ function AdminQRCenter() {
             {/* QR Display Area */}
             <div className="w-full flex justify-center mt-6">
               {selectedEvent ? (
-                <div className="animate-fade-in">
-                  <GenerateEventQR 
-                    eventId={selectedEvent.id} 
-                    eventTitle={selectedEvent.title} 
-                  />
-                </div>
+                canGenerateQR ? (
+                  <div className="animate-fade-in">
+                    <GenerateEventQR
+                      eventId={selectedEvent.id}
+                      eventTitle={selectedEvent.title}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center py-20 border-2 border-dashed border-gray-200 rounded-[2rem] w-full max-w-md">
+                    <p className="text-gray-400 italic">
+                      QR Code will be available once the event starts.
+                    </p>
+                  </div>
+                )
               ) : (
                 <div className="text-center py-20 border-2 border-dashed border-gray-200 rounded-[2rem] w-full max-w-md">
                   <div className="text-4xl mb-4">🖼️</div>
-                  <p className="text-gray-400 italic">Select an event above to generate the QR code.</p>
+                  <p className="text-gray-400 italic">
+                    Select an event above to generate the QR code.
+                  </p>
                 </div>
               )}
             </div>
