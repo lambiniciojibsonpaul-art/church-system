@@ -66,7 +66,7 @@ serve(async (req) => {
     if (roleError) throw roleError;
 
     return new Response(
-      JSON.stringify({ message: "User created successfully" }), 
+      JSON.stringify({ message: "User created successfully", user: data.user }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );
 

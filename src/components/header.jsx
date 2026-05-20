@@ -6,6 +6,7 @@ const SOLID_BG_PREFIXES = [
   "/admin",
   "/priest-dashboard",
   "/staff-dashboard",
+  "/profile",
   "/login",
   "/check-in",
   "/update-password",
@@ -40,6 +41,16 @@ const ROLE_CONFIG = {
     solidText: "text-slate-600",
     solidBorder: "border-slate-200",
     solidBg: "bg-white",
+    ghostText: "text-white",
+    ghostBorder: "border-white/25",
+    ghostBg: "bg-white/10 backdrop-blur-md",
+  },
+  minister: {
+    label: "Minister",
+    dot: "bg-purple-400",
+    solidText: "text-purple-700",
+    solidBorder: "border-purple-200",
+    solidBg: "bg-purple-50",
     ghostText: "text-white",
     ghostBorder: "border-white/25",
     ghostBg: "bg-white/10 backdrop-blur-md",
@@ -89,6 +100,7 @@ function Header({ forceSolidBg = false }) {
 
   const isPriest      = role === "priest";
   const isStaff       = role === "staff";
+  const isMinister    = role === "minister";
   const isParishioner = role === "parishioner";
 
   useEffect(() => {
@@ -181,6 +193,14 @@ function Header({ forceSolidBg = false }) {
                     </Link>
                   )}
 
+                  {/* Profile link */}
+                  <Link
+                    to="/profile"
+                    className={`text-[11px] font-bold uppercase tracking-widest transition-colors hover:text-[#B59E74] ${isSolid ? "text-gray-500" : "text-white"}`}
+                  >
+                    Profile
+                  </Link>
+
                   {/* Role + name pill */}
                   <RolePill role={role} isSolid={isSolid} />
 
@@ -253,6 +273,12 @@ function Header({ forceSolidBg = false }) {
                       </span>
                       <span className="font-serif italic text-sm mt-0.5">{displayName}</span>
                     </div>
+                  </li>
+
+                  <li>
+                    <Link to="/profile" onClick={() => setIsOpen(false)} className="block w-full text-center bg-white border-2 border-[#B59E74] text-[#B59E74] py-3 rounded-xl font-bold tracking-widest uppercase text-xs">
+                      My Profile
+                    </Link>
                   </li>
 
                   <hr className="border-gray-300/30" />

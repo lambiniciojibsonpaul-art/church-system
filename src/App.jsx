@@ -17,7 +17,8 @@ import AdminQRCenter from './components/AdminQRCenter';
 import RequirePriest from './components/RequirePriest';
 import PriestDashboard from './components/PriestDashboard';
 import StaffDashboard from "./components/StaffDashboard";
-import ManageUsers from './components/ManageUsers'; // <-- Your new split-screen page
+import ManageUsers from './components/ManageUsers';
+import UserProfile from './components/UserProfile';
 
 // --- Auth Folder Imports ---
 import CheckInPage from './components/Auth/CheckInPage';
@@ -71,6 +72,9 @@ function App() {
 
             {/* PRIEST DASHBOARD (gated by RequirePriest) */}
             <Route path="/priest-dashboard" element={<RequirePriest><PriestDashboard /></RequirePriest>} />
+
+            {/* Profile (all authenticated roles) */}
+            <Route path="/profile" element={<UserProfile />} />
 
             {/* Auth security */}
             <Route path="/update-password" element={<UpdatePassword />} />
