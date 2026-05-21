@@ -7,63 +7,88 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // 1. HANDLE CORS PREFLIGHT
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // 2. VALIDATE INPUT
     const body = await req.json().catch(() => null);
     if (!body || !body.email || !body.password) {
       return new Response(
-        JSON.stringify({ error: "Email and password are required." }), 
+        JSON.stringify({ error: "Email and password are required." }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
-    const { email, password, role } = body;
+    const { email, password, role, first_name, last_name, contact_number, ministries } = body;
 
-    // 3. SETUP CLIENT (Check for keys)
     const sUrl = Deno.env.get('SUPABASE_URL');
     const sKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!sUrl || !sKey) {
       console.error("MISSING ENV VARS: Check Supabase Dashboard Settings");
       return new Response(
-        JSON.stringify({ error: "Server configuration error: Missing API keys." }), 
+        JSON.stringify({ error: "Server configuration error: Missing API keys." }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
     const supabaseAdmin = createClient(sUrl, sKey);
 
-    // 4. CREATE USER
+    // Create auth user
     const { data, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: email,
-      password: password,
+      email,
+      password,
       email_confirm: true,
-      // FIX: Add the flag to the user's metadata here!
       user_metadata: {
-        requires_password_change: true 
+        requires_password_change: true,
+        full_name: `${first_name || ''} ${last_name || ''}`.trim(),
       }
     });
 
     if (authError) throw authError;
 
-    // 5. UPDATE ROLE (Normalize to lowercase to match your SQL)
+    const newUserId = data.user.id;
     const normalizedRole = role ? role.toLowerCase() : 'parishioner';
 
-    // upsert (not update): guarantees the row exists even if no DB trigger
-    // auto-inserts a user_roles record when an auth user is created.
+    // Set role
     const { error: roleError } = await supabaseAdmin
       .from('user_roles')
       .upsert(
-        { user_id: data.user.id, role: normalizedRole }, // FIX: Removed the flag from here
+        { user_id: newUserId, role: normalizedRole },
         { onConflict: 'user_id' }
       );
-
     if (roleError) throw roleError;
+
+    // Save profile — using service role key bypasses RLS so name/details are always stored
+    const profilePayload: Record<string, unknown> = {
+      id: newUserId,
+      email,
+      first_name: first_name || '',
+      last_name: last_name || '',
+      contact_number: contact_number || '',
+    };
+    if (normalizedRole === 'minister' && Array.isArray(ministries) && ministries.length > 0) {
+      profilePayload.ministries = ministries;
+    }
+
+    const { error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .upsert(profilePayload, { onConflict: 'id' });
+
+    if (profileError) {
+      console.error("[create-user] profile upsert failed:", profileError.message);
+      // Non-fatal: role was created; log but continue so the caller still gets the user ID
+    }
+
+    // If priest, add to priests table
+    if (normalizedRole === 'priest') {
+      const fullName = `${first_name || ''} ${last_name || ''}`.trim();
+      const { error: priestError } = await supabaseAdmin
+        .from('priests')
+        .upsert({ user_id: newUserId, name: fullName, is_active: true }, { onConflict: 'user_id' });
+      if (priestError) console.error("[create-user] priests upsert failed:", priestError.message);
+    }
 
     return new Response(
       JSON.stringify({ message: "User created successfully", user: data.user }),
@@ -73,7 +98,7 @@ serve(async (req) => {
   } catch (err) {
     console.error("FUNCTION ERROR:", err.message);
     return new Response(
-      JSON.stringify({ error: err.message || "An internal server error occurred." }), 
+      JSON.stringify({ error: err.message || "An internal server error occurred." }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
     );
   }

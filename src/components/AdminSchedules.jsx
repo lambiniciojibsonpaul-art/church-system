@@ -44,21 +44,25 @@ function AdminSchedules() {
   const [cancelReason, setCancelReason] = useState("");
   const [deletingEvent, setDeletingEvent] = useState(null);
 
+  const [activeMinistries, setActiveMinistries] = useState([]);
+
   const [formData, setFormData] = useState({
     title: "",
-    eventClass: "Mass", 
+    eventClass: "Mass",
     priestName: "",
     eventDate: "",
     eventTime: "",
     location: "Main Church",
     description: "",
-    isInside: true, 
-    setting: "", 
+    isInside: true,
+    setting: "",
+    isPublic: true,
+    ministry: "",
+    collaborators: [],
   });
 
   useEffect(() => {
-    // Fetch both events and priests when the component mounts
-    Promise.all([fetchEvents(), fetchPriests()]).finally(() => {
+    Promise.all([fetchEvents(), fetchPriests(), fetchActiveMinistries()]).finally(() => {
       setLoading(false);
     });
   }, []);
@@ -75,6 +79,18 @@ function AdminSchedules() {
     } catch (err) {
       console.error("Failed to load events:", err);
     }
+  };
+
+  const fetchActiveMinistries = async () => {
+    try {
+      const { data } = await restSelect("ministries", {
+        select: "id,name",
+        match: { is_archived: false },
+        order: "name.asc",
+        timeoutMs: 10000,
+      });
+      if (data) setActiveMinistries(data);
+    } catch { /* non-fatal */ }
   };
 
   const fetchPriests = async () => {
@@ -107,6 +123,15 @@ function AdminSchedules() {
     setFormData({ ...formData, [e.target.name]: value });
   };
 
+  const toggleCollaborator = (name) => {
+    setFormData(prev => ({
+      ...prev,
+      collaborators: prev.collaborators.includes(name)
+        ? prev.collaborators.filter(m => m !== name)
+        : [...prev.collaborators, name],
+    }));
+  };
+
   const handleOpenEventModal = () => {
     setFormData({
       title: "",
@@ -117,7 +142,10 @@ function AdminSchedules() {
       location: "Main Church",
       description: "",
       isInside: true,
-      setting: "", 
+      setting: "",
+      isPublic: true,
+      ministry: "",
+      collaborators: [],
     });
     setIsModalOpen(true);
   };
@@ -180,7 +208,13 @@ function AdminSchedules() {
       return;
     }
 
-    // 2. CONFLICT DETECTION
+    // 2. PRIVATE EVENT VALIDATION
+    if (!formData.isPublic && !formData.ministry) {
+      alert("Please select a hosting ministry for this private event.");
+      return;
+    }
+
+    // 3. CONFLICT DETECTION
     const conflict = events.find(ev => {
       // Ignore events that are already cancelled or rejected
       if (ev.status === "Cancelled" || ev.status === "Rejected") return false;
@@ -203,20 +237,26 @@ function AdminSchedules() {
     setSubmitting(true);
 
     try {
-      const { error } = await restInsert("events", [
-        {
-          creator_id: user.id,
-          title: formData.title,
-          event_class: formData.eventClass, 
-          priest_name: formData.priestName, 
-          event_date: formData.eventDate,
-          event_time: formData.eventTime,
-          location: formData.location,
-          description: formData.description,
-          setting: formData.setting, 
-          status: "Active"
-        },
-      ]);
+      const payload = {
+        creator_id:  user.id,
+        title:       formData.title,
+        event_class: formData.eventClass,
+        priest_name: formData.priestName,
+        event_date:  formData.eventDate,
+        event_time:  formData.eventTime,
+        location:    formData.location,
+        description: formData.description,
+        setting:     formData.setting,
+        status:      "Active",
+        is_public:   formData.isPublic,
+      };
+
+      if (!formData.isPublic) {
+        payload.ministry      = formData.ministry;
+        payload.collaborators = formData.collaborators;
+      }
+
+      const { error } = await restInsert("events", [payload]);
 
       if (error) throw new Error(error.message);
 
@@ -618,6 +658,97 @@ function AdminSchedules() {
                   placeholder="Additional details..."
                 ></textarea>
               </div>
+
+              {/* ── VISIBILITY TOGGLE ── */}
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div>
+                  <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                    {formData.isPublic ? "🌐 Public Event" : "🔒 Private Event"}
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    {formData.isPublic
+                      ? "Visible to all parishioners on the calendar"
+                      : "Only assigned ministries will see this event"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, isPublic: !prev.isPublic, ministry: "", collaborators: [] }))}
+                  className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${formData.isPublic ? "bg-[#B59E74]" : "bg-gray-300"}`}
+                >
+                  <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${formData.isPublic ? "translate-x-7" : "translate-x-1"}`} />
+                </button>
+              </div>
+
+              {/* ── PRIVATE: MINISTRY ASSIGNMENT ── */}
+              {!formData.isPublic && (
+                <div className="space-y-4 p-4 bg-amber-50 border border-amber-200 rounded-xl animate-fade-in">
+                  <p className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">
+                    🔒 Assign which ministries can see this event
+                  </p>
+
+                  {/* Hosting ministry */}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-gray-600 uppercase">
+                      Hosting Ministry *
+                    </label>
+                    <select
+                      value={formData.ministry}
+                      onChange={e => setFormData(prev => ({
+                        ...prev,
+                        ministry: e.target.value,
+                        collaborators: prev.collaborators.filter(c => c !== e.target.value),
+                      }))}
+                      className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-amber-400"
+                    >
+                      <option value="">Select hosting ministry…</option>
+                      {activeMinistries.map(m => (
+                        <option key={m.id} value={m.name}>{m.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Collaborating ministries */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-gray-600 uppercase">
+                      Collaborating Ministries
+                      {formData.collaborators.length > 0 && (
+                        <span className="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-[9px] font-bold">
+                          {formData.collaborators.length} selected
+                        </span>
+                      )}
+                    </label>
+                    <div className="max-h-44 overflow-y-auto border border-gray-200 rounded-xl bg-white p-2 space-y-1">
+                      {activeMinistries.filter(m => m.name !== formData.ministry).length === 0 ? (
+                        <p className="text-xs text-gray-400 italic text-center py-3">
+                          {formData.ministry ? "No other ministries available" : "Select a hosting ministry first"}
+                        </p>
+                      ) : (
+                        activeMinistries
+                          .filter(m => m.name !== formData.ministry)
+                          .map(m => (
+                            <label
+                              key={m.id}
+                              className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer text-sm transition-colors ${
+                                formData.collaborators.includes(m.name)
+                                  ? "bg-amber-50 border border-amber-200 text-amber-800"
+                                  : "hover:bg-gray-50 border border-transparent text-gray-700"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={formData.collaborators.includes(m.name)}
+                                onChange={() => toggleCollaborator(m.name)}
+                                className="w-4 h-4 accent-amber-600 shrink-0"
+                              />
+                              <span className="text-xs font-medium">{m.name}</span>
+                            </label>
+                          ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <button
                 type="submit"

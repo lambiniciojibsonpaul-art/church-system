@@ -3,7 +3,7 @@ import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, submitRequest } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
 
 const REQUIREMENT_ITEMS = [
   "Certificate of Live Birth (from the Philippine Statistics Authority)",
@@ -68,6 +68,16 @@ function WeddingRegistryFormModal({ onClose }) {
     };
     fetchPriests();
   }, []);
+
+  const autofill = useProfileAutofill(user);
+  useEffect(() => {
+    if (!autofill) return;
+    setFormData(prev => ({
+      ...prev,
+      groom_contact:       prev.groom_contact       || autofill.contactNumber,
+      submitter_signature: prev.submitter_signature || autofill.fullName,
+    }));
+  }, [autofill]);
 
   if (!user) return <SignInPrompt onClose={onClose} serviceName="a wedding" />;
 

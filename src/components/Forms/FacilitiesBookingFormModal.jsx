@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { restInsert } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, submitRequest } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
 
 const FACILITIES = [
   "Parish Hall",
@@ -44,6 +44,17 @@ function FacilitiesBookingFormModal({ onClose }) {
     submitter_signature: "",
     declaration_consent: false,
   });
+
+  const autofill = useProfileAutofill(user);
+  useEffect(() => {
+    if (!autofill) return;
+    setFormData(prev => ({
+      ...prev,
+      requestor_first_name: prev.requestor_first_name || autofill.firstName,
+      requestor_surname:    prev.requestor_surname    || autofill.lastName,
+      contact_number:       prev.contact_number       || autofill.contactNumber,
+    }));
+  }, [autofill]);
 
   if (!user) return <SignInPrompt onClose={onClose} serviceName="a facilities booking" />;
 

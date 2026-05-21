@@ -100,14 +100,16 @@ function UserProfile() {
     setEditSuccess(false);
     setEditLoading(true);
     try {
+      // upsert so users whose profile row was never created can still save their details
       const { error } = await supabase
         .from("profiles")
-        .update({
+        .upsert({
+          id:             user.id,
+          email:          user.email,
           first_name:     editForm.first_name,
           last_name:      editForm.last_name,
           contact_number: editForm.contact_number,
-        })
-        .eq("id", user.id);
+        }, { onConflict: "id" });
       if (error) throw error;
       setProfile(prev => ({ ...prev, ...editForm }));
       setEditSuccess(true);

@@ -2,6 +2,42 @@
 // Keep this lightweight — just presentational components used inside
 // the form bodies. The actual submit / state logic stays per-form.
 
+import { useEffect, useState } from "react";
+import { restSelect } from "../../supabaseRest";
+
+/**
+ * Fetches the logged-in parishioner's profile once and returns their
+ * name + contact so forms can pre-populate those fields.
+ * Returns null while loading, then { firstName, lastName, fullName, contactNumber }.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useProfileAutofill(user) {
+  const [autofill, setAutofill] = useState(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    restSelect("profiles", {
+      select: "first_name,last_name,contact_number",
+      match: { id: user.id },
+      single: true,
+      timeoutMs: 8000,
+    }).then(({ data }) => {
+      if (data) {
+        const firstName = data.first_name || "";
+        const lastName  = data.last_name  || "";
+        setAutofill({
+          firstName,
+          lastName,
+          fullName:      [firstName, lastName].filter(Boolean).join(" "),
+          contactNumber: data.contact_number || "",
+        });
+      }
+    });
+  }, [user?.id]);
+
+  return autofill;
+}
+
 export function Field({
   label,
   name,

@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { restInsert } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, submitRequest } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
 
 function MassIntentionFormModal({ onClose }) {
   const { user } = useAuth();
@@ -30,6 +30,16 @@ function MassIntentionFormModal({ onClose }) {
     declaration_consent: false,
     submitter_signature: "",
   });
+
+  const autofill = useProfileAutofill(user);
+  useEffect(() => {
+    if (!autofill) return;
+    setFormData(prev => ({
+      ...prev,
+      full_name:      prev.full_name      || autofill.fullName,
+      contact_number: prev.contact_number || autofill.contactNumber,
+    }));
+  }, [autofill]);
 
   if (!user)
     return <SignInPrompt onClose={onClose} serviceName="a mass intention" />;

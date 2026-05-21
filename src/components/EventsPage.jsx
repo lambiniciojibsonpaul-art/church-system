@@ -59,6 +59,9 @@ function EventsPage() {
   
   const [viewMode, setViewMode] = useState("Active");
 
+  // Ministries this user belongs to — used to filter private events
+  const [userMinistries, setUserMinistries] = useState([]);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   
@@ -74,13 +77,33 @@ function EventsPage() {
     eventTime: "",
     location: "",
     description: "",
-    isInside: true, 
-    setting: "", 
+    isInside: true,
+    setting: "",
+    isPublic: true,
   });
 
   useEffect(() => {
     fetchEvents();
   }, []);
+
+  // Fetch the current user's ministry memberships for private-event filtering
+  useEffect(() => {
+    if (!user?.id || (role !== "minister" && role !== "ministry")) return;
+    const ministries = [];
+    // ministry role stores their group in user_metadata
+    if (role === "ministry" && user.user_metadata?.ministry_group) {
+      ministries.push(user.user_metadata.ministry_group);
+    }
+    // minister role stores ministries array in profile
+    restSelect("profiles", { select: "ministries", match: { id: user.id }, single: true, timeoutMs: 8000 })
+      .then(({ data }) => {
+        if (Array.isArray(data?.ministries)) {
+          setUserMinistries([...new Set([...ministries, ...data.ministries])]);
+        } else if (ministries.length) {
+          setUserMinistries(ministries);
+        }
+      });
+  }, [user?.id, role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -138,6 +161,7 @@ function EventsPage() {
       eventDate: `${yyyy}-${mm}-${dd}`,
       isInside: true,
       setting: "",
+      isPublic: true,
     });
     setIsCollaborating(false);
     setIsDropdownOpen(false);
@@ -161,16 +185,19 @@ function EventsPage() {
 
       const { error } = await restInsert("events", [
         {
-          creator_id: user.id,
-          title: formData.title,
-          event_class: "Parish Event",
-          priest_name: formData.ministry,
-          event_date: formData.eventDate,
-          event_time: formData.eventTime,
-          location: formData.location,
-          description: finalDescription,
-          setting: formData.setting, 
-          status: isMinistry ? "Pending" : "Active" 
+          creator_id:   user.id,
+          title:        formData.title,
+          event_class:  "Parish Event",
+          priest_name:  formData.ministry,
+          ministry:     formData.ministry,
+          collaborators: isCollaborating ? formData.collaborators : [],
+          event_date:   formData.eventDate,
+          event_time:   formData.eventTime,
+          location:     formData.location,
+          description:  finalDescription,
+          setting:      formData.setting,
+          is_public:    formData.isPublic,
+          status:       isMinistry ? "Pending" : "Active",
         },
       ]);
 
@@ -192,6 +219,7 @@ function EventsPage() {
         description: "",
         isInside: true,
         setting: "",
+        isPublic: true,
       });
       setIsCollaborating(false);
       
@@ -226,11 +254,25 @@ function EventsPage() {
 
   // --- BULLET-PROOF CHRONOLOGICAL SORTING FOR CALENDAR PAGE ---
   const isCancelledView = isAdmin && viewMode === "Cancelled";
-  
+
+  const canSeeEvent = (e) => {
+    // Admins see everything
+    if (isAdmin) return true;
+    // Public or no flag (backward compat) — visible to all
+    if (e.is_public !== false) return true;
+    // Private: visible only if user's ministry is the host or a collaborator
+    const permitted = [
+      e.ministry,
+      ...(Array.isArray(e.collaborators) ? e.collaborators : []),
+    ].filter(Boolean);
+    return userMinistries.some(m => permitted.includes(m));
+  };
+
   const visibleEvents = events
     .filter((e) => {
       const status = e.status || "Active";
-      return isCancelledView ? status === "Cancelled" : status === "Active";
+      if (isCancelledView ? status !== "Cancelled" : status !== "Active") return false;
+      return canSeeEvent(e);
     })
     .sort((a, b) => {
       const dateA = a.event_date || "9999-12-31";
@@ -331,13 +373,30 @@ function EventsPage() {
 
             <div className="flex-1 flex flex-col gap-6">
               {isAdmin && (
-                <div className="flex items-center justify-center sm:justify-start gap-2 p-1.5 bg-[#F6F5ED] rounded-full w-full sm:w-fit border border-gray-100">
-                  {[{ key: "Active", label: "Active Events" }, { key: "Cancelled", label: "Cancelled Events" }].map((opt) => (
-                    <button key={opt.key} type="button" onClick={() => setViewMode(opt.key)} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${viewMode === opt.key ? (opt.key === "Cancelled" ? "bg-orange-600 text-white shadow-md" : "bg-[#B59E74] text-white shadow-md") : "text-gray-500 hover:text-gray-700"}`}>
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+                <>
+                  {/* Mobile dropdown */}
+                  <div className="relative sm:hidden">
+                    <select
+                      value={viewMode}
+                      onChange={(e) => setViewMode(e.target.value)}
+                      className="appearance-none w-full pl-4 pr-10 py-3 rounded-xl bg-[#F6F5ED] border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-gray-700 cursor-pointer"
+                    >
+                      <option value="Active">Active Events</option>
+                      <option value="Cancelled">Cancelled Events</option>
+                    </select>
+                    <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                  {/* Desktop pill tabs */}
+                  <div className="hidden sm:flex items-center justify-start gap-2 p-1.5 bg-[#F6F5ED] rounded-full w-fit border border-gray-100">
+                    {[{ key: "Active", label: "Active Events" }, { key: "Cancelled", label: "Cancelled Events" }].map((opt) => (
+                      <button key={opt.key} type="button" onClick={() => setViewMode(opt.key)} className={`flex-none px-4 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${viewMode === opt.key ? (opt.key === "Cancelled" ? "bg-orange-600 text-white shadow-md" : "bg-[#B59E74] text-white shadow-md") : "text-gray-500 hover:text-gray-700"}`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
 
               <div className="bg-[#B59E74] p-6 rounded-2xl shadow-sm text-white flex flex-col md:flex-row justify-between items-center md:items-start relative overflow-hidden">
@@ -363,6 +422,11 @@ function EventsPage() {
                     <div key={event.id} className={`p-6 rounded-2xl shadow-sm flex flex-col gap-4 animate-fade-in-up relative overflow-hidden group ${cancelled ? "bg-orange-50/40 border border-orange-200" : "bg-white border border-gray-100"}`}>
                       <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
                         {cancelled && <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-orange-600 text-white">Cancelled</span>}
+                        {event.is_public === false && (
+                          <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-700 text-white flex items-center gap-1">
+                            🔒 Private
+                          </span>
+                        )}
                         {event.setting && <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-blue-50 text-blue-600 truncate max-w-[150px]">{event.setting}</span>}
                       </div>
 
@@ -555,6 +619,39 @@ function EventsPage() {
                 <label className="text-xs font-bold text-gray-600 uppercase">Event Description</label>
                 <textarea name="description" value={formData.description} onChange={handleChange} rows="3" className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none resize-none" placeholder="Provide details about the event..."></textarea>
               </div>
+
+              {/* ── VISIBILITY TOGGLE ── */}
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div>
+                  <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                    {formData.isPublic ? "🌐 Public Event" : "🔒 Private Event"}
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    {formData.isPublic
+                      ? "Visible to all parishioners on the calendar"
+                      : "Only the hosting ministry and collaborators will see this"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, isPublic: !prev.isPublic }))}
+                  className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${formData.isPublic ? "bg-[#B59E74]" : "bg-gray-300"}`}
+                >
+                  <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${formData.isPublic ? "translate-x-7" : "translate-x-1"}`} />
+                </button>
+              </div>
+
+              {!formData.isPublic && (
+                <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-700">
+                  <span className="shrink-0 mt-0.5">🔒</span>
+                  <span>
+                    This event will only appear on the calendar for ministers assigned to the <strong>Hosting Ministry</strong>
+                    {isCollaborating && formData.collaborators.length > 0 && (
+                      <> and <strong>{formData.collaborators.join(", ")}</strong></>
+                    )}.
+                  </span>
+                </div>
+              )}
 
               <button type="submit" disabled={submitting} className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-xl uppercase tracking-widest mt-4 shadow-md transition-colors disabled:opacity-70">
                 {submitting ? "Saving..." : isMinistry ? "Submit for Approval" : "Post Event to Calendar"}

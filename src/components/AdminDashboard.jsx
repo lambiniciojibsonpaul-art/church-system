@@ -821,7 +821,7 @@ function AdminDashboard() {
             >
               <span>👤</span> Manage Accounts
             </Link>
-            <button onClick={() => navigate("/admin/schedules")} className="flex items-center justify-center gap-2 bg-[#B59E74] hover:bg-[#9c8760] text-white px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-md active:scale-95">
+            <button onClick={() => navigate("/admin/schedules")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95">
               <span>📅</span> Schedules
             </button>
             <button onClick={() => navigate("/admin/reports")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95">
@@ -921,22 +921,39 @@ function AdminDashboard() {
           </div>
 
           <div className="p-4 sm:p-6 md:p-8">
-            {/* Sub-tabs */}
-            <div className="flex justify-center gap-1 sm:gap-3 mb-6 md:mb-8 p-1.5 sm:p-2 bg-[#F6F5ED] rounded-full w-full sm:w-fit mx-auto border border-gray-100">
-              {["All", "Pending", "Approved", "Rejected", "Cancelled"].map((sub) => (
-                <button
-                  key={sub}
-                  onClick={() => setActiveSubTab(sub)}
-                  className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${
-                    activeSubTab === sub
-                      ? "bg-[#B59E74] text-white shadow-md"
-                      : "text-gray-500 hover:text-gray-700"
-                  }`}
+            {/* Sub-tabs — dropdown on mobile, original pill row on sm+ */}
+            <div className="mb-6 md:mb-8">
+              {/* Mobile dropdown */}
+              <div className="relative sm:hidden">
+                <select
+                  value={activeSubTab}
+                  onChange={(e) => setActiveSubTab(e.target.value)}
+                  className="appearance-none w-full pl-4 pr-10 py-3 rounded-xl bg-[#F6F5ED] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-gray-700 cursor-pointer"
                 >
-                  <span className="sm:hidden">{sub}</span>
-                  <span className="hidden sm:inline">{sub} Requests</span>
-                </button>
-              ))}
+                  {["All", "Pending", "Approved", "Rejected", "Cancelled"].map((sub) => (
+                    <option key={sub} value={sub}>{sub} Requests</option>
+                  ))}
+                </select>
+                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+              {/* Desktop pill tabs */}
+              <div className="hidden sm:flex justify-center gap-1 sm:gap-3 p-1.5 sm:p-2 bg-[#F6F5ED] rounded-full w-full sm:w-fit mx-auto border border-gray-100">
+                {["All", "Pending", "Approved", "Rejected", "Cancelled"].map((sub) => (
+                  <button
+                    key={sub}
+                    onClick={() => setActiveSubTab(sub)}
+                    className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${
+                      activeSubTab === sub
+                        ? "bg-[#B59E74] text-white shadow-md"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {sub} Requests
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Search + page size */}

@@ -3,7 +3,7 @@ import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, submitRequest } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
 
 function HolyCommunionFormModal({ onClose }) {
   const { user } = useAuth();
@@ -57,6 +57,16 @@ function HolyCommunionFormModal({ onClose }) {
     };
     fetchPriests();
   }, []);
+
+  const autofill = useProfileAutofill(user);
+  useEffect(() => {
+    if (!autofill) return;
+    setFormData(prev => ({
+      ...prev,
+      contact_number_1:    prev.contact_number_1    || autofill.contactNumber,
+      submitter_signature: prev.submitter_signature || autofill.fullName,
+    }));
+  }, [autofill]);
 
   if (!user) return <SignInPrompt onClose={onClose} serviceName="holy communion" />;
 

@@ -20,9 +20,9 @@ function UpcomingEvents() {
       if (error) {
         console.warn("UpcomingEvents fetch failed:", error.message);
       }
-      // Hide cancelled events from the public homepage list.
+      // Hide cancelled and private events from the public homepage list.
       const visible = (data || [])
-        .filter((e) => (e.status || "Active") !== "Cancelled")
+        .filter((e) => (e.status || "Active") !== "Cancelled" && e.is_public !== false)
         .slice(0, 4);
       setEvents(visible);
       setLoading(false);

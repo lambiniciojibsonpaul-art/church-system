@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/useAuth";
 
@@ -166,7 +167,14 @@ function AdminReports() {
 
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans print:bg-white print:p-0">
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-32 pb-12 print:max-w-full print:px-0 print:pt-0">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-28 pb-12 print:max-w-full print:px-0 print:pt-0">
+
+        {/* Breadcrumb */}
+        <div className="flex gap-4 mb-6 border-b border-gray-200 pb-3 print:hidden">
+          <Link to="/admin" className="text-gray-500 hover:text-[#B59E74] font-bold uppercase tracking-widest text-sm transition-colors">Dashboard</Link>
+          <span className="text-gray-300">|</span>
+          <span className="text-[#B59E74] font-bold uppercase tracking-widest text-sm border-b-2 border-[#B59E74] pb-3 -mb-[13px]">Reports</span>
+        </div>
 
         {/* PRINT-ONLY OFFICIAL LETTERHEAD */}
         <div className="hidden print:block text-center mb-12">

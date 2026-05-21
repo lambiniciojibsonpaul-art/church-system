@@ -69,12 +69,15 @@ function UpdatePassword() {
         console.warn("[UpdatePassword] Failed to clear flag:", metaError.message);
       }
 
+      // refreshRole() returns the fresh role row — use it directly to avoid
+      // the stale-closure problem where `role` from the outer render is outdated.
       let destination = getDestination(role);
       try {
-        await refreshRole();
-        destination = getDestination(role);
+        const freshRow = await refreshRole();
+        const freshRole = freshRow?.role ?? role;
+        destination = getDestination(freshRole);
       } catch {
-        // fall back to pre-refresh role
+        // fall back to role captured at render time
       }
 
       setIsSuccess(true);

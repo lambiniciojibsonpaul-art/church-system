@@ -1,7 +1,138 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/useAuth";
+
+// Custom searchable dropdown for the ministry sort filter in the database panel
+function MinistryFilterDropdown({ value, onChange, options = [] }) {
+  const [open, setOpen]     = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const filtered = options.filter(m => m.name.toLowerCase().includes(search.toLowerCase()));
+  const label    = value === "All" ? "All Ministries" : value;
+
+  return (
+    <div ref={ref} className="relative w-full">
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => { setOpen(v => !v); setSearch(""); }}
+        className="w-full flex items-center justify-between pl-4 pr-3 py-2.5 rounded-xl border border-purple-200 bg-purple-50 text-xs font-bold text-purple-700 hover:border-purple-400 transition-colors"
+      >
+        <span className="truncate">{label}</span>
+        <svg className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Panel */}
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-purple-200 shadow-lg z-50 overflow-hidden">
+          {/* Search inside the panel */}
+          <div className="p-2 border-b border-gray-100">
+            <div className="relative">
+              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.85-5.4a7.25 7.25 0 11-14.5 0 7.25 7.25 0 0114.5 0z" />
+              </svg>
+              <input
+                autoFocus
+                type="text"
+                placeholder="Search ministry..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-7 pr-3 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400 bg-gray-50"
+              />
+            </div>
+          </div>
+
+          {/* Options */}
+          <div className="max-h-52 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => { onChange("All"); setOpen(false); }}
+              className={`w-full text-left px-4 py-2.5 text-xs font-bold uppercase tracking-widest transition-colors ${value === "All" ? "bg-purple-50 text-purple-700" : "text-gray-500 hover:bg-gray-50"}`}
+            >
+              All Ministries
+            </button>
+            {filtered.map(m => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => { onChange(m.name); setOpen(false); }}
+                className={`w-full text-left px-4 py-2.5 text-xs transition-colors ${value === m.name ? "bg-purple-50 text-purple-700 font-bold" : "text-gray-600 hover:bg-gray-50 font-medium"}`}
+              >
+                {m.name}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="px-4 py-3 text-xs text-gray-400 italic text-center">No results for &ldquo;{search}&rdquo;</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Standalone so useState is stable across parent re-renders
+function MinistryChecklist({ activeMinistries = [], selected, onToggle, emptyMessage = "No active ministries found." }) {
+  const [search, setSearch] = useState("");
+  const filtered = activeMinistries.filter(m =>
+    m.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {activeMinistries.length > 0 && (
+        <div className="relative">
+          <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.85-5.4a7.25 7.25 0 11-14.5 0 7.25 7.25 0 0114.5 0z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search ministries..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-7 pr-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-purple-400 text-xs bg-white"
+          />
+        </div>
+      )}
+      <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-xl bg-gray-50 p-2 space-y-1">
+        {filtered.length === 0 ? (
+          <p className="text-xs text-gray-400 italic text-center py-4">
+            {search ? `No results for "${search}"` : emptyMessage}
+          </p>
+        ) : (
+          filtered.map(m => (
+            <label
+              key={m.id}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer text-sm transition-colors ${
+                selected.includes(m.name)
+                  ? "bg-purple-50 border border-purple-200 text-purple-800"
+                  : "hover:bg-white border border-transparent text-gray-700"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(m.name)}
+                onChange={() => onToggle(m.name)}
+                className="w-4 h-4 accent-purple-600 shrink-0"
+              />
+              <span className="text-xs font-medium leading-tight">{m.name}</span>
+            </label>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ManageUsers() {
   const { user, isAdmin } = useAuth();
@@ -12,6 +143,9 @@ function ManageUsers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
   const [ministryFilter, setMinistryFilter] = useState("All");
+
+  // Mobile tab: "database" | "create"
+  const [mobileTab, setMobileTab] = useState("database");
 
   // Active ministries from DB (for checkboxes + filter dropdown)
   const [activeMinistries, setActiveMinistries] = useState([]);
@@ -131,11 +265,16 @@ function ManageUsers() {
     }
 
     try {
+      // Step 1: Create auth user + assign role (edge function, service-role key)
       const { data: edgeData, error: edgeErr } = await supabase.functions.invoke("create-user", {
         body: {
           email: createForm.email,
           password: createForm.password,
           role: createForm.role,
+          first_name: createForm.first_name,
+          last_name: createForm.last_name,
+          contact_number: createForm.contact_number,
+          ministries: createForm.role === "minister" ? createForm.ministries : [],
         },
       });
 
@@ -143,44 +282,49 @@ function ManageUsers() {
       if (edgeData?.error) throw new Error(edgeData.error);
 
       const newUserId = edgeData?.user?.id;
+      if (!newUserId) throw new Error("Account was created but no user ID was returned. Contact support.");
 
-      if (newUserId) {
-        const profilePayload = {
-          id: newUserId,
-          first_name: createForm.first_name,
-          last_name: createForm.last_name,
-          email: createForm.email,
-          contact_number: createForm.contact_number,
-        };
-        if (createForm.role === "minister") {
-          profilePayload.ministries = createForm.ministries;
-        }
-
-        const { error: profileErr } = await supabase
-          .from("profiles")
-          .upsert(profilePayload, { onConflict: "id" });
-        if (profileErr) console.warn("[ManageUsers] profile insert failed:", profileErr.message);
-
-        if (createForm.role === "priest") {
-          const fullName = `${createForm.first_name} ${createForm.last_name}`.trim();
-          await supabase
-            .from("priests")
-            .upsert({ user_id: newUserId, name: fullName }, { onConflict: "user_id" });
-        }
-
-        setCreateSuccess(true);
-        fetchUsers();
-        setCreateForm({
-          first_name: "",
-          last_name: "",
-          email: "",
-          contact_number: "",
-          password: "",
-          role: "staff",
-          ministries: [],
-        });
-        setTimeout(() => setCreateSuccess(false), 4000);
+      // Step 2: Save profile details directly from the frontend.
+      // The "admins_manage_profiles" RLS policy allows this for admin/superadmin roles.
+      // This is the primary save path and does not depend on edge function version.
+      const profilePayload = {
+        id:             newUserId,
+        email:          createForm.email,
+        first_name:     createForm.first_name,
+        last_name:      createForm.last_name,
+        contact_number: createForm.contact_number,
+      };
+      if (createForm.role === "minister" && createForm.ministries.length > 0) {
+        profilePayload.ministries = createForm.ministries;
       }
+
+      const { error: profileErr } = await supabase
+        .from("profiles")
+        .upsert(profilePayload, { onConflict: "id" });
+
+      if (profileErr) throw new Error(`Account created but profile save failed: ${profileErr.message}`);
+
+      // Step 3: Ensure priest record exists for priest role
+      if (createForm.role === "priest") {
+        const fullName = `${createForm.first_name} ${createForm.last_name}`.trim();
+        const { error: priestErr } = await supabase
+          .from("priests")
+          .upsert({ user_id: newUserId, name: fullName, is_active: true }, { onConflict: "user_id" });
+        if (priestErr) console.warn("[ManageUsers] priests table upsert failed:", priestErr.message);
+      }
+
+      setCreateSuccess(true);
+      fetchUsers();
+      setCreateForm({
+        first_name: "",
+        last_name: "",
+        email: "",
+        contact_number: "",
+        password: "",
+        role: "staff",
+        ministries: [],
+      });
+      setTimeout(() => setCreateSuccess(false), 4000);
     } catch (err) {
       setCreateError(err.message);
     } finally {
@@ -375,37 +519,9 @@ function ManageUsers() {
     return <div className="min-h-screen flex items-center justify-center text-red-500 font-bold">Access Denied. Admins Only.</div>;
   }
 
-  // Reusable ministry checkbox list
-  const MinistryChecklist = ({ selected, onToggle, emptyMessage = "No active ministries found." }) => (
-    <div className="max-h-52 overflow-y-auto border border-gray-200 rounded-xl bg-gray-50 p-2 space-y-1">
-      {activeMinistries.length === 0 ? (
-        <p className="text-xs text-gray-400 italic text-center py-4">{emptyMessage}</p>
-      ) : (
-        activeMinistries.map(m => (
-          <label
-            key={m.id}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer text-sm transition-colors ${
-              selected.includes(m.name)
-                ? "bg-purple-50 border border-purple-200 text-purple-800"
-                : "hover:bg-white border border-transparent text-gray-700"
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={selected.includes(m.name)}
-              onChange={() => onToggle(m.name)}
-              className="w-4 h-4 accent-purple-600 shrink-0"
-            />
-            <span className="text-xs font-medium leading-tight">{m.name}</span>
-          </label>
-        ))
-      )}
-    </div>
-  );
-
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans h-screen overflow-hidden">
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-24 pb-6 flex flex-col h-full">
+    <div className="min-h-screen bg-gray-50 flex flex-col font-sans md:h-screen md:overflow-hidden">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-20 pb-6 flex flex-col md:h-full">
 
         <div className="shrink-0">
           <div className="flex gap-4 mb-4 border-b border-gray-200 pb-2">
@@ -413,16 +529,40 @@ function ManageUsers() {
             <span className="text-gray-300">|</span>
             <span className="text-[#B59E74] font-bold uppercase tracking-widest text-sm border-b-2 border-[#B59E74] pb-2 -mb-[9px]">Staff & Accounts</span>
           </div>
-          <div className="mb-6">
-            <h1 className="text-3xl md:text-4xl font-serif text-gray-800 uppercase tracking-wide">Manage Accounts</h1>
-            <p className="text-gray-500 font-serif italic mt-1">Create new staff accounts, manage roles, and remove users.</p>
+          <div className="mb-4">
+            <h1 className="text-2xl md:text-4xl font-serif text-gray-800 uppercase tracking-wide">Manage Accounts</h1>
+            <p className="text-gray-500 font-serif italic mt-1 text-sm">Create new staff accounts, manage roles, and remove users.</p>
+          </div>
+
+          {/* Mobile tab switcher — hidden at md+ where side-by-side kicks in */}
+          <div className="md:hidden flex gap-1 bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm mb-4">
+            <button
+              onClick={() => setMobileTab("database")}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
+                mobileTab === "database"
+                  ? "bg-[#B59E74] text-white shadow-sm"
+                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              🗄️ Database
+            </button>
+            <button
+              onClick={() => setMobileTab("create")}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
+                mobileTab === "create"
+                  ? "bg-[#B59E74] text-white shadow-sm"
+                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              👤 Create
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 flex-1 min-h-0 overflow-hidden pb-4">
+        <div className="flex flex-col md:flex-row gap-4 lg:gap-8 md:flex-1 md:min-h-0 md:overflow-hidden pb-4">
 
           {/* LEFT SIDE: CREATE ACCOUNT */}
-          <div className="lg:w-[400px] shrink-0 h-full overflow-y-auto scrollbar-thin pr-1">
+          <div className={`${mobileTab === "create" ? "block" : "hidden"} md:block md:w-[320px] lg:w-[400px] md:shrink-0 md:h-full overflow-y-auto scrollbar-thin md:pr-1`}>
             <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 sm:p-8">
               <div className="mb-6 border-b border-gray-100 pb-4">
                 <div className="w-12 h-12 rounded-full bg-[#B59E74]/10 text-[#B59E74] flex items-center justify-center text-xl mb-4">👤</div>
@@ -459,7 +599,7 @@ function ManageUsers() {
                         </span>
                       )}
                     </label>
-                    <MinistryChecklist selected={createForm.ministries} onToggle={toggleCreateMinistry} />
+                    <MinistryChecklist activeMinistries={activeMinistries} selected={createForm.ministries} onToggle={toggleCreateMinistry} />
                   </div>
                 )}
 
@@ -497,7 +637,7 @@ function ManageUsers() {
           </div>
 
           {/* RIGHT SIDE: DATABASE TABLE */}
-          <div className="flex-1 flex flex-col h-full bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className={`${mobileTab === "database" ? "flex" : "hidden"} md:flex flex-col flex-1 bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden h-[calc(100svh-200px)] md:h-full`}>
 
             <div className="shrink-0 p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row justify-between items-start gap-4">
               <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -529,16 +669,11 @@ function ManageUsers() {
                 </div>
 
                 {roleFilter === "minister" && (
-                  <select
+                  <MinistryFilterDropdown
                     value={ministryFilter}
-                    onChange={(e) => setMinistryFilter(e.target.value)}
-                    className="py-2.5 pl-4 pr-8 rounded-xl border border-purple-200 focus:outline-none focus:ring-2 focus:ring-purple-400 text-sm font-bold text-purple-700 bg-purple-50 cursor-pointer outline-none w-full"
-                  >
-                    <option value="All">All Ministries</option>
-                    {activeMinistries.map(m => (
-                      <option key={m.id} value={m.name}>{m.name}</option>
-                    ))}
-                  </select>
+                    onChange={setMinistryFilter}
+                    options={activeMinistries}
+                  />
                 )}
               </div>
             </div>
@@ -546,47 +681,36 @@ function ManageUsers() {
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               {loading ? (
                 <div className="flex h-full items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#B59E74]"></div></div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="p-12 text-center text-gray-400 font-serif italic">No accounts found matching your filters.</div>
               ) : (
-                <table className="w-full text-left border-collapse min-w-[700px]">
-                  <thead className="bg-white sticky top-0 z-10 border-b border-gray-100 shadow-sm">
-                    <tr className="text-[10px] text-gray-500 uppercase tracking-widest">
-                      <th className="px-6 py-4 font-bold">User Profile</th>
-                      <th className="px-6 py-4 font-bold">Contact</th>
-                      <th className="px-6 py-4 font-bold">System Role</th>
-                      <th className="px-6 py-4 font-bold text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
+                <>
+                  {/* ── MOBILE CARD LIST (hidden md+) ── */}
+                  <div className="md:hidden divide-y divide-gray-100">
                     {filteredUsers.map((u) => (
-                      <tr key={u.id} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="px-6 py-4">
-                          <p className="font-serif text-gray-800 font-medium text-base">
-                            {u.first_name || u.last_name ? `${u.first_name || ''} ${u.last_name || ''}` : "Unknown Name"}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">{u.email}</p>
-                          <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">Joined: {new Date(u.created_at).toLocaleDateString()}</p>
-                          {u.role === "minister" && Array.isArray(u.ministries) && u.ministries.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {u.ministries.map((m, i) => (
-                                <span key={i} className="bg-purple-50 border border-purple-200 text-purple-700 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full">
-                                  {m}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">{u.contact_number || "—"}</td>
-                        <td className="px-6 py-4">
+                      <div key={u.id} className="p-4 flex flex-col gap-3 hover:bg-gray-50/60 transition-colors">
+                        {/* Name + email row */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-serif text-gray-800 font-medium text-sm leading-tight truncate">
+                              {u.first_name || u.last_name ? `${u.first_name || ''} ${u.last_name || ''}` : "Unknown Name"}
+                            </p>
+                            <p className="text-[11px] text-gray-500 mt-0.5 truncate">{u.email}</p>
+                            {u.contact_number && (
+                              <p className="text-[11px] text-gray-400 mt-0.5">{u.contact_number}</p>
+                            )}
+                          </div>
+                          {/* Role select */}
                           <select
                             value={u.role}
                             onChange={(e) => handleRoleChange(u.id, e.target.value)}
                             disabled={u.id === user.id}
-                            className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg border-2 cursor-pointer outline-none transition-colors ${
-                              u.role === "admin" || u.role === "superadmin" ? "bg-red-50 border-red-200 text-red-700 focus:border-red-400" :
-                              u.role === "staff" ? "bg-blue-50 border-blue-200 text-blue-700 focus:border-blue-400" :
-                              u.role === "minister" ? "bg-purple-50 border-purple-200 text-purple-700 focus:border-purple-400" :
-                              u.role === "priest" ? "bg-[#B59E74]/10 border-[#B59E74]/30 text-[#B59E74] focus:border-[#B59E74]" :
-                              "bg-gray-50 border-gray-200 text-gray-600 focus:border-gray-400"
+                            className={`shrink-0 text-[10px] font-bold uppercase tracking-widest px-2 py-1.5 rounded-lg border-2 cursor-pointer outline-none transition-colors ${
+                              u.role === "admin" || u.role === "superadmin" ? "bg-red-50 border-red-200 text-red-700" :
+                              u.role === "staff"      ? "bg-blue-50 border-blue-200 text-blue-700" :
+                              u.role === "minister"   ? "bg-purple-50 border-purple-200 text-purple-700" :
+                              u.role === "priest"     ? "bg-[#B59E74]/10 border-[#B59E74]/30 text-[#B59E74]" :
+                              "bg-gray-50 border-gray-200 text-gray-600"
                             } ${u.id === user.id ? "opacity-50 cursor-not-allowed" : ""}`}
                           >
                             <option value="parishioner">Parishioner</option>
@@ -595,36 +719,116 @@ function ManageUsers() {
                             <option value="priest">Priest</option>
                             <option value="admin">Admin</option>
                           </select>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end items-center gap-2">
-                            <button
-                              onClick={() => openEditModal(u)}
-                              className="text-gray-400 hover:text-[#B59E74] hover:bg-[#B59E74]/10 text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-[#B59E74]/30"
-                            >
-                              ✎ Edit
-                            </button>
-                            {u.id !== user.id && (
-                              <button
-                                onClick={() => setDeletingUser(u)}
-                                className="text-gray-400 hover:text-red-600 hover:bg-red-50 text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-red-200"
-                              >
-                                🗑️ Delete
-                              </button>
-                            )}
+                        </div>
+
+                        {/* Ministry badges */}
+                        {u.role === "minister" && Array.isArray(u.ministries) && u.ministries.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {u.ministries.map((m, i) => (
+                              <span key={i} className="bg-purple-50 border border-purple-200 text-purple-700 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full">
+                                {m}
+                              </span>
+                            ))}
                           </div>
-                        </td>
-                      </tr>
+                        )}
+
+                        {/* Actions row */}
+                        <div className="flex items-center gap-2">
+                          <p className="text-[10px] text-gray-400 uppercase tracking-wider mr-auto">
+                            Joined {new Date(u.created_at).toLocaleDateString()}
+                          </p>
+                          <button
+                            onClick={() => openEditModal(u)}
+                            className="text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg border border-[#B59E74]/40 text-[#B59E74] bg-[#B59E74]/5 hover:bg-[#B59E74]/10 transition-colors"
+                          >
+                            ✎ Edit
+                          </button>
+                          {u.id !== user.id && (
+                            <button
+                              onClick={() => setDeletingUser(u)}
+                              className="text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg border border-red-200 text-red-500 bg-red-50/50 hover:bg-red-50 transition-colors"
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     ))}
-                    {filteredUsers.length === 0 && (
-                      <tr>
-                        <td colSpan="4" className="p-12 text-center text-gray-400 font-serif italic">
-                          No accounts found matching your filters.
-                        </td>
+                  </div>
+
+                  {/* ── DESKTOP TABLE (hidden below md) ── */}
+                  <table className="hidden md:table w-full text-left border-collapse">
+                    <thead className="bg-white sticky top-0 z-10 border-b border-gray-100 shadow-sm">
+                      <tr className="text-[10px] text-gray-500 uppercase tracking-widest">
+                        <th className="px-6 py-4 font-bold">User Profile</th>
+                        <th className="px-6 py-4 font-bold">Contact</th>
+                        <th className="px-6 py-4 font-bold">System Role</th>
+                        <th className="px-6 py-4 font-bold text-right">Actions</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {filteredUsers.map((u) => (
+                        <tr key={u.id} className="hover:bg-gray-50/80 transition-colors">
+                          <td className="px-6 py-4">
+                            <p className="font-serif text-gray-800 font-medium text-base">
+                              {u.first_name || u.last_name ? `${u.first_name || ''} ${u.last_name || ''}` : "Unknown Name"}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">{u.email}</p>
+                            <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">Joined: {new Date(u.created_at).toLocaleDateString()}</p>
+                            {u.role === "minister" && Array.isArray(u.ministries) && u.ministries.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {u.ministries.map((m, i) => (
+                                  <span key={i} className="bg-purple-50 border border-purple-200 text-purple-700 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full">
+                                    {m}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">{u.contact_number || "—"}</td>
+                          <td className="px-6 py-4">
+                            <select
+                              value={u.role}
+                              onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                              disabled={u.id === user.id}
+                              className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg border-2 cursor-pointer outline-none transition-colors ${
+                                u.role === "admin" || u.role === "superadmin" ? "bg-red-50 border-red-200 text-red-700 focus:border-red-400" :
+                                u.role === "staff"    ? "bg-blue-50 border-blue-200 text-blue-700 focus:border-blue-400" :
+                                u.role === "minister" ? "bg-purple-50 border-purple-200 text-purple-700 focus:border-purple-400" :
+                                u.role === "priest"   ? "bg-[#B59E74]/10 border-[#B59E74]/30 text-[#B59E74] focus:border-[#B59E74]" :
+                                "bg-gray-50 border-gray-200 text-gray-600 focus:border-gray-400"
+                              } ${u.id === user.id ? "opacity-50 cursor-not-allowed" : ""}`}
+                            >
+                              <option value="parishioner">Parishioner</option>
+                              <option value="staff">Staff</option>
+                              <option value="minister">Minister</option>
+                              <option value="priest">Priest</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex justify-end items-center gap-2">
+                              <button
+                                onClick={() => openEditModal(u)}
+                                className="text-gray-400 hover:text-[#B59E74] hover:bg-[#B59E74]/10 text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-[#B59E74]/30"
+                              >
+                                ✎ Edit
+                              </button>
+                              {u.id !== user.id && (
+                                <button
+                                  onClick={() => setDeletingUser(u)}
+                                  className="text-gray-400 hover:text-red-600 hover:bg-red-50 text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-red-200"
+                                >
+                                  🗑️ Delete
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
               )}
             </div>
           </div>
@@ -659,6 +863,7 @@ function ManageUsers() {
                   )}
                 </div>
                 <MinistryChecklist
+                  activeMinistries={activeMinistries}
                   selected={roleChangeMinistries}
                   onToggle={(name) =>
                     setRoleChangeMinistries(prev =>
@@ -751,7 +956,7 @@ function ManageUsers() {
                       </span>
                     )}
                   </div>
-                  <MinistryChecklist selected={editForm.ministries} onToggle={toggleEditMinistry} />
+                  <MinistryChecklist activeMinistries={activeMinistries} selected={editForm.ministries} onToggle={toggleEditMinistry} />
                   {editForm.ministries.length === 0 && (
                     <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider">At least one ministry is required.</p>
                   )}

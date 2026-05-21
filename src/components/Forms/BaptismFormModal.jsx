@@ -3,7 +3,7 @@ import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, useProfileAutofill } from "./formHelpers";
 
 function BaptismFormModal({ onClose }) {
   // All hooks declared up-front (Rules of Hooks). The auth gate happens
@@ -42,6 +42,8 @@ function BaptismFormModal({ onClose }) {
     declaration_consent: false,
   });
 
+  const autofill = useProfileAutofill(user);
+
   // NEW: Fetch priests when the modal opens
   useEffect(() => {
     const fetchPriests = async () => {
@@ -59,6 +61,16 @@ function BaptismFormModal({ onClose }) {
     };
     fetchPriests();
   }, []);
+
+  useEffect(() => {
+    if (!autofill) return;
+    setFormData(prev => ({
+      ...prev,
+      submitterName:        prev.submitterName        || autofill.fullName,
+      contactNumbers:       prev.contactNumbers       || autofill.contactNumber,
+      submitter_signature:  prev.submitter_signature  || autofill.fullName,
+    }));
+  }, [autofill]);
 
   // Guest visitors must sign in/register before submitting a request.
   if (!user) {

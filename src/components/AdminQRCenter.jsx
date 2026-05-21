@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import GenerateEventQR from "./Auth/GenerateEventQR";
 
@@ -38,7 +39,15 @@ function AdminQRCenter() {
 
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans">
-      <main className="flex-1 max-w-4xl w-full mx-auto px-6 pt-32 pb-12">
+      <main className="flex-1 max-w-4xl w-full mx-auto px-6 pt-28 pb-12">
+
+        {/* Breadcrumb */}
+        <div className="flex gap-4 mb-6 border-b border-gray-200 pb-3">
+          <Link to="/admin" className="text-gray-500 hover:text-[#B59E74] font-bold uppercase tracking-widest text-sm transition-colors">Dashboard</Link>
+          <span className="text-gray-300">|</span>
+          <span className="text-[#B59E74] font-bold uppercase tracking-widest text-sm border-b-2 border-[#B59E74] pb-3 -mb-[13px]">QR Codes</span>
+        </div>
+
         <div className="text-center mb-12">
           <h1 className="text-3xl font-serif text-[#B59E74] uppercase tracking-widest mb-2">
             QR Code Generator
