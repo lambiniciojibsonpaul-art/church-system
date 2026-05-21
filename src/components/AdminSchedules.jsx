@@ -150,6 +150,7 @@ function AdminSchedules() {
     setIsModalOpen(true);
   };
 
+
   // --- ACTIONS ---
   const handleApprove = async (eventToApprove) => {
     try {
@@ -208,24 +209,19 @@ function AdminSchedules() {
       return;
     }
 
-    // 2. PRIVATE EVENT VALIDATION
-    if (!formData.isPublic && !formData.ministry) {
-      alert("Please select a hosting ministry for this private event.");
+    // 2. HOST VALIDATION — at least one of priest or ministry must be selected
+    if (!formData.priestName && !formData.ministry) {
+      alert("Please assign at least one host — a Hosting Priest, a Hosting Ministry, or both.");
       return;
     }
 
     // 3. CONFLICT DETECTION
     const conflict = events.find(ev => {
-      // Ignore events that are already cancelled or rejected
       if (ev.status === "Cancelled" || ev.status === "Rejected") return false;
-      
-      // If the date and time don't match exactly, there's no conflict
       if (ev.event_date !== formData.eventDate || ev.event_time !== formData.eventTime) return false;
-
-      // Check if it's the exact same priest OR the exact same indoor room
-      const isSamePriest = ev.priest_name === formData.priestName;
-      const isSameRoom = formData.isInside && formData.setting && ev.setting === formData.setting;
-
+      // Only flag priest conflict if a priest was actually chosen
+      const isSamePriest = formData.priestName && ev.priest_name === formData.priestName;
+      const isSameRoom   = formData.isInside && formData.setting && ev.setting === formData.setting;
       return isSamePriest || isSameRoom;
     });
 
@@ -237,26 +233,21 @@ function AdminSchedules() {
     setSubmitting(true);
 
     try {
-      const payload = {
-        creator_id:  user.id,
-        title:       formData.title,
-        event_class: formData.eventClass,
-        priest_name: formData.priestName,
-        event_date:  formData.eventDate,
-        event_time:  formData.eventTime,
-        location:    formData.location,
-        description: formData.description,
-        setting:     formData.setting,
-        status:      "Active",
-        is_public:   formData.isPublic,
-      };
-
-      if (!formData.isPublic) {
-        payload.ministry      = formData.ministry;
-        payload.collaborators = formData.collaborators;
-      }
-
-      const { error } = await restInsert("events", [payload]);
+      const { error } = await restInsert("events", [{
+        creator_id:   user.id,
+        title:        formData.title,
+        event_class:  formData.eventClass,
+        priest_name:  formData.priestName  || null,
+        ministry:     formData.ministry    || null,
+        collaborators: formData.collaborators,
+        event_date:   formData.eventDate,
+        event_time:   formData.eventTime,
+        location:     formData.location,
+        description:  formData.description,
+        setting:      formData.setting,
+        status:       "Active",
+        is_public:    formData.isPublic,
+      }]);
 
       if (error) throw new Error(error.message);
 
@@ -494,154 +485,183 @@ function AdminSchedules() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-8 space-y-6">
+
+              {/* ── Event info ── */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">
-                    Event Title *
-                  </label>
+                  <label className="text-xs font-bold text-gray-600 uppercase">Event Title *</label>
                   <input
-                    type="text"
-                    name="title"
-                    required
-                    value={formData.title}
-                    onChange={handleChange}
+                    type="text" name="title" required
+                    value={formData.title} onChange={handleChange}
                     className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none"
                     placeholder="e.g., Sunday Morning Mass"
                   />
                 </div>
-
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">
-                    Event Type *
-                  </label>
+                  <label className="text-xs font-bold text-gray-600 uppercase">Event Type *</label>
                   <select
-                    name="eventClass"
-                    required
-                    value={formData.eventClass}
-                    onChange={handleChange}
+                    name="eventClass" required
+                    value={formData.eventClass} onChange={handleChange}
                     className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74] font-bold text-[#B59E74]"
                   >
-                    {EVENT_CLASSES.map((cls) => (
-                      <option key={cls} value={cls}>
-                        {cls}
-                      </option>
-                    ))}
+                    {EVENT_CLASSES.map(cls => <option key={cls} value={cls}>{cls}</option>)}
                   </select>
                 </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600 uppercase">
-                  Hosting Priest / Lead *
-                </label>
-                <select
-                  name="priestName"
-                  required
-                  value={formData.priestName}
-                  onChange={handleChange}
-                  className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
-                >
-                  <option value="" disabled>Select a priest...</option>
-                  {priestNames.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">Date *</label>
                   <input
-                    type="date"
-                    name="eventDate"
-                    required
-                    min={new Date().toISOString().split('T')[0]} // Front-end calendar restriction
-                    value={formData.eventDate}
-                    onChange={handleChange}
+                    type="date" name="eventDate" required
+                    min={new Date().toISOString().split('T')[0]}
+                    value={formData.eventDate} onChange={handleChange}
                     className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">Start Time *</label>
                   <input
-                    type="time"
-                    name="eventTime"
-                    required
-                    value={formData.eventTime}
-                    onChange={handleChange}
+                    type="time" name="eventTime" required
+                    value={formData.eventTime} onChange={handleChange}
                     className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                   />
                 </div>
               </div>
 
+              {/* ── Hosts — at least priest OR ministry required ── */}
+              {(() => {
+                const priestChosen  = !!formData.priestName;
+                const ministryChosen = !!formData.ministry;
+                const hostChosen    = priestChosen || ministryChosen;
+                return (
+                  <div className="space-y-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                      Event Hosts — At least one required
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Hosting Priest */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-bold text-gray-600 uppercase">Hosting Priest</label>
+                        <select
+                          name="priestName"
+                          value={formData.priestName}
+                          onChange={e => setFormData(prev => ({
+                            ...prev,
+                            priestName: e.target.value,
+                            // selecting a priest locks out hosting ministry
+                            ministry: e.target.value ? "" : prev.ministry,
+                            collaborators: e.target.value ? prev.collaborators : prev.collaborators,
+                          }))}
+                          className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
+                        >
+                          <option value="">Select priest…</option>
+                          {priestNames.map(name => <option key={name} value={name}>{name}</option>)}
+                        </select>
+                      </div>
+
+                      {/* Hosting Ministry — disabled when a priest is chosen */}
+                      <div className="flex flex-col gap-1">
+                        <label className={`text-xs font-bold uppercase ${priestChosen ? "text-gray-300" : "text-gray-600"}`}>
+                          Hosting Ministry
+                          {priestChosen && <span className="ml-2 text-[9px] normal-case italic font-normal text-gray-400">disabled — priest is the primary host</span>}
+                        </label>
+                        <select
+                          value={formData.ministry}
+                          disabled={priestChosen}
+                          onChange={e => setFormData(prev => ({
+                            ...prev,
+                            ministry: e.target.value,
+                            collaborators: prev.collaborators.filter(c => c !== e.target.value),
+                          }))}
+                          className={`p-3 rounded-xl border outline-none focus:ring-2 focus:ring-[#B59E74] transition-opacity ${
+                            priestChosen
+                              ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed opacity-50"
+                              : "border-gray-300 bg-white"
+                          }`}
+                        >
+                          <option value="">Select ministry…</option>
+                          {activeMinistries.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Collaborating Ministries — active only when at least one host is chosen */}
+                    <div className={`flex flex-col gap-1.5 transition-opacity ${hostChosen ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
+                      <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-2">
+                        Collaborating Ministries
+                        {!hostChosen && <span className="text-[9px] normal-case italic font-normal text-gray-400">— choose a priest or ministry first</span>}
+                        {formData.collaborators.length > 0 && (
+                          <span className="bg-[#B59E74]/20 text-[#B59E74] px-2 py-0.5 rounded-full text-[9px] font-bold">
+                            {formData.collaborators.length} selected
+                          </span>
+                        )}
+                      </label>
+                      <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-xl bg-white p-2 space-y-1">
+                        {activeMinistries.filter(m => m.name !== formData.ministry).length === 0 ? (
+                          <p className="text-xs text-gray-400 italic text-center py-3">No ministries available</p>
+                        ) : (
+                          activeMinistries.filter(m => m.name !== formData.ministry).map(m => (
+                            <label
+                              key={m.id}
+                              className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                                formData.collaborators.includes(m.name)
+                                  ? "bg-[#B59E74]/10 border border-[#B59E74]/30 text-[#7a6a42]"
+                                  : "hover:bg-gray-50 border border-transparent text-gray-700"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={formData.collaborators.includes(m.name)}
+                                onChange={() => toggleCollaborator(m.name)}
+                                className="w-4 h-4 accent-[#B59E74] shrink-0"
+                              />
+                              <span className="text-xs font-medium">{m.name}</span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ── Location ── */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">Setting Type</label>
-                  <div className="flex items-center gap-4 mt-2 h-full">
+                  <div className="flex items-center gap-4 mt-2">
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input 
-                        type="radio" 
-                        checked={formData.isInside === true} 
-                        onChange={() => setFormData({ ...formData, isInside: true, setting: "" })} 
-                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" 
-                      /> 
+                      <input type="radio" checked={formData.isInside === true} onChange={() => setFormData({ ...formData, isInside: true, setting: "" })} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" />
                       Indoor
                     </label>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input 
-                        type="radio" 
-                        checked={formData.isInside === false} 
-                        onChange={() => setFormData({ ...formData, isInside: false, setting: "" })} 
-                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" 
-                      /> 
+                      <input type="radio" checked={formData.isInside === false} onChange={() => setFormData({ ...formData, isInside: false, setting: "" })} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" />
                       Outdoor
                     </label>
                   </div>
                 </div>
-
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">
                     {formData.isInside ? "Select Facility *" : "Outdoor Location *"}
                   </label>
                   {formData.isInside ? (
-                    <select 
-                      name="setting" 
-                      required 
-                      value={formData.setting} 
-                      onChange={handleChange} 
-                      className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
-                    >
+                    <select name="setting" required value={formData.setting} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]">
                       <option value="" disabled>Select a Facility</option>
-                      {INDOOR_FACILITIES.map(facility => (
-                        <option key={facility} value={facility}>{facility}</option>
-                      ))}
+                      {INDOOR_FACILITIES.map(f => <option key={f} value={f}>{f}</option>)}
                     </select>
                   ) : (
-                    <input 
-                      type="text" 
-                      name="setting" 
-                      required 
-                      value={formData.setting} 
-                      onChange={handleChange} 
-                      className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" 
-                      placeholder="e.g., Parish Courtyard" 
-                    />
+                    <input type="text" name="setting" required value={formData.setting} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" placeholder="e.g., Parish Courtyard" />
                   )}
                 </div>
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600 uppercase">
-                  General Location *
-                </label>
+                <label className="text-xs font-bold text-gray-600 uppercase">General Location *</label>
                 <input
-                  type="text"
-                  name="location"
-                  required
-                  value={formData.location}
-                  onChange={handleChange}
+                  type="text" name="location" required
+                  value={formData.location} onChange={handleChange}
                   className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none"
                   placeholder="e.g., Parish Grounds"
                 />
@@ -650,16 +670,13 @@ function AdminSchedules() {
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-gray-600 uppercase">Description (Optional)</label>
                 <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleChange}
-                  rows="3"
-                  className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none resize-none"
+                  name="description" value={formData.description} onChange={handleChange}
+                  rows="3" className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none resize-none"
                   placeholder="Additional details..."
-                ></textarea>
+                />
               </div>
 
-              {/* ── VISIBILITY TOGGLE ── */}
+              {/* ── Visibility toggle ── */}
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
                 <div>
                   <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
@@ -668,91 +685,20 @@ function AdminSchedules() {
                   <p className="text-[11px] text-gray-400 mt-0.5">
                     {formData.isPublic
                       ? "Visible to all parishioners on the calendar"
-                      : "Only assigned ministries will see this event"}
+                      : "Only the hosting ministry and collaborators will see this"}
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, isPublic: !prev.isPublic, ministry: "", collaborators: [] }))}
+                  onClick={() => setFormData(prev => ({ ...prev, isPublic: !prev.isPublic }))}
                   className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${formData.isPublic ? "bg-[#B59E74]" : "bg-gray-300"}`}
                 >
                   <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${formData.isPublic ? "translate-x-7" : "translate-x-1"}`} />
                 </button>
               </div>
 
-              {/* ── PRIVATE: MINISTRY ASSIGNMENT ── */}
-              {!formData.isPublic && (
-                <div className="space-y-4 p-4 bg-amber-50 border border-amber-200 rounded-xl animate-fade-in">
-                  <p className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">
-                    🔒 Assign which ministries can see this event
-                  </p>
-
-                  {/* Hosting ministry */}
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600 uppercase">
-                      Hosting Ministry *
-                    </label>
-                    <select
-                      value={formData.ministry}
-                      onChange={e => setFormData(prev => ({
-                        ...prev,
-                        ministry: e.target.value,
-                        collaborators: prev.collaborators.filter(c => c !== e.target.value),
-                      }))}
-                      className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-amber-400"
-                    >
-                      <option value="">Select hosting ministry…</option>
-                      {activeMinistries.map(m => (
-                        <option key={m.id} value={m.name}>{m.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Collaborating ministries */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-600 uppercase">
-                      Collaborating Ministries
-                      {formData.collaborators.length > 0 && (
-                        <span className="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-[9px] font-bold">
-                          {formData.collaborators.length} selected
-                        </span>
-                      )}
-                    </label>
-                    <div className="max-h-44 overflow-y-auto border border-gray-200 rounded-xl bg-white p-2 space-y-1">
-                      {activeMinistries.filter(m => m.name !== formData.ministry).length === 0 ? (
-                        <p className="text-xs text-gray-400 italic text-center py-3">
-                          {formData.ministry ? "No other ministries available" : "Select a hosting ministry first"}
-                        </p>
-                      ) : (
-                        activeMinistries
-                          .filter(m => m.name !== formData.ministry)
-                          .map(m => (
-                            <label
-                              key={m.id}
-                              className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer text-sm transition-colors ${
-                                formData.collaborators.includes(m.name)
-                                  ? "bg-amber-50 border border-amber-200 text-amber-800"
-                                  : "hover:bg-gray-50 border border-transparent text-gray-700"
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={formData.collaborators.includes(m.name)}
-                                onChange={() => toggleCollaborator(m.name)}
-                                className="w-4 h-4 accent-amber-600 shrink-0"
-                              />
-                              <span className="text-xs font-medium">{m.name}</span>
-                            </label>
-                          ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <button
-                type="submit"
-                disabled={submitting}
+                type="submit" disabled={submitting}
                 className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-xl uppercase tracking-widest mt-4 shadow-md transition-colors disabled:opacity-70"
               >
                 {submitting ? "Saving..." : "Post Schedule"}

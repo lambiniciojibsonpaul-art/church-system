@@ -12,6 +12,7 @@ const SOLID_BG_PREFIXES = [
   "/update-password",
   "/ministries",
   "/events",
+  "/services",
 ];
 
 const ROLE_CONFIG = {
@@ -149,8 +150,8 @@ function Header({ forceSolidBg = false }) {
 
           {/* Center: nav */}
           <nav className="hidden lg:flex justify-center whitespace-nowrap shrink-0">
-            {isAdmin ? (
-              /* Admin nav — sans-serif, uppercase, matching dashboard style */
+            {(isAdmin || isPriest || isStaff || isMinister) ? (
+              /* Staff nav — sans-serif, uppercase, matching dashboard style */
               <div className="flex gap-6 xl:gap-8 items-center">
                 <Link to="/events"     className={`text-[11px] font-bold uppercase tracking-widest transition-colors hover:text-[#B59E74] ${isSolid ? "text-gray-600" : "text-white"}`}>Events</Link>
                 <Link to="/services"   className={`text-[11px] font-bold uppercase tracking-widest transition-colors hover:text-[#B59E74] ${isSolid ? "text-gray-600" : "text-white"}`}>Services</Link>
@@ -244,7 +245,7 @@ function Header({ forceSolidBg = false }) {
         {isOpen && (
           <div className="lg:hidden absolute top-full left-0 w-full px-4 pb-4">
             <ul className={`mt-2 flex flex-col gap-4 p-6 rounded-2xl shadow-xl ${isSolid ? "bg-gray-50" : "bg-black/90 text-white"}`}>
-              {isAdmin ? (
+              {(isAdmin || isPriest || isStaff || isMinister) ? (
                 <>
                   <li><Link to="/events"     onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Events</Link></li>
                   <li><Link to="/services"   onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Services</Link></li>

@@ -46,6 +46,11 @@ function writeEventsCache(events) {
 function EventsPage() {
   const { user, role, isAdmin } = useAuth();
   const isMinistry = role === "ministry";
+  const isPriest   = role === "priest";
+  const isStaff    = role === "staff";
+  const isMinister = role === "minister";
+  // All internal/staff roles share the admin calendar UI
+  const isStaffRole = isAdmin || isPriest || isStaff || isMinister;
 
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(
@@ -253,14 +258,14 @@ function EventsPage() {
   };
 
   // --- BULLET-PROOF CHRONOLOGICAL SORTING FOR CALENDAR PAGE ---
-  const isCancelledView = isAdmin && viewMode === "Cancelled";
+  const isCancelledView = isStaffRole && viewMode === "Cancelled";
 
   const canSeeEvent = (e) => {
-    // Admins see everything
-    if (isAdmin) return true;
+    // Admin, priest, and staff see all events including private ones
+    if (isAdmin || isPriest || isStaff) return true;
     // Public or no flag (backward compat) — visible to all
     if (e.is_public !== false) return true;
-    // Private: visible only if user's ministry is the host or a collaborator
+    // Private: minister/ministry role can only see if their ministry is the host or collaborator
     const permitted = [
       e.ministry,
       ...(Array.isArray(e.collaborators) ? e.collaborators : []),
@@ -315,20 +320,22 @@ function EventsPage() {
   };
 
   return (
-    <div className={`relative min-h-screen w-full flex flex-col font-sans ${isAdmin || isMinistry ? "bg-gray-50" : "bg-white"}`}>
-      {!isAdmin && !isMinistry && (
+    <div className={`relative min-h-screen w-full flex flex-col font-sans ${isStaffRole || isMinistry ? "bg-gray-50" : "bg-white"}`}>
+      {!isStaffRole && !isMinistry && (
         <main style={backgroundStyle} className="relative h-[60vh] md:h-screen flex flex-col items-center justify-center text-center px-4 text-white">
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight mt-16">Events</h1>
         </main>
       )}
 
-      <section className={isAdmin || isMinistry ? "w-full px-6 pt-32 pb-12" : "relative w-full z-20 -mt-24 pb-32 px-6"}>
-        <div className={isAdmin || isMinistry ? "max-w-7xl mx-auto" : "bg-[#F6F5ED] rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-7xl mx-auto py-12 px-6 md:px-12 text-left"}>
-          {isAdmin || isMinistry ? (
+      <section className={isStaffRole || isMinistry ? "w-full px-6 pt-32 pb-12" : "relative w-full z-20 -mt-24 pb-32 px-6"}>
+        <div className={isStaffRole || isMinistry ? "max-w-7xl mx-auto" : "bg-[#F6F5ED] rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-7xl mx-auto py-12 px-6 md:px-12 text-left"}>
+          {isStaffRole || isMinistry ? (
             <div className="mb-8">
               <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] mb-2 uppercase tracking-wide">Parish Events</h1>
               <p className="text-gray-500 font-serif italic">
-                {isAdmin ? "Manage and review parish events. Select a date to see what's scheduled." : "View the parish calendar and propose events for your ministry."}
+                {isAdmin ? "Manage and review parish events. Select a date to see what's scheduled."
+                  : isMinistry ? "View the parish calendar and propose events for your ministry."
+                  : "View and browse parish events. Select a date to see what's scheduled."}
               </p>
             </div>
           ) : (
@@ -372,7 +379,7 @@ function EventsPage() {
             </div>
 
             <div className="flex-1 flex flex-col gap-6">
-              {isAdmin && (
+              {isStaffRole && (
                 <>
                   {/* Mobile dropdown */}
                   <div className="relative sm:hidden">
@@ -404,51 +411,71 @@ function EventsPage() {
                   <span className="text-sm font-bold tracking-widest uppercase opacity-80 mb-1 block">Schedule For</span>
                   <h3 className="text-2xl lg:text-3xl font-serif font-medium">{selectedDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</h3>
                 </div>
-                {(isAdmin || isMinistry) && (
+                {isMinistry && (
                   <button onClick={handleOpenModal} className="mt-4 md:mt-0 z-10 bg-white text-[#B59E74] hover:bg-gray-50 px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-widest shadow-sm transition-transform hover:scale-105 flex items-center gap-2">
-                    <span className="text-lg leading-none">+</span> {isAdmin ? "Add Event" : "Propose Event"}
+                    <span className="text-lg leading-none">+</span> Propose Event
                   </button>
                 )}
                 <div className="absolute -right-10 -top-10 w-40 h-40 bg-white opacity-10 rounded-full blur-2xl"></div>
               </div>
 
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3">
                 {loading ? (
                   <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B59E74]"></div></div>
                 ) : selectedEvents.length > 0 ? (
-                  selectedEvents.map((event) => {
-                    const cancelled = (event.status || "Active") === "Cancelled";
-                    return (
-                    <div key={event.id} className={`p-6 rounded-2xl shadow-sm flex flex-col gap-4 animate-fade-in-up relative overflow-hidden group ${cancelled ? "bg-orange-50/40 border border-orange-200" : "bg-white border border-gray-100"}`}>
-                      <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
-                        {cancelled && <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-orange-600 text-white">Cancelled</span>}
-                        {event.is_public === false && (
-                          <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-700 text-white flex items-center gap-1">
-                            🔒 Private
-                          </span>
-                        )}
-                        {event.setting && <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-blue-50 text-blue-600 truncate max-w-[150px]">{event.setting}</span>}
-                      </div>
-
-                      <h4 className={`text-2xl font-bold pr-24 ${cancelled ? "text-gray-500 line-through decoration-orange-400/70" : "text-gray-800"}`}>{event.title}</h4>
-
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-4 text-sm text-gray-600 font-serif italic">
-                        <div className="flex items-center gap-2"><svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>{formatTime(event.event_time)}</div>
-                        <div className="hidden sm:block w-1 h-1 bg-gray-300 rounded-full"></div>
-                        <div className="flex items-center gap-2"><svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>{event.location || "Parish"}</div>
-                      </div>
-
-                      {event.priest_name && (
-                        <div className="flex items-center gap-2 text-sm text-gray-700 font-medium border-t border-gray-100 pt-3">
-                          <svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 0a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-                          <span className="text-gray-500 italic mr-1">Hosted by:</span>{event.priest_name}
-                        </div>
-                      )}
-
-                      {event.description && <p className="text-gray-700 leading-relaxed mt-1 text-sm whitespace-pre-wrap">{event.description}</p>}
+                  isStaffRole ? (
+                    /* ── STAFF / ADMIN: compact list rows ── */
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                      {selectedEvents.map((event, idx) => {
+                        const cancelled = (event.status || "Active") === "Cancelled";
+                        return (
+                          <div key={event.id} className={`flex items-start gap-4 px-5 py-4 hover:bg-gray-50/60 transition-colors ${idx !== 0 ? "border-t border-gray-50" : ""}`}>
+                            <div className="flex-1 min-w-0">
+                              <p className={`font-serif font-medium text-base leading-tight ${cancelled ? "text-gray-400 line-through" : "text-gray-800"}`}>{event.title}</p>
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5">
+                                {event.event_time  && <span className="text-[11px] text-gray-400">{formatTime(event.event_time)}</span>}
+                                {event.location    && <span className="text-[11px] text-gray-400">{event.location}</span>}
+                                {event.priest_name && <span className="text-[11px] text-gray-400 italic">Host: {event.priest_name}</span>}
+                              </div>
+                              {event.description && <p className="text-[11px] text-gray-400 mt-1 leading-relaxed line-clamp-2">{event.description}</p>}
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              {cancelled && <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md bg-orange-600 text-white">Cancelled</span>}
+                              {event.is_public === false && <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md bg-gray-700 text-white">🔒 Private</span>}
+                              {event.setting && <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 truncate max-w-[120px]">{event.setting}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    );
-                  })
+                  ) : (
+                    /* ── PUBLIC: original decorative cards ── */
+                    selectedEvents.map((event) => {
+                      const cancelled = (event.status || "Active") === "Cancelled";
+                      return (
+                        <div key={event.id} className={`p-6 rounded-2xl shadow-sm flex flex-col gap-4 animate-fade-in-up relative overflow-hidden group ${cancelled ? "bg-orange-50/40 border border-orange-200" : "bg-white border border-gray-100"}`}>
+                          <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
+                            {cancelled && <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-orange-600 text-white">Cancelled</span>}
+                            {event.is_public === false && <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-700 text-white flex items-center gap-1">🔒 Private</span>}
+                            {event.setting && <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-blue-50 text-blue-600 truncate max-w-[150px]">{event.setting}</span>}
+                          </div>
+                          <h4 className={`text-2xl font-bold pr-24 ${cancelled ? "text-gray-500 line-through decoration-orange-400/70" : "text-gray-800"}`}>{event.title}</h4>
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-4 text-sm text-gray-600 font-serif italic">
+                            <div className="flex items-center gap-2"><svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>{formatTime(event.event_time)}</div>
+                            <div className="hidden sm:block w-1 h-1 bg-gray-300 rounded-full"></div>
+                            <div className="flex items-center gap-2"><svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>{event.location || "Parish"}</div>
+                          </div>
+                          {event.priest_name && (
+                            <div className="flex items-center gap-2 text-sm text-gray-700 font-medium border-t border-gray-100 pt-3">
+                              <svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 0a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                              <span className="text-gray-500 italic mr-1">Hosted by:</span>{event.priest_name}
+                            </div>
+                          )}
+                          {event.description && <p className="text-gray-700 leading-relaxed mt-1 text-sm whitespace-pre-wrap">{event.description}</p>}
+                        </div>
+                      );
+                    })
+                  )
                 ) : (
                   <div className="bg-transparent border-2 border-dashed border-[#B59E74]/30 rounded-2xl p-10 flex flex-col items-center justify-center text-center h-full min-h-[250px]">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-12 h-12 text-[#B59E74]/50 mb-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
