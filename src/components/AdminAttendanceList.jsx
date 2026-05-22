@@ -115,25 +115,36 @@ function AdminAttendanceList() {
                       </tr>
                     ) : (
                       attendance.map((row, idx) => {
-                        // FIXED: Dynamic Name Detection
-                        // Checks for full_name, then first+last combinations
-                        const displayName = row.full_name 
-                          ? row.full_name 
-                          : (row.first_name || row.last_name) 
-                            ? `${row.first_name || ''} ${row.last_name || ''}`.trim()
-                            : row.email?.split('@')[0] || "Unnamed User";
+                        const isGuest = row.is_guest === true;
+                        const displayName = isGuest && row.guest_name
+                          ? row.guest_name
+                          : row.full_name
+                            ? row.full_name
+                            : (row.first_name || row.last_name)
+                              ? `${row.first_name || ''} ${row.last_name || ''}`.trim()
+                              : row.email?.split('@')[0] || "Unknown";
+
+                        const roleLabel = isGuest ? "Guest" : (row.role || "Parishioner");
+                        const roleBadgeClass = isGuest
+                          ? "bg-amber-50 text-amber-600"
+                          : row.role === "admin"
+                            ? "bg-red-50 text-red-600"
+                            : "bg-gray-100 text-gray-600";
 
                         return (
                           <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                             <td className="p-4 font-medium text-gray-800 capitalize">
-                              {displayName}
+                              <div className="flex items-center gap-2">
+                                {isGuest && <span className="text-amber-500 text-sm">👤</span>}
+                                {displayName}
+                              </div>
                             </td>
-                            <td className="p-4 text-sm text-gray-500 lowercase">{row.email}</td>
+                            <td className="p-4 text-sm text-gray-500 lowercase">
+                              {isGuest ? <span className="text-gray-300 italic">—</span> : row.email}
+                            </td>
                             <td className="p-4">
-                              <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
-                                row.role === 'admin' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                {row.role || "Parishioner"}
+                              <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${roleBadgeClass}`}>
+                                {roleLabel}
                               </span>
                             </td>
                             <td className="p-4 text-right text-sm text-gray-500">

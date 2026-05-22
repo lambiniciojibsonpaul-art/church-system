@@ -15,6 +15,7 @@ const ALLOWED_TABLES = new Set([
   "facilities_bookings",
   "certification_requests",
   "sacraments_liturgical",
+  "attendance",
 ])
 
 serve(async (req) => {
