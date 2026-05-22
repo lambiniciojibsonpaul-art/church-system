@@ -6,7 +6,8 @@
       "Bash(Select-Object Name, FullName)",
       "Bash(git stash *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git commit -m 'fix: restore base path to /church-system/ for GitHub Pages asset resolution *)"
     ]
   }
 }
