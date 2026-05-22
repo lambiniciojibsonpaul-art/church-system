@@ -233,7 +233,7 @@ function AdminSchedules() {
     setSubmitting(true);
 
     try {
-      const { error } = await restInsert("events", [{
+      const basePayload = {
         creator_id:   user.id,
         title:        formData.title,
         event_class:  formData.eventClass,
@@ -247,9 +247,20 @@ function AdminSchedules() {
         setting:      formData.setting,
         status:       "Active",
         is_public:    formData.isPublic,
-      }]);
+      };
 
-      if (error) throw new Error(error.message);
+      let { error } = await restInsert("events", [basePayload]);
+
+      // Retry without new columns if the DB migration hasn't been run yet
+      if (error && (error.code === "PGRST204" || error.message?.includes("column"))) {
+        const fallback = { ...basePayload };
+        delete fallback.collaborators;
+        delete fallback.is_public;
+        const retry = await restInsert("events", [fallback]);
+        if (retry.error) throw new Error(retry.error.message);
+      } else if (error) {
+        throw new Error(error.message);
+      }
 
       setIsModalOpen(false);
       fetchEvents();

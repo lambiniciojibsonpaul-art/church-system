@@ -5,7 +5,25 @@ import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, useProfileAutofill } from "./formHelpers";
 
-function BaptismFormModal({ onClose }) {
+const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+async function submitGuestViaEdgeFunction(table, payload) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/submit-guest-form`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SUPABASE_ANON}`,
+      "apikey": SUPABASE_ANON,
+    },
+    body: JSON.stringify({ table, payload }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || `Edge function error (${res.status})`);
+  return json;
+}
+
+function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
   // All hooks declared up-front (Rules of Hooks). The auth gate happens
   // *after* the hook section to keep call order consistent across renders.
   const { user } = useAuth();
@@ -63,18 +81,28 @@ function BaptismFormModal({ onClose }) {
   }, []);
 
   useEffect(() => {
-    if (!autofill) return;
+    if (!autofill || guestInfo) return;
     setFormData(prev => ({
       ...prev,
       submitterName:        prev.submitterName        || autofill.fullName,
       contactNumbers:       prev.contactNumbers       || autofill.contactNumber,
       submitter_signature:  prev.submitter_signature  || autofill.fullName,
     }));
-  }, [autofill]);
+  }, [autofill, guestInfo]);
 
-  // Guest visitors must sign in/register before submitting a request.
-  if (!user) {
-    return <SignInPrompt onClose={onClose} serviceName="a baptism" />;
+  useEffect(() => {
+    if (!guestInfo) return;
+    const fullName = `${guestInfo.firstName} ${guestInfo.lastName}`.trim();
+    setFormData(prev => ({
+      ...prev,
+      submitterName:       prev.submitterName       || fullName,
+      contactNumbers:      prev.contactNumbers      || guestInfo.contactNumber,
+      submitter_signature: prev.submitter_signature || fullName,
+    }));
+  }, [guestInfo]);
+
+  if (!user && !guestInfo) {
+    return <SignInPrompt onClose={onClose} serviceName="a baptism" onGuest={onGuest} />;
   }
 
   // Helper to handle input changes (handles checkboxes too).
@@ -145,27 +173,46 @@ function BaptismFormModal({ onClose }) {
         godmother_name: formData.godmotherName,
         additional_sponsors: formData.additionalSponsors,
         submitter_name: formData.submitter_signature,
-        user_id: user.id,
-        submitter_email: user.email || null,
-        submitter_phone: user.user_metadata?.contact_number || user.phone || null,
+        ...(user ? {
+          user_id: user.id,
+          submitter_email: user.email || null,
+          submitter_phone: user.user_metadata?.contact_number || user.phone || null,
+        } : {}),
+        ...(guestInfo ? {
+          is_guest: true,
+          guest_name: `${guestInfo.firstName} ${guestInfo.lastName}`.trim(),
+          guest_contact: guestInfo.contactNumber,
+        } : {}),
       };
 
-      const first = await restInsert("baptisms", [payload]);
+      const parseErr = (raw) => {
+        try {
+          const p = JSON.parse(raw?.message ?? raw ?? "");
+          return p.message || raw?.message || String(raw);
+        } catch { return raw?.message || String(raw); }
+      };
 
-      if (first.error) {
-        console.warn(
-          "[Baptism] first insert attempt failed — retrying without optional metadata columns:",
-          first.error
-        );
-        const fallbackPayload = { ...payload };
-        delete fallbackPayload.user_id;
-        delete fallbackPayload.submitter_email;
-        delete fallbackPayload.submitter_phone;
+      // Guest path — use edge function (service role bypasses RLS)
+      if (guestInfo && !user) {
+        await submitGuestViaEdgeFunction("baptisms", payload);
+      } else {
+        const first = await restInsert("baptisms", [payload]);
 
-        const retry = await restInsert("baptisms", [fallbackPayload]);
-        if (retry.error) {
-          console.error("[Baptism] retry also failed:", retry.error);
-          throw new Error(retry.error.message);
+        if (first.error) {
+          const fallbackPayload = { ...payload };
+          delete fallbackPayload.user_id;
+          delete fallbackPayload.submitter_email;
+          delete fallbackPayload.submitter_phone;
+
+          const retry = await restInsert("baptisms", [fallbackPayload]);
+          if (retry.error) {
+            const minPayload = { ...fallbackPayload };
+            delete minPayload.is_guest;
+            delete minPayload.guest_name;
+            delete minPayload.guest_contact;
+            const lastRetry = await restInsert("baptisms", [minPayload]);
+            if (lastRetry.error) throw new Error(parseErr(lastRetry.error));
+          }
         }
       }
 
@@ -175,14 +222,16 @@ function BaptismFormModal({ onClose }) {
         formData.childFirstName,
         formData.childLastName,
       ].filter(Boolean).join(" ").trim();
-      
-      sendRequestEmail({
-        to: user.email,
-        serviceName: "baptism",
-        summary: childName
-          ? `Baptism request for ${childName} on ${formData.preferredDate || "(date pending)"}.`
-          : undefined,
-      });
+
+      if (user?.email) {
+        sendRequestEmail({
+          to: user.email,
+          serviceName: "baptism",
+          summary: childName
+            ? `Baptism request for ${childName} on ${formData.preferredDate || "(date pending)"}.`
+            : undefined,
+        });
+      }
 
       // Close modal after 2.5 seconds showing success
       setTimeout(() => {
@@ -226,6 +275,15 @@ function BaptismFormModal({ onClose }) {
           <SuccessPanel />
         ) : (
           <form onSubmit={handleSubmit} className="p-8 space-y-10">
+            {guestInfo && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
+                <span className="text-amber-500 text-lg shrink-0">👤</span>
+                <div>
+                  <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Guest Submission</p>
+                  <p className="text-xs text-amber-600 mt-0.5">{guestInfo.firstName} {guestInfo.lastName} · {guestInfo.contactNumber}</p>
+                </div>
+              </div>
+            )}
             {/* Error Message */}
             {error && (
               <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 text-sm font-bold">

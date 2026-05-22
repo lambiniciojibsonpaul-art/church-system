@@ -33,7 +33,10 @@ function ServicesPage() {
   const isStaffRole = isAdmin || isPriest || isStaff || isMinister;
 
   const [open, setOpen] = useState(null);
-  const close = () => setOpen(null);
+  const [guestInfo, setGuestInfo] = useState(null);
+
+  const close = () => { setOpen(null); setGuestInfo(null); };
+  const handleGuest = (data) => setGuestInfo(data);
 
   // ── Public card ────────────────────────────────────────────────────────────
   const PublicCard = ({ icon, title, onClick }) => (
@@ -78,14 +81,14 @@ function ServicesPage() {
   // ── Modals ──────────────────────────────────────────────────────────────────
   const modals = (
     <>
-      {open === "baptism"      && <BaptismFormModal              onClose={close} />}
-      {open === "communion"    && <HolyCommunionFormModal         onClose={close} />}
-      {open === "wedding"      && <WeddingRegistryFormModal       onClose={close} />}
-      {open === "liturgical"   && <SacramentsLiturgicalFormModal  onClose={close} />}
-      {open === "mass"         && <MassIntentionFormModal         onClose={close} />}
-      {open === "confirmation" && <ConfirmationFormModal          onClose={close} />}
-      {open === "facilities"   && <FacilitiesBookingFormModal     onClose={close} />}
-      {open === "certification"&& <CertificationRequestFormModal  onClose={close} />}
+      {open === "baptism"      && <BaptismFormModal              onClose={close} guestInfo={guestInfo} onGuest={handleGuest} />}
+      {open === "communion"    && <HolyCommunionFormModal         onClose={close} guestInfo={guestInfo} onGuest={handleGuest} />}
+      {open === "wedding"      && <WeddingRegistryFormModal       onClose={close} guestInfo={guestInfo} onGuest={handleGuest} />}
+      {open === "liturgical"   && <SacramentsLiturgicalFormModal  onClose={close} guestInfo={guestInfo} onGuest={handleGuest} />}
+      {open === "mass"         && <MassIntentionFormModal         onClose={close} guestInfo={guestInfo} onGuest={handleGuest} />}
+      {open === "confirmation" && <ConfirmationFormModal          onClose={close} guestInfo={guestInfo} onGuest={handleGuest} />}
+      {open === "facilities"   && <FacilitiesBookingFormModal     onClose={close} guestInfo={guestInfo} onGuest={handleGuest} />}
+      {open === "certification"&& <CertificationRequestFormModal  onClose={close} guestInfo={guestInfo} onGuest={handleGuest} />}
     </>
   );
 

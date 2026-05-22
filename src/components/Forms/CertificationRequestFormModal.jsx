@@ -24,7 +24,7 @@ const PURPOSES = [
 
 const DELIVERY_METHODS = ["Pickup at Parish Office", "Email Scan"];
 
-function CertificationRequestFormModal({ onClose }) {
+function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(false);
@@ -59,7 +59,7 @@ function CertificationRequestFormModal({ onClose }) {
 
   const autofill = useProfileAutofill(user);
   useEffect(() => {
-    if (!autofill) return;
+    if (!autofill || guestInfo) return;
     setFormData(prev => ({
       ...prev,
       requestor_first_name: prev.requestor_first_name || autofill.firstName,
@@ -67,9 +67,21 @@ function CertificationRequestFormModal({ onClose }) {
       contact_number:       prev.contact_number       || autofill.contactNumber,
       submitter_signature:  prev.submitter_signature  || autofill.fullName,
     }));
-  }, [autofill]);
+  }, [autofill, guestInfo]);
 
-  if (!user) return <SignInPrompt onClose={onClose} serviceName="a certification request" />;
+  useEffect(() => {
+    if (!guestInfo) return;
+    const fullName = `${guestInfo.firstName} ${guestInfo.lastName}`.trim();
+    setFormData(prev => ({
+      ...prev,
+      requestor_first_name: prev.requestor_first_name || guestInfo.firstName,
+      requestor_surname:    prev.requestor_surname    || guestInfo.lastName,
+      contact_number:       prev.contact_number       || guestInfo.contactNumber,
+      submitter_signature:  prev.submitter_signature  || fullName,
+    }));
+  }, [guestInfo]);
+
+  if (!user && !guestInfo) return <SignInPrompt onClose={onClose} serviceName="a certification request" onGuest={onGuest} />;
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
@@ -99,6 +111,7 @@ function CertificationRequestFormModal({ onClose }) {
           number_of_copies: formData.number_of_copies === "" ? 1 : Number(formData.number_of_copies),
         },
         user,
+        guestInfo,
         serviceName: "certification",
         summary: `${finalCert} for ${formData.record_holder_first_name} ${formData.record_holder_surname}.`,
         restInsert,
@@ -138,6 +151,15 @@ function CertificationRequestFormModal({ onClose }) {
           <SuccessPanel message="Your certification request has been received. The parish office typically processes requests within 3-5 working days. You will be emailed when your certificate is ready." />
         ) : (
           <form onSubmit={handleSubmit} className="p-8 space-y-10">
+            {guestInfo && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
+                <span className="text-amber-500 text-lg shrink-0">👤</span>
+                <div>
+                  <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Guest Submission</p>
+                  <p className="text-xs text-amber-600 mt-0.5">{guestInfo.firstName} {guestInfo.lastName} · {guestInfo.contactNumber}</p>
+                </div>
+              </div>
+            )}
             {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200">{error}</div>}
 
             {/* INFO PANEL */}

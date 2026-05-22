@@ -14,7 +14,7 @@ const FACILITIES = [
   "Other",
 ];
 
-function FacilitiesBookingFormModal({ onClose }) {
+function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(false);
@@ -47,16 +47,26 @@ function FacilitiesBookingFormModal({ onClose }) {
 
   const autofill = useProfileAutofill(user);
   useEffect(() => {
-    if (!autofill) return;
+    if (!autofill || guestInfo) return;
     setFormData(prev => ({
       ...prev,
       requestor_first_name: prev.requestor_first_name || autofill.firstName,
       requestor_surname:    prev.requestor_surname    || autofill.lastName,
       contact_number:       prev.contact_number       || autofill.contactNumber,
     }));
-  }, [autofill]);
+  }, [autofill, guestInfo]);
 
-  if (!user) return <SignInPrompt onClose={onClose} serviceName="a facilities booking" />;
+  useEffect(() => {
+    if (!guestInfo) return;
+    setFormData(prev => ({
+      ...prev,
+      requestor_first_name: prev.requestor_first_name || guestInfo.firstName,
+      requestor_surname:    prev.requestor_surname    || guestInfo.lastName,
+      contact_number:       prev.contact_number       || guestInfo.contactNumber,
+    }));
+  }, [guestInfo]);
+
+  if (!user && !guestInfo) return <SignInPrompt onClose={onClose} serviceName="a facilities booking" onGuest={onGuest} />;
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
@@ -84,6 +94,7 @@ function FacilitiesBookingFormModal({ onClose }) {
           expected_attendees: formData.expected_attendees === "" ? null : Number(formData.expected_attendees),
         },
         user,
+        guestInfo,
         serviceName: "facilities booking",
         summary: `Booking request for ${finalFacility} on ${formData.start_date || "(date pending)"} — ${formData.event_purpose}.`,
         restInsert,
@@ -123,6 +134,15 @@ function FacilitiesBookingFormModal({ onClose }) {
           <SuccessPanel />
         ) : (
           <form onSubmit={handleSubmit} className="p-8 space-y-10">
+            {guestInfo && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
+                <span className="text-amber-500 text-lg shrink-0">👤</span>
+                <div>
+                  <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Guest Submission</p>
+                  <p className="text-xs text-amber-600 mt-0.5">{guestInfo.firstName} {guestInfo.lastName} · {guestInfo.contactNumber}</p>
+                </div>
+              </div>
+            )}
             {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200">{error}</div>}
 
             {/* INFO PANEL */}

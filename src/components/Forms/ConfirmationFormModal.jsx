@@ -5,7 +5,7 @@ import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
 
-function ConfirmationFormModal({ onClose }) {
+function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(false);
@@ -65,15 +65,25 @@ function ConfirmationFormModal({ onClose }) {
 
   const autofill = useProfileAutofill(user);
   useEffect(() => {
-    if (!autofill) return;
+    if (!autofill || guestInfo) return;
     setFormData(prev => ({
       ...prev,
       contact_number:      prev.contact_number      || autofill.contactNumber,
       submitter_signature: prev.submitter_signature || autofill.fullName,
     }));
-  }, [autofill]);
+  }, [autofill, guestInfo]);
 
-  if (!user) return <SignInPrompt onClose={onClose} serviceName="confirmation" />;
+  useEffect(() => {
+    if (!guestInfo) return;
+    const fullName = `${guestInfo.firstName} ${guestInfo.lastName}`.trim();
+    setFormData(prev => ({
+      ...prev,
+      contact_number:      prev.contact_number      || guestInfo.contactNumber,
+      submitter_signature: prev.submitter_signature || fullName,
+    }));
+  }, [guestInfo]);
+
+  if (!user && !guestInfo) return <SignInPrompt onClose={onClose} serviceName="confirmation" onGuest={onGuest} />;
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
@@ -127,6 +137,7 @@ function ConfirmationFormModal({ onClose }) {
         // Ensure preferred_priest is sent or null if empty
         payload: { ...formData, preferred_priest: formData.preferred_priest || null },
         user,
+        guestInfo,
         serviceName: "confirmation",
         summary: `Confirmation request for ${formData.child_first_name} ${formData.child_surname}.`,
         restInsert,
@@ -174,6 +185,15 @@ function ConfirmationFormModal({ onClose }) {
           <SuccessPanel />
         ) : (
           <form onSubmit={handleSubmit} className="p-8 space-y-10">
+            {guestInfo && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
+                <span className="text-amber-500 text-lg shrink-0">👤</span>
+                <div>
+                  <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Guest Submission</p>
+                  <p className="text-xs text-amber-600 mt-0.5">{guestInfo.firstName} {guestInfo.lastName} · {guestInfo.contactNumber}</p>
+                </div>
+              </div>
+            )}
             {error && (
               <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200">
                 {error}

@@ -7,7 +7,13 @@
       "Bash(git stash *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git commit -m 'fix: restore base path to /church-system/ for GitHub Pages asset resolution *)"
+      "Bash(git commit -m 'fix: restore base path to /church-system/ for GitHub Pages asset resolution *)",
+      "Bash(sed -n '1,75p' src/components/Forms/HolyCommunionFormModal.jsx)",
+      "Bash(sed -n '1,75p' src/components/Forms/WeddingRegistryFormModal.jsx)",
+      "Bash(sed -n '1,75p' src/components/Forms/MassIntentionFormModal.jsx)",
+      "Bash(sed -n '1,75p' src/components/Forms/FacilitiesBookingFormModal.jsx)",
+      "Bash(sed -n '1,75p' src/components/Forms/CertificationRequestFormModal.jsx)",
+      "Bash(git commit -m 'feat: guest form submissions via Edge Function, fix event approval and RLS *)"
     ]
   }
 }

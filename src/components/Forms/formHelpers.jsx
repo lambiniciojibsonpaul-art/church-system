@@ -222,24 +222,41 @@ export function DeclarationBlock({ declaration, consent, signature, onChange }) 
   );
 }
 
-// Shared submit helper. Inserts to `table` with retry-without-optional-cols,
-// then fires a fire-and-forget email notification.
+// Calls the submit-guest-form Edge Function which uses the service role key,
+// bypassing RLS entirely for guest (unauthenticated) submissions.
+const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+async function submitGuestViaEdgeFunction(table, payload) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/submit-guest-form`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SUPABASE_ANON}`,
+      "apikey": SUPABASE_ANON,
+    },
+    body: JSON.stringify({ table, payload }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || `Edge function error (${res.status})`);
+  return json;
+}
+
+// Shared submit helper. Guest submissions go via Edge Function (bypasses RLS).
+// Authenticated submissions go via restInsert with JWT.
 // eslint-disable-next-line react-refresh/only-export-components
 export async function submitRequest({
   table,
   payload,
   user,
+  guestInfo = null,
   serviceName,
   summary,
   restInsert,
   sendRequestEmail,
 }) {
-  // Clean up empty strings and convert to null for optional fields
   const cleanPayload = Object.entries(payload).reduce((acc, [key, value]) => {
-    if (value === "" || value === null || value === undefined) {
-      // Don't include empty/null values to let the database defaults handle it
-      return acc;
-    }
+    if (value === "" || value === null || value === undefined) return acc;
     acc[key] = value;
     return acc;
   }, {});
@@ -247,29 +264,49 @@ export async function submitRequest({
   const fullPayload = {
     ...cleanPayload,
     status: "Pending",
-    user_id: user.id,
-    submitter_email: user.email || null,
-    submitter_phone:
-      user.user_metadata?.contact_number || user.phone || null,
+    ...(user ? {
+      user_id: user.id,
+      submitter_email: user.email || null,
+      submitter_phone: user.user_metadata?.contact_number || user.phone || null,
+    } : {}),
+    ...(guestInfo ? {
+      is_guest: true,
+      guest_name: `${guestInfo.firstName} ${guestInfo.lastName}`.trim(),
+      guest_contact: guestInfo.contactNumber,
+    } : {}),
   };
 
-  console.log(`[submitRequest] Submitting to ${table}:`, fullPayload);
+  // Guest path: edge function uses service role — no RLS issues
+  if (guestInfo && !user) {
+    await submitGuestViaEdgeFunction(table, fullPayload);
+    return;
+  }
+
+  // Authenticated path: direct REST with JWT
+  const parseErr = (raw) => {
+    try {
+      const p = JSON.parse(raw?.message ?? raw ?? "");
+      return p.message || raw?.message || String(raw);
+    } catch { return raw?.message || String(raw); }
+  };
 
   let attempt = await restInsert(table, [fullPayload]);
   if (attempt.error) {
-    console.warn(`[submitRequest] Full payload failed, retrying without optional fields:`, attempt.error);
     const fallback = { ...fullPayload };
     delete fallback.user_id;
     delete fallback.submitter_email;
     delete fallback.submitter_phone;
     const retry = await restInsert(table, [fallback]);
     if (retry.error) {
-      console.error(`[submitRequest] Retry also failed:`, retry.error);
-      throw new Error(retry.error.message);
+      const minFallback = { ...fallback };
+      delete minFallback.is_guest;
+      delete minFallback.guest_name;
+      delete minFallback.guest_contact;
+      const lastRetry = await restInsert(table, [minFallback]);
+      if (lastRetry.error) throw new Error(parseErr(lastRetry.error));
     }
   }
 
-  // Fire-and-forget email
   if (sendRequestEmail && user?.email) {
     sendRequestEmail({ to: user.email, serviceName, summary });
   }

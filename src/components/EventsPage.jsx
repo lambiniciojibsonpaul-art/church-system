@@ -188,25 +188,34 @@ function EventsPage() {
         ? `${formData.description}\n\n🤝 In collaboration with: ${formData.collaborators.join(", ")}`
         : formData.description;
 
-      const { error } = await restInsert("events", [
-        {
-          creator_id:   user.id,
-          title:        formData.title,
-          event_class:  "Parish Event",
-          priest_name:  formData.ministry,
-          ministry:     formData.ministry,
-          collaborators: isCollaborating ? formData.collaborators : [],
-          event_date:   formData.eventDate,
-          event_time:   formData.eventTime,
-          location:     formData.location,
-          description:  finalDescription,
-          setting:      formData.setting,
-          is_public:    formData.isPublic,
-          status:       isMinistry ? "Pending" : "Active",
-        },
-      ]);
+      const evPayload = {
+        creator_id:   user.id,
+        title:        formData.title,
+        event_class:  "Parish Event",
+        priest_name:  formData.ministry,
+        ministry:     formData.ministry,
+        collaborators: isCollaborating ? formData.collaborators : [],
+        event_date:   formData.eventDate,
+        event_time:   formData.eventTime,
+        location:     formData.location,
+        description:  finalDescription,
+        setting:      formData.setting,
+        is_public:    formData.isPublic,
+        status:       isMinistry ? "Pending" : "Active",
+      };
 
-      if (error) throw new Error(error.message);
+      let { error } = await restInsert("events", [evPayload]);
+
+      // Retry without new columns if DB migration hasn't been run yet
+      if (error && (error.code === "PGRST204" || error.message?.includes("column"))) {
+        const fallback = { ...evPayload };
+        delete fallback.collaborators;
+        delete fallback.is_public;
+        const retry = await restInsert("events", [fallback]);
+        if (retry.error) throw new Error(retry.error.message);
+      } else if (error) {
+        throw new Error(error.message);
+      }
 
       if (isMinistry) {
         alert("Event submitted successfully! It is now pending approval from the Admin.");

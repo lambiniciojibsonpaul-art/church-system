@@ -25,7 +25,7 @@ const TAB_CONFIG = {
       { label: "Child's Name", value: (r) => `${r.child_first_name || ""} ${r.child_last_name || ""}`.trim() },
       { label: "Type", value: (r) => r.baptism_type },
       { label: "Pref. Date", value: (r) => formatDate(r.preferred_date) },
-      { label: "Submitter", value: (r) => r.submitter_signature || r.submitter_name },
+      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || r.submitter_name || "—") },
     ],
     eventBuilder: (r, priest, userId) => ({
       creator_id: userId,
@@ -36,7 +36,7 @@ const TAB_CONFIG = {
       event_time: "10:00",
       location: "Main Altar",
       description: `Baptism ceremony for ${r.child_first_name || ""} ${r.child_last_name || ""}.`,
-      is_inside: true,
+      status: "Active",
     }),
   },
   "Holy Communion": {
@@ -47,7 +47,7 @@ const TAB_CONFIG = {
       { label: "Candidate", value: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() },
       { label: "Pref. Date", value: (r) => formatDate(r.date_of_communion) },
       { label: "Contact", value: (r) => r.contact_number_1 || "—" },
-      { label: "Submitter", value: (r) => r.submitter_signature },
+      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || "—") },
     ],
     eventBuilder: (r, priest, userId) => ({
       creator_id: userId,
@@ -58,7 +58,7 @@ const TAB_CONFIG = {
       event_time: r.time_of_communion || "09:00",
       location: "Main Altar",
       description: `First Holy Communion for ${r.child_first_name || ""} ${r.child_surname || ""}.`,
-      is_inside: true,
+      status: "Active",
     }),
   },
   Confirmation: {
@@ -69,7 +69,7 @@ const TAB_CONFIG = {
       { label: "Candidate", value: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() },
       { label: "Pref. Date", value: (r) => formatDate(r.date_of_confirmation) },
       { label: "Contact", value: (r) => r.contact_number || "—" },
-      { label: "Submitter", value: (r) => r.submitter_signature },
+      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || "—") },
     ],
     eventBuilder: (r, priest, userId) => ({
       creator_id: userId,
@@ -80,7 +80,7 @@ const TAB_CONFIG = {
       event_time: r.time_of_confirmation || "10:00",
       location: "Main Altar",
       description: `Confirmation for ${r.child_first_name || ""} ${r.child_surname || ""}.`,
-      is_inside: true,
+      status: "Active",
     }),
   },
   Weddings: {
@@ -91,7 +91,7 @@ const TAB_CONFIG = {
       { label: "Couple", value: (r) => `${r.groom_first_name || ""} ${r.groom_surname || ""} & ${r.bride_first_name || ""} ${r.bride_surname || ""}`.trim() },
       { label: "Pref. Date", value: (r) => formatDate(r.wedding_date) },
       { label: "Contact", value: (r) => r.groom_contact || r.bride_contact || "—" },
-      { label: "Submitter", value: (r) => r.submitter_signature },
+      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || "—") },
     ],
     eventBuilder: (r, priest, userId) => ({
       creator_id: userId,
@@ -102,7 +102,7 @@ const TAB_CONFIG = {
       event_time: r.wedding_time || "14:00",
       location: "Main Altar",
       description: `Wedding ceremony.`,
-      is_inside: true,
+      status: "Active",
     }),
   },
   "Mass Intentions": {
@@ -113,7 +113,7 @@ const TAB_CONFIG = {
       { label: "Type", value: (r) => r.intention_type },
       { label: "For", value: (r) => r.names_in_intention || "—" },
       { label: "Pref. Date", value: (r) => formatDate(r.preferred_date) },
-      { label: "Submitter", value: (r) => r.submitter_signature || r.full_name },
+      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || r.full_name || "—") },
     ],
     eventBuilder: (r, priest, userId) => ({
       creator_id: userId,
@@ -124,7 +124,7 @@ const TAB_CONFIG = {
       event_time: r.preferred_time || "06:00",
       location: r.location || "Parish Church",
       description: `Mass intention: ${r.intention_type}. For: ${r.names_in_intention || ""}.`,
-      is_inside: true,
+      status: "Active",
     }),
   },
   "Sacraments & Liturgical": {
@@ -135,7 +135,7 @@ const TAB_CONFIG = {
       { label: "Service", value: (r) => r.request_type },
       { label: "Date", value: (r) => formatDate(r.request_date) },
       { label: "Address", value: (r) => r.address || "—" },
-      { label: "Submitter", value: (r) => r.submitter_signature || r.requested_by },
+      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || r.requested_by || "—") },
     ],
     eventBuilder: (r, priest, userId) => ({
       creator_id: userId,
@@ -146,7 +146,7 @@ const TAB_CONFIG = {
       event_time: r.request_time || "10:00",
       location: r.address || "Parish",
       description: r.notes || `${r.request_type} requested by ${r.requested_by}.`,
-      is_inside: false,
+      status: "Active",
     }),
   },
   "Facilities Booking": {
@@ -157,7 +157,7 @@ const TAB_CONFIG = {
       { label: "Facility", value: (r) => r.facility },
       { label: "Event", value: (r) => r.event_type || r.event_purpose },
       { label: "Start", value: (r) => formatDate(r.start_date) },
-      { label: "Submitter", value: (r) => r.submitter_signature || `${r.requestor_first_name || ""} ${r.requestor_surname || ""}`.trim() },
+      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || `${r.requestor_first_name || ""} ${r.requestor_surname || ""}`.trim() || "—") },
     ],
   },
   Certifications: {
@@ -168,7 +168,7 @@ const TAB_CONFIG = {
       { label: "Type", value: (r) => r.certificate_type },
       { label: "Record Holder", value: (r) => `${r.record_holder_first_name || ""} ${r.record_holder_surname || ""}`.trim() },
       { label: "Purpose", value: (r) => r.purpose },
-      { label: "Submitter", value: (r) => r.submitter_signature || `${r.requestor_first_name || ""} ${r.requestor_surname || ""}`.trim() },
+      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || `${r.requestor_first_name || ""} ${r.requestor_surname || ""}`.trim() || "—") },
     ],
   },
 };
@@ -203,7 +203,8 @@ function extractRecordDate(r) {
 }
 
 function extractRecordSubmitter(r) {
-  return (
+  const name = (
+    r.guest_name ||
     r.submitter_signature ||
     r.submitter_name ||
     r.full_name ||
@@ -211,6 +212,7 @@ function extractRecordSubmitter(r) {
     [r.requestor_first_name, r.requestor_surname].filter(Boolean).join(" ") ||
     "—"
   );
+  return r.is_guest ? `${name} (Guest)` : name;
 }
 
 // Columns for the combined "All Services" table. Each row is a tagged record
@@ -543,7 +545,17 @@ function AdminDashboard() {
         source_id: acceptingRequest.id,
       };
       if (eventPayload?.event_date) {
-        const { error: eventErr } = await restInsert("events", [eventPayload]);
+        let { error: eventErr } = await restInsert("events", [eventPayload]);
+
+        // If a column doesn't exist (PGRST204), strip optional new columns and retry
+        if (eventErr && (eventErr.code === "PGRST204" || eventErr.message?.includes("column"))) {
+          const fallback = { ...eventPayload };
+          delete fallback.collaborators;
+          delete fallback.is_public;
+          const retry = await restInsert("events", [fallback]);
+          eventErr = retry.error;
+        }
+
         if (eventErr) {
           console.warn("[AdminDashboard] event creation failed:", eventErr.message);
           alert(
