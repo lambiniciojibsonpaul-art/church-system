@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { restSelect } from "../../supabaseRest";
+import { supabase } from "../../supabaseClient"; // ✨ NEW: Needed to fetch staff IDs and insert notifications
 
 /**
  * Fetches the logged-in parishioner's profile once and returns their
@@ -170,13 +171,6 @@ export function SubmitButton({ loading, children = "Submit Request" }) {
   );
 }
 
-// Declaration + digital signature block. Appears at the bottom of every
-// request form as a formality-style consent. The `declaration` text should
-// be tailored per form (e.g. "I request the Sacrament of Baptism…").
-//
-// Wires through the parent form's existing handleChange via `name` attrs.
-// formData must include `declaration_consent` (boolean) and
-// `submitter_signature` (string).
 export function DeclarationBlock({ declaration, consent, signature, onChange }) {
   return (
     <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
@@ -276,35 +270,90 @@ export async function submitRequest({
     } : {}),
   };
 
+  let submitSuccess = false;
+
   // Guest path: edge function uses service role — no RLS issues
   if (guestInfo && !user) {
+    console.log("🟣 Taking GUEST path via edge function");
     await submitGuestViaEdgeFunction(table, fullPayload);
-    return;
+    submitSuccess = true;
+  } else {
+    // Authenticated path: direct REST with JWT
+    console.log("🔵 Taking AUTHENTICATED path");
+    console.log("🔵 Table:", table);
+    console.log("🔵 User ID:", user?.id);
+    console.log("🔵 Full payload:", fullPayload);
+
+    const parseErr = (raw) => {
+      try {
+        const p = JSON.parse(raw?.message ?? raw ?? "");
+        return p.message || raw?.message || String(raw);
+      } catch { return raw?.message || String(raw); }
+    };
+
+    let attempt = await restInsert(table, [fullPayload]);
+    console.log("🔵 Attempt 1 result:", JSON.stringify(attempt));
+
+    if (attempt.error) {
+      console.warn("⚠️ Attempt 1 failed:", attempt.error);
+      const fallback = { ...fullPayload };
+      delete fallback.user_id;
+      delete fallback.submitter_email;
+      delete fallback.submitter_phone;
+
+      console.log("🔵 Attempt 2 payload:", fallback);
+      const retry = await restInsert(table, [fallback]);
+      console.log("🔵 Attempt 2 result:", JSON.stringify(retry));
+
+      if (retry.error) {
+        console.warn("⚠️ Attempt 2 failed:", retry.error);
+        const minFallback = { ...fallback };
+        delete minFallback.is_guest;
+        delete minFallback.guest_name;
+        delete minFallback.guest_contact;
+
+        console.log("🔵 Attempt 3 payload:", minFallback);
+        const lastRetry = await restInsert(table, [minFallback]);
+        console.log("🔵 Attempt 3 result:", JSON.stringify(lastRetry));
+
+        if (lastRetry.error) {
+          console.error("❌ All 3 insert attempts failed. Throwing error.");
+          throw new Error(parseErr(lastRetry.error));
+        }
+      }
+    }
+
+    submitSuccess = true;
+    console.log("✅ submitSuccess = true — insert succeeded");
   }
 
-  // Authenticated path: direct REST with JWT
-  const parseErr = (raw) => {
-    try {
-      const p = JSON.parse(raw?.message ?? raw ?? "");
-      return p.message || raw?.message || String(raw);
-    } catch { return raw?.message || String(raw); }
-  };
+  // ✨ TRIGGER REALTIME NOTIFICATION TO ALL STAFF/ADMINS
+  if (submitSuccess) {
+    console.log("✅ Calling notify_staff RPC...");
+    console.log("serviceName:", serviceName);
 
-  let attempt = await restInsert(table, [fullPayload]);
-  if (attempt.error) {
-    const fallback = { ...fullPayload };
-    delete fallback.user_id;
-    delete fallback.submitter_email;
-    delete fallback.submitter_phone;
-    const retry = await restInsert(table, [fallback]);
-    if (retry.error) {
-      const minFallback = { ...fallback };
-      delete minFallback.is_guest;
-      delete minFallback.guest_name;
-      delete minFallback.guest_contact;
-      const lastRetry = await restInsert(table, [minFallback]);
-      if (lastRetry.error) throw new Error(parseErr(lastRetry.error));
+    const submitterName = user
+      ? (user.user_metadata?.first_name || user.email)
+      : `${guestInfo?.firstName} ${guestInfo?.lastName}`;
+
+    console.log("submitterName:", submitterName);
+
+    const { data: rpcData, error: rpcError } = await supabase.rpc('notify_staff', {
+      notif_title: `New ${serviceName} Request`,
+      notif_message: `${submitterName} just submitted a new request.`,
+      notif_link: '/staff-dashboard'
+    });
+
+    console.log("RPC result — data:", rpcData, "| error:", rpcError);
+
+    if (rpcError) {
+      alert("⚠️ Supabase Notification Error:\n" + rpcError.message + "\n\nDetails: " + rpcError.details);
+      console.error("❌ RPC Error Full:", rpcError);
+    } else {
+      console.log("✅ notify_staff called successfully! Check notifications table.");
     }
+  } else {
+    console.warn("❌ submitSuccess is false — RPC never called.");
   }
 
   if (sendRequestEmail && user?.email) {

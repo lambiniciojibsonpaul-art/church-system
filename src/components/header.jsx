@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
+import { supabase } from "../supabaseClient"; // ✨ NEW: Needed for bell notifications
 
 const SOLID_BG_PREFIXES = [
   "/admin",
@@ -89,6 +90,132 @@ function RolePill({ role, isSolid }) {
     </div>
   );
 }
+
+// ✨ NEW: Interactive Notification Bell Component
+function NotificationBell({ isSolid }) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [notifications, setNotifications] = useState([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Fetch initial notifications & listen for new ones
+  useEffect(() => {
+    if (!user?.id) return;
+
+    // 1. Fetch the 10 most recent notifications for this user
+    const fetchNotifications = async () => {
+      const { data } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (data) setNotifications(data);
+    };
+
+    fetchNotifications();
+
+    // 2. Realtime listener to update the badge when a new one arrives!
+    const channel = supabase
+      .channel('header-notifications')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          setNotifications((prev) => [payload.new, ...prev].slice(0, 10));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  const handleNotificationClick = async (notif) => {
+    // Mark as read in DB if it's currently unread
+    if (!notif.is_read) {
+      await supabase.from('notifications').update({ is_read: true }).eq('id', notif.id);
+      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
+    }
+    
+    setIsOpen(false);
+    
+    // Redirect if a link exists
+    if (notif.link) navigate(notif.link);
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button 
+        onClick={() => setIsOpen(!isOpen)} 
+        className={`relative p-2 rounded-full transition-colors ${isSolid ? "hover:bg-gray-100 text-gray-600" : "hover:bg-white/10 text-white"}`}
+        aria-label="Notifications"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+        
+        {/* Red Unread Badge */}
+        {unreadCount > 0 && (
+          <span className="absolute top-1 right-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white shadow-sm ring-2 ring-white">
+            {/* The ring color should ideally match the header bg, but white looks fine in solid mode */}
+          </span>
+        )}
+      </button>
+
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-[110] animate-fade-in-up">
+          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Notifications</span>
+          </div>
+          <div className="max-h-[300px] overflow-y-auto">
+            {notifications.length === 0 ? (
+              <div className="p-6 text-center text-sm text-gray-400 italic">No notifications yet.</div>
+            ) : (
+              <div className="flex flex-col">
+                {notifications.map((notif) => (
+                  <button 
+                    key={notif.id}
+                    onClick={() => handleNotificationClick(notif)}
+                    className={`w-full text-left p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors ${!notif.is_read ? 'bg-[#F6F5ED]/50' : 'opacity-70'}`}
+                  >
+                    <div className="flex justify-between items-start gap-2 mb-1">
+                      <strong className={`text-sm font-serif ${!notif.is_read ? 'text-[#B59E74]' : 'text-gray-700'}`}>
+                        {notif.title}
+                      </strong>
+                      {!notif.is_read && <span className="w-2 h-2 rounded-full bg-[#B59E74] shrink-0 mt-1.5" />}
+                    </div>
+                    <p className="text-xs text-gray-600 line-clamp-2">{notif.message}</p>
+                    <span className="text-[9px] text-gray-400 uppercase tracking-wider mt-2 block">
+                      {new Date(notif.created_at).toLocaleDateString()}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function Header({ forceSolidBg = false }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -184,6 +311,9 @@ function Header({ forceSolidBg = false }) {
               {user ? (
                 <div className="flex items-center gap-3">
 
+                  {/* ✨ NEW: Notification Bell for logged-in users */}
+                  <NotificationBell isSolid={isSolid} />
+
                   {/* Dashboard link — subtle, low-weight */}
                   {(isAdmin || isPriest || isStaff) && (
                     <Link
@@ -274,6 +404,17 @@ function Header({ forceSolidBg = false }) {
                       </span>
                       <span className="font-serif italic text-sm mt-0.5">{displayName}</span>
                     </div>
+                  </li>
+
+                  {/* ✨ NEW: Mobile Notification Bell (Simplified) */}
+                  <li>
+                    <button 
+                      onClick={() => alert("Notifications are currently only visible on desktop!")} 
+                      className="w-full flex items-center justify-center gap-2 bg-gray-100 text-gray-600 py-3 rounded-xl font-bold tracking-widest uppercase text-xs"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                      Notifications
+                    </button>
                   </li>
 
                   <li>

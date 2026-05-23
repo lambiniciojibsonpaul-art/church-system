@@ -122,7 +122,6 @@ export function AuthProvider({ children }) {
       // the user still gets a usable session.
       const fallback = readCachedRole(email) ?? DEFAULT_ROLE;
       setRole(fallback);
-      if (email) writeCachedRole(email, fallback);
       return null;
     }
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
+import { supabase } from "../../supabaseClient"; // ✨ ADDED: for notify_staff RPC
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, useProfileAutofill } from "./formHelpers";
 
@@ -24,23 +25,18 @@ async function submitGuestViaEdgeFunction(table, payload) {
 }
 
 function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
-  // All hooks declared up-front (Rules of Hooks). The auth gate happens
-  // *after* the hook section to keep call order consistent across renders.
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
   
-  // NEW: State to hold the dynamic list of priests
   const [priests, setPriests] = useState([]);
-  
-  // State for the dynamic sponsor input box
   const [sponsorInput, setSponsorInput] = useState("");
 
   const [formData, setFormData] = useState({
     baptismType: "Sunday",
     preferredDate: "",
-    preferredPriest: "", // NEW field for the form state
+    preferredPriest: "",
     childFirstName: "",
     childMiddleName: "",
     childLastName: "",
@@ -62,7 +58,6 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const autofill = useProfileAutofill(user);
 
-  // NEW: Fetch priests when the modal opens
   useEffect(() => {
     const fetchPriests = async () => {
       try {
@@ -105,13 +100,11 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
     return <SignInPrompt onClose={onClose} serviceName="a baptism" onGuest={onGuest} />;
   }
 
-  // Helper to handle input changes (handles checkboxes too).
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
     setFormData({ ...formData, [name]: type === "checkbox" ? checked : value });
   };
 
-  // --- DYNAMIC SPONSOR LIST LOGIC ---
   const sponsorsList = formData.additionalSponsors 
     ? formData.additionalSponsors.split(",").map(s => s.trim()).filter(Boolean) 
     : [];
@@ -119,21 +112,14 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
   const handleAddSponsor = (e) => {
     e?.preventDefault();
     if (!sponsorInput.trim()) return;
-
     const newList = [...sponsorsList, sponsorInput.trim()];
-    
-    handleChange({
-      target: { name: "additionalSponsors", value: newList.join(", ") }
-    });
-    
+    handleChange({ target: { name: "additionalSponsors", value: newList.join(", ") } });
     setSponsorInput("");
   };
 
   const handleRemoveSponsor = (indexToRemove) => {
     const newList = sponsorsList.filter((_, index) => index !== indexToRemove);
-    handleChange({
-      target: { name: "additionalSponsors", value: newList.join(", ") }
-    });
+    handleChange({ target: { name: "additionalSponsors", value: newList.join(", ") } });
   };
 
   const handleKeyDown = (e) => {
@@ -142,7 +128,6 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
       handleAddSponsor();
     }
   };
-  // ---------------------------------------
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -157,7 +142,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
       const payload = {
         baptism_type: formData.baptismType,
         preferred_date: formData.preferredDate,
-        preferred_priest: formData.preferredPriest || null, // NEW: Add to payload
+        preferred_priest: formData.preferredPriest || null,
         child_first_name: formData.childFirstName,
         child_middle_name: formData.childMiddleName,
         child_last_name: formData.childLastName,
@@ -173,6 +158,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         godmother_name: formData.godmotherName,
         additional_sponsors: formData.additionalSponsors,
         submitter_name: formData.submitter_signature,
+        status: "Pending",
         ...(user ? {
           user_id: user.id,
           submitter_email: user.email || null,
@@ -216,12 +202,28 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         }
       }
 
-      setSuccess(true);
+      // ✨ NOTIFY STAFF: Fire RPC after successful insert
+      const submitterName = user
+        ? (user.user_metadata?.first_name || user.email)
+        : `${guestInfo?.firstName} ${guestInfo?.lastName}`.trim();
 
-      const childName = [
-        formData.childFirstName,
-        formData.childLastName,
-      ].filter(Boolean).join(" ").trim();
+      const childName = [formData.childFirstName, formData.childLastName]
+        .filter(Boolean).join(" ").trim();
+
+      const { error: rpcError } = await supabase.rpc('notify_staff', {
+        notif_title: `New Baptism Request`,
+        notif_message: `${submitterName} submitted a baptism request for ${childName || "a child"}.`,
+        notif_link: '/staff-dashboard',
+      });
+
+      if (rpcError) {
+        // Non-blocking: log but don't fail the submission
+        console.error("notify_staff RPC error:", rpcError);
+      } else {
+        console.log("✅ notify_staff fired successfully");
+      }
+
+      setSuccess(true);
 
       if (user?.email) {
         sendRequestEmail({
@@ -233,7 +235,6 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         });
       }
 
-      // Close modal after 2.5 seconds showing success
       setTimeout(() => {
         onClose();
       }, 2500);
@@ -284,7 +285,6 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
               </div>
             )}
-            {/* Error Message */}
             {error && (
               <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 text-sm font-bold">
                 Error: {error}
@@ -298,55 +298,29 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">
-                    Type of Baptism *
-                  </label>
-                  <select
-                    name="baptismType"
-                    value={formData.baptismType}
-                    onChange={handleChange}
-                    required
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                  >
+                  <label className="text-xs font-bold text-gray-600">Type of Baptism *</label>
+                  <select name="baptismType" value={formData.baptismType} onChange={handleChange} required
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700">
                     <option value="Sunday">Sunday Baptism</option>
                     <option value="Solo">Solo/Individual</option>
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">
-                    Preferred Date *
-                  </label>
-                  <input
-                    type="date"
-                    name="preferredDate"
-                    value={formData.preferredDate}
-                    onChange={handleChange}
-                    required
+                  <label className="text-xs font-bold text-gray-600">Preferred Date *</label>
+                  <input type="date" name="preferredDate" value={formData.preferredDate} onChange={handleChange} required
                     min={new Date().toISOString().split("T")[0]}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                  />
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
-                
-                {/* NEW: Preferred Priest Dropdown */}
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">
-                    Preferred Priest (Optional)
-                  </label>
-                  <select
-                    name="preferredPriest"
-                    value={formData.preferredPriest}
-                    onChange={handleChange}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                  >
+                  <label className="text-xs font-bold text-gray-600">Preferred Priest (Optional)</label>
+                  <select name="preferredPriest" value={formData.preferredPriest} onChange={handleChange}
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700">
                     <option value="">No Preference / Any Available</option>
                     {priests.map((priest) => (
-                      <option key={priest.id} value={priest.name}>
-                        {priest.name}
-                      </option>
+                      <option key={priest.id} value={priest.name}>{priest.name}</option>
                     ))}
                   </select>
                 </div>
-                
               </div>
             </div>
 
@@ -357,90 +331,36 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">
-                    Full Name of Child *
-                  </label>
+                  <label className="text-xs font-bold text-gray-600">Full Name of Child *</label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <input
-                      type="text"
-                      name="childFirstName"
-                      value={formData.childFirstName}
-                      onChange={handleChange}
-                      required
-                      placeholder="First Name"
-                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                    />
-                    <input
-                      type="text"
-                      name="childMiddleName"
-                      value={formData.childMiddleName}
-                      onChange={handleChange}
-                      placeholder="Middle Name"
-                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                    />
-                    <input
-                      type="text"
-                      name="childLastName"
-                      value={formData.childLastName}
-                      onChange={handleChange}
-                      required
-                      placeholder="Last Name"
-                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                    />
+                    <input type="text" name="childFirstName" value={formData.childFirstName} onChange={handleChange} required placeholder="First Name"
+                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                    <input type="text" name="childMiddleName" value={formData.childMiddleName} onChange={handleChange} placeholder="Middle Name"
+                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                    <input type="text" name="childLastName" value={formData.childLastName} onChange={handleChange} required placeholder="Last Name"
+                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">
-                    Date of Birth
-                  </label>
-                  <input
-                    type="date"
-                    name="childDob"
-                    value={formData.childDob}
-                    onChange={handleChange}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                  />
+                  <label className="text-xs font-bold text-gray-600">Date of Birth</label>
+                  <input type="date" name="childDob" value={formData.childDob} onChange={handleChange}
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">
-                    Place of Birth (City/Province) *
-                  </label>
-                  <input
-                    type="text"
-                    name="childBirthplace"
-                    value={formData.childBirthplace}
-                    onChange={handleChange}
-                    required
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                  />
+                  <label className="text-xs font-bold text-gray-600">Place of Birth (City/Province) *</label>
+                  <input type="text" name="childBirthplace" value={formData.childBirthplace} onChange={handleChange} required
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">
-                    Gender *
-                  </label>
+                  <label className="text-xs font-bold text-gray-600">Gender *</label>
                   <div className="flex items-center gap-6 mt-1">
                     <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                      <input
-                        type="radio"
-                        name="childGender"
-                        value="Male"
-                        checked={formData.childGender === "Male"}
-                        onChange={handleChange}
-                        required
-                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]"
-                      />{" "}
-                      Male
+                      <input type="radio" name="childGender" value="Male" checked={formData.childGender === "Male"} onChange={handleChange} required
+                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" /> Male
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                      <input
-                        type="radio"
-                        name="childGender"
-                        value="Female"
-                        checked={formData.childGender === "Female"}
-                        onChange={handleChange}
-                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]"
-                      />{" "}
-                      Female
+                      <input type="radio" name="childGender" value="Female" checked={formData.childGender === "Female"} onChange={handleChange}
+                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" /> Female
                     </label>
                   </div>
                 </div>
@@ -454,72 +374,29 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">
-                    Father's Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    name="fatherName"
-                    value={formData.fatherName}
-                    onChange={handleChange}
-                    required
-                    placeholder="First, Middle, Last Name"
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                  />
+                  <label className="text-xs font-bold text-gray-600">Father's Full Name *</label>
+                  <input type="text" name="fatherName" value={formData.fatherName} onChange={handleChange} required placeholder="First, Middle, Last Name"
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">
-                    Mother's Full Maiden Name *
-                  </label>
-                  <input
-                    type="text"
-                    name="motherMaidenName"
-                    value={formData.motherMaidenName}
-                    onChange={handleChange}
-                    required
-                    placeholder="First, Middle, Last Maiden Name"
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                  />
+                  <label className="text-xs font-bold text-gray-600">Mother's Full Maiden Name *</label>
+                  <input type="text" name="motherMaidenName" value={formData.motherMaidenName} onChange={handleChange} required placeholder="First, Middle, Last Maiden Name"
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">
-                    Complete Address *
-                  </label>
-                  <textarea
-                    rows="2"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleChange}
-                    required
-                    placeholder="Street Address, City, Zip Code"
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 resize-none"
-                  ></textarea>
+                  <label className="text-xs font-bold text-gray-600">Complete Address *</label>
+                  <textarea rows="2" name="address" value={formData.address} onChange={handleChange} required placeholder="Street Address, City, Zip Code"
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 resize-none"></textarea>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">
-                    Contact Numbers *
-                  </label>
-                  <input
-                    type="tel"
-                    name="contactNumbers"
-                    value={formData.contactNumbers}
-                    onChange={handleChange}
-                    required
-                    placeholder="Primary phone number"
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                  />
+                  <label className="text-xs font-bold text-gray-600">Contact Numbers *</label>
+                  <input type="tel" name="contactNumbers" value={formData.contactNumbers} onChange={handleChange} required placeholder="Primary phone number"
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">
-                    Parents' Marriage Status *
-                  </label>
-                  <select
-                    name="parentsMarriageStatus"
-                    value={formData.parentsMarriageStatus}
-                    onChange={handleChange}
-                    required
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                  >
+                  <label className="text-xs font-bold text-gray-600">Parents' Marriage Status *</label>
+                  <select name="parentsMarriageStatus" value={formData.parentsMarriageStatus} onChange={handleChange} required
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700">
                     <option value="Married in Church">Married in Church</option>
                     <option value="Civil Marriage">Civil Marriage</option>
                     <option value="Not Married">Not Married</option>
@@ -534,202 +411,101 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                 Sponsors / Godparents
               </h3>
               <p className="text-xs text-gray-500 italic mb-4">
-                Note: 1 pair of sponsors is included in the base fee. Additional
-                sponsors are Php 50.00 per head.
+                Note: 1 pair of sponsors is included in the base fee. Additional sponsors are Php 50.00 per head.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                 <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-xl">
-                  <label className="text-xs font-bold text-[#B59E74]">
-                    Primary Godfather (Ninong) *
-                  </label>
-                  <input
-                    type="text"
-                    name="godfatherName"
-                    value={formData.godfatherName}
-                    onChange={handleChange}
-                    required
-                    placeholder="Full Name"
-                    className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm"
-                  />
+                  <label className="text-xs font-bold text-[#B59E74]">Primary Godfather (Ninong) *</label>
+                  <input type="text" name="godfatherName" value={formData.godfatherName} onChange={handleChange} required placeholder="Full Name"
+                    className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" />
                 </div>
                 <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-xl">
-                  <label className="text-xs font-bold text-[#B59E74]">
-                    Primary Godmother (Ninang) *
-                  </label>
-                  <input
-                    type="text"
-                    name="godmotherName"
-                    value={formData.godmotherName}
-                    onChange={handleChange}
-                    required
-                    placeholder="Full Name"
-                    className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm"
-                  />
+                  <label className="text-xs font-bold text-[#B59E74]">Primary Godmother (Ninang) *</label>
+                  <input type="text" name="godmotherName" value={formData.godmotherName} onChange={handleChange} required placeholder="Full Name"
+                    className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" />
                 </div>
               </div>
               
-              {/* --- DYNAMIC SPONSOR INPUT --- */}
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-gray-600">
-                  Additional Sponsors
-                </label>
-                
+                <label className="text-xs font-bold text-gray-600">Additional Sponsors</label>
                 {sponsorsList.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2">
                     {sponsorsList.map((sponsor, index) => (
-                      <div 
-                        key={index} 
-                        className="flex items-center gap-2 bg-[#F6F5ED] border border-[#B59E74]/30 text-[#B59E74] px-3 py-1.5 rounded-full text-sm font-medium animate-fade-in"
-                      >
+                      <div key={index} className="flex items-center gap-2 bg-[#F6F5ED] border border-[#B59E74]/30 text-[#B59E74] px-3 py-1.5 rounded-full text-sm font-medium">
                         <span>{sponsor}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveSponsor(index)}
-                          className="text-[#B59E74] hover:text-red-500 font-bold focus:outline-none"
-                          title="Remove sponsor"
-                        >
-                          ✕
-                        </button>
+                        <button type="button" onClick={() => handleRemoveSponsor(index)}
+                          className="text-[#B59E74] hover:text-red-500 font-bold focus:outline-none" title="Remove sponsor">✕</button>
                       </div>
                     ))}
                   </div>
                 )}
-
                 <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={sponsorInput}
-                    onChange={(e) => setSponsorInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
+                  <input type="text" value={sponsorInput} onChange={(e) => setSponsorInput(e.target.value)} onKeyDown={handleKeyDown}
                     placeholder="Type a name and hit Enter..."
-                    className="flex-1 p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddSponsor}
-                    disabled={!sponsorInput.trim()}
+                    className="flex-1 p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                  <button type="button" onClick={handleAddSponsor} disabled={!sponsorInput.trim()}
                     className="w-12 h-12 flex items-center justify-center bg-[#B59E74] hover:bg-[#9c8760] text-white rounded-lg font-bold text-2xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Add Sponsor"
-                  >
-                    +
-                  </button>
+                    title="Add Sponsor">+</button>
                 </div>
               </div>
-              
             </div>
 
             <hr className="border-gray-200" />
 
-            {/* --- IMPORTANT GUIDELINES & FEES PANEL --- */}
+            {/* Guidelines & Fees Panel */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              
-              {/* Requirements & Upload */}
               <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col h-full">
                 <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                    className="w-5 h-5"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   Requirements for Baptism
                 </h3>
                 <ul className="flex flex-col gap-2 text-sm text-gray-600 font-serif">
-                  <li>
-                    <strong>1. Birth Certificate</strong> with Registry No.
-                    (from City Hall or PSA). Present original and submit
-                    photocopy.
-                  </li>
-                  <li>
-                    <strong>2. Marriage Certificate of Parents</strong> (If
-                    married). Present original and submit photocopy.
-                  </li>
-                  <li>
-                    <strong>3. Permit for Baptism</strong> (for
-                    non-parishioners) from a parish near your residence.
-                  </li>
-                  <li>
-                    <strong>4. Certificate of No Records</strong> (for 2 yrs old
-                    & above) from 3 neighboring parishes.
-                  </li>
+                  <li><strong>1. Birth Certificate</strong> with Registry No. (from City Hall or PSA). Present original and submit photocopy.</li>
+                  <li><strong>2. Marriage Certificate of Parents</strong> (If married). Present original and submit photocopy.</li>
+                  <li><strong>3. Permit for Baptism</strong> (for non-parishioners) from a parish near your residence.</li>
+                  <li><strong>4. Certificate of No Records</strong> (for 2 yrs old & above) from 3 neighboring parishes.</li>
                 </ul>
                 <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold text-center border border-red-100">
                   "NO SEMINAR, NO BAPTISM" <br />
-                  <span className="text-xs font-normal">
-                    Be on time: 30 minutes before schedule.
-                  </span>
+                  <span className="text-xs font-normal">Be on time: 30 minutes before schedule.</span>
                 </div>
-
-                {/* GOOGLE DRIVE UPLOAD BOX */}
                 <div className="mt-6 flex-grow flex flex-col justify-end">
                   <div className="bg-[#B59E74]/10 rounded-xl border-2 border-dashed border-[#B59E74]/50 p-6 flex flex-col items-center justify-center text-center h-full">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-[#B59E74] mb-3">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
                     </svg>
                     <h4 className="text-sm font-bold text-gray-800 uppercase tracking-widest mb-1">Submit Your Documents</h4>
-                    <p className="text-xs text-gray-500 mb-4 max-w-xs">
-                      Please compile your scanned requirements and upload them to our secure Parish Google Drive folder.
-                    </p>
-                    <a
-                      href="https://drive.google.com/drive/folders/1K3j5gWyYykh6lTRJB0LjchlcT7As8Jox?usp=sharing" 
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-[#B59E74] hover:bg-[#9c8760] text-white px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-2"
-                    >
+                    <p className="text-xs text-gray-500 mb-4 max-w-xs">Please compile your scanned requirements and upload them to our secure Parish Google Drive folder.</p>
+                    <a href="https://drive.google.com/drive/folders/1K3j5gWyYykh6lTRJB0LjchlcT7As8Jox?usp=sharing" target="_blank" rel="noopener noreferrer"
+                      className="bg-[#B59E74] hover:bg-[#9c8760] text-white px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-2">
                       <span>📁</span> Open Upload Folder
                     </a>
                   </div>
                 </div>
               </div>
 
-              {/* Schedule, Fees & Dress Code */}
               <div className="bg-[#B59E74]/10 p-6 rounded-xl border border-[#B59E74]/30 shadow-sm flex flex-col gap-4 h-full">
                 <div>
-                  <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-2">
-                    Schedule & Fees
-                  </h3>
+                  <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-2">Schedule & Fees</h3>
                   <ul className="text-sm text-gray-700 font-serif space-y-2">
-                    <li>
-                      <strong>A. Solo/Individual:</strong> Php 2,500.00
-                      (Tue-Sat: 9:30am, 10:00am, 10:30am, 11:00am). Includes 1
-                      pair of sponsors & certificate.
-                    </li>
-                    <li>
-                      <strong>B. Sunday Baptism</strong>
-                    </li>
-                    <li className="text-xs italic text-gray-500 mt-1">
-                      Add-ons: Extra sponsor Php 50.00/head | Baptismal Candle
-                      Php 80.00/set
-                    </li>
+                    <li><strong>A. Solo/Individual:</strong> Php 2,500.00 (Tue-Sat: 9:30am, 10:00am, 10:30am, 11:00am). Includes 1 pair of sponsors & certificate.</li>
+                    <li><strong>B. Sunday Baptism</strong></li>
+                    <li className="text-xs italic text-gray-500 mt-1">Add-ons: Extra sponsor Php 50.00/head | Baptismal Candle Php 80.00/set</li>
                   </ul>
                 </div>
                 <div className="border-t border-[#B59E74]/20 pt-4 mt-auto">
-                  <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-2">
-                    Dress Code
-                  </h3>
+                  <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-2">Dress Code</h3>
                   <ul className="text-sm text-gray-700 font-serif space-y-1">
-                    <li>
-                      <strong>Child:</strong> Baptismal gown/White dress (girls)
-                      / White polo (boys) / White cloth.
-                    </li>
-                    <li>
-                      <strong>Adults:</strong> Sunday Best. NO shorts, sandos,
-                      sleeveless, spaghetti blouses, leggings, or slippers.
-                    </li>
+                    <li><strong>Child:</strong> Baptismal gown/White dress (girls) / White polo (boys) / White cloth.</li>
+                    <li><strong>Adults:</strong> Sunday Best. NO shorts, sandos, sleeveless, spaghetti blouses, leggings, or slippers.</li>
                   </ul>
                 </div>
               </div>
             </div>
 
-            {/* DECLARATION & SIGNATURE */}
+            {/* Declaration & Signature */}
             <DeclarationBlock
               declaration="I declare that the information provided above is true and correct, and I respectfully request the Sacrament of Baptism for the child named above. I also acknowledge the fees and dress code required."
               consent={formData.declaration_consent}
@@ -738,11 +514,8 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
             />
 
             <div className="pt-2 pb-4">
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-lg py-4 rounded-xl transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
-              >
+              <button type="submit" disabled={loading}
+                className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-lg py-4 rounded-xl transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed">
                 {loading ? "Submitting..." : "Submit Registration"}
               </button>
             </div>

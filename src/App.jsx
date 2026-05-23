@@ -1,4 +1,8 @@
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react'; // ✨ NEW: Needed for the listener
+import { Toaster, toast } from 'react-hot-toast'; // ✨ NEW: The UI pop-ups
+import { supabase } from './supabaseClient'; // ✨ NEW: Supabase client for realtime
+
 import Layout from './components/Layout';
 import RequireAdmin from './components/RequireAdmin';
 import { useAuth } from './contexts/useAuth';
@@ -24,6 +28,60 @@ import UserProfile from './components/UserProfile';
 import CheckInPage from './components/Auth/CheckInPage';
 import UpdatePassword from './components/Auth/UpdatePassword';
 
+// ✨ NEW COMPONENT: The invisible background listener
+function GlobalNotificationListener() {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    // If no one is logged in, don't listen for notifications
+    if (!user?.id) return; 
+
+    // Tell Supabase to listen for NEW inserts to the notifications table
+    const channel = supabase
+      .channel('realtime-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`, // ONLY listen to notifications meant for THIS user
+        },
+        (payload) => {
+          // When a new row is detected, pop up a beautiful toast!
+          const newNotif = payload.new;
+          
+          toast.success(
+            <div className="flex flex-col gap-1">
+              <strong className="text-sm font-serif text-gray-800">{newNotif.title}</strong>
+              <p className="text-xs text-gray-600 m-0">{newNotif.message}</p>
+            </div>,
+            { 
+              duration: 6000, 
+              position: 'top-right',
+              style: {
+                borderRadius: '1rem',
+                border: '1px solid #F3F4F6',
+                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                background: '#fff',
+                padding: '16px',
+              }
+            }
+          );
+        }
+      )
+      .subscribe();
+
+    // Cleanup function when user logs out or leaves
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  return null; // This component renders nothing visually
+}
+
+
 // Redirects admins/priests/staff to their dashboard on first load at "/"
 function HomeRoute() {
   const { role, loading } = useAuth();
@@ -41,6 +99,11 @@ function HomeRoute() {
 function App() {
   return (
     <Router>
+      {/* ✨ NEW: Add the Toaster component at the very top of the app */}
+      <Toaster />
+      {/* ✨ NEW: Add the Listener so it runs continuously */}
+      <GlobalNotificationListener />
+      
       <div className="App text-left">
         <Routes>
           {/* All routes share a single persistent Header via <Layout /> */}
@@ -67,7 +130,7 @@ function App() {
             <Route path="/admin/attendance-list" element={<RequireAdmin><AdminAttendanceList /></RequireAdmin>} />
             <Route path="/admin/qr-generator" element={<RequireAdmin><AdminQRCenter /></RequireAdmin>} />
             
-            {/* FIXED: The new ManageUsers is now the only route for this path, and it is properly protected */}
+            {/* Manage Users */}
             <Route path="/admin/manage-users" element={<RequireAdmin><ManageUsers /></RequireAdmin>} />
 
             {/* PRIEST DASHBOARD (gated by RequirePriest) */}
