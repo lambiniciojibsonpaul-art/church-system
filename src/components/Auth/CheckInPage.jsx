@@ -41,7 +41,11 @@ function CheckInPage() {
   }, [eventId]);
 
   const getUserLocation = () =>
-    new Promise((resolve, reject) =>
+    new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("location_unavailable"));
+        return;
+      }
       navigator.geolocation.getCurrentPosition(
         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
         (err) => {
@@ -49,9 +53,9 @@ function CheckInPage() {
           else if (err.code === 2) reject(new Error("location_unavailable"));
           else reject(new Error("location_timeout"));
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      )
-    );
+        { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+      );
+    });
 
   function getDistanceInMeters(lat1, lon1, lat2, lon2) {
     const R = 6371e3;
@@ -131,7 +135,7 @@ function CheckInPage() {
         setErrorMsg("Your device could not determine your location. Please move to an open area and try again.");
       } else if (err.message === "location_timeout") {
         setModalType("error");
-        setErrorMsg("Location request timed out. Please try again.");
+        setErrorMsg("Location request timed out. Move to an open area (away from roofs or buildings) and try again.");
       } else {
         setModalType("error");
         setErrorMsg(err.message || "Something went wrong. Please try again.");
@@ -419,12 +423,22 @@ function CheckInPage() {
             <p className="text-gray-500 italic mb-4 leading-relaxed">
               Location access was denied. You must allow location permission to check in.
             </p>
-            <div className="bg-gray-50 rounded-2xl p-4 text-left mb-6 space-y-2">
-              <p className="text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">How to fix:</p>
-              <p className="text-xs text-gray-500">1. Tap the <span className="font-semibold text-gray-700">lock 🔒</span> or <span className="font-semibold text-gray-700">info ℹ️</span> icon in your browser address bar.</p>
-              <p className="text-xs text-gray-500">2. Find <span className="font-semibold text-gray-700">Location</span> and set it to <span className="font-semibold text-green-600">Allow</span>.</p>
-              <p className="text-xs text-gray-500">3. Reload the page and tap check-in again.</p>
+            <div className="bg-blue-50 rounded-2xl p-4 text-left mb-3 space-y-1.5">
+              <p className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-2">iPhone / iPad (Safari)</p>
+              <p className="text-xs text-gray-600">1. Open the <span className="font-semibold">Settings</span> app.</p>
+              <p className="text-xs text-gray-600">2. Scroll down and tap <span className="font-semibold">Safari</span>.</p>
+              <p className="text-xs text-gray-600">3. Tap <span className="font-semibold">Location</span> → select <span className="font-semibold text-green-600">Allow</span>.</p>
+              <p className="text-xs text-gray-600">4. Return here and tap check-in again.</p>
             </div>
+            <div className="bg-gray-50 rounded-2xl p-4 text-left mb-4 space-y-1.5">
+              <p className="text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">Android / Chrome</p>
+              <p className="text-xs text-gray-500">1. Tap the <span className="font-semibold text-gray-700">lock 🔒</span> icon in the address bar.</p>
+              <p className="text-xs text-gray-500">2. Tap <span className="font-semibold text-gray-700">Location</span> → set to <span className="font-semibold text-green-600">Allow</span>.</p>
+              <p className="text-xs text-gray-500">3. Reload and try again.</p>
+            </div>
+            <p className="text-[11px] text-amber-600 italic mb-4">
+              ⚠️ If you scanned the QR with a camera app, open this link in <span className="font-semibold">Safari</span> (iPhone) or <span className="font-semibold">Chrome</span> (Android) instead.
+            </p>
             <button
               onClick={closeModal}
               className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm"
