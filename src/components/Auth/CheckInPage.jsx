@@ -13,9 +13,9 @@ function CheckInPage() {
   const [loading, setLoading]           = useState(true);
   const [status, setStatus]             = useState("idle"); // idle | loading | success | error
 
-  const [guestInfo, setGuestInfo]       = useState(null);  // { firstName, lastName } after form
+  const [guestInfo, setGuestInfo]       = useState(null);  // { firstName, lastName, contactNumber } after form
   const [showGuestForm, setShowGuestForm] = useState(false);
-  const [guestForm, setGuestForm]       = useState({ firstName: "", lastName: "" });
+  const [guestForm, setGuestForm]       = useState({ firstName: "", lastName: "", contactNumber: "" });
 
   useEffect(() => {
     const init = async () => {
@@ -85,6 +85,7 @@ function CheckInPage() {
               event_id: eventId,
               is_guest: true,
               guest_name: `${guestInfo.firstName} ${guestInfo.lastName}`.trim(),
+              guest_contact: guestInfo.contactNumber || null,
             },
           }),
         });
@@ -111,7 +112,7 @@ function CheckInPage() {
 
   const handleGuestSubmit = (e) => {
     e.preventDefault();
-    setGuestInfo({ firstName: guestForm.firstName.trim(), lastName: guestForm.lastName.trim() });
+    setGuestInfo({ firstName: guestForm.firstName.trim(), lastName: guestForm.lastName.trim(), contactNumber: guestForm.contactNumber.trim() });
   };
 
   // ── LOADING ────────────────────────────────────────────────────────────────
@@ -181,6 +182,16 @@ function CheckInPage() {
                     value={guestForm.lastName}
                     onChange={e => setGuestForm(p => ({ ...p, lastName: e.target.value }))}
                     placeholder="Last name"
+                    className="w-full p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Contact Number</label>
+                  <input
+                    type="tel"
+                    value={guestForm.contactNumber}
+                    onChange={e => setGuestForm(p => ({ ...p, contactNumber: e.target.value }))}
+                    placeholder="e.g. 09XX XXX XXXX"
                     className="w-full p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm"
                   />
                 </div>

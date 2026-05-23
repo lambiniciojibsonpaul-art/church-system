@@ -211,7 +211,7 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Date:</label>
-                  <input type="date" name="request_date" value={formData.request_date} onChange={handleChange} required className={inputClass} />
+                  <input type="date" name="request_date" value={formData.request_date} onChange={handleChange} required min={new Date().toISOString().split("T")[0]} className={inputClass} />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Time:</label>

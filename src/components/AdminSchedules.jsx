@@ -1,7 +1,46 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { restSelect, restInsert, restUpdate, restDelete } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
+
+// Gold teardrop pin — avoids Vite asset path issues with default Leaflet icons
+const PIN_ICON = new L.DivIcon({
+  html: `<div style="width:18px;height:18px;background:#B59E74;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35)"></div>`,
+  className: "",
+  iconSize: [18, 18],
+  iconAnchor: [9, 18],
+});
+
+function ClickToPin({ onPin }) {
+  useMapEvents({ click: (e) => onPin(e.latlng.lat, e.latlng.lng) });
+  return null;
+}
+
+function FlyToLocation({ lat, lng }) {
+  const map = useMap();
+  useEffect(() => {
+    map.flyTo([lat, lng], 17, { animate: true, duration: 1 });
+  }, [lat, lng, map]);
+  return null;
+}
+
+function MapPicker({ lat, lng, flyTarget, onChange }) {
+  const hasPin = lat !== "" && lng !== "";
+  return (
+    <MapContainer center={[10.3562, 123.9615]} zoom={14} style={{ height: 260, width: "100%" }}>
+      <TileLayer
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      />
+      <ClickToPin onPin={onChange} />
+      {flyTarget && <FlyToLocation lat={flyTarget.lat} lng={flyTarget.lng} />}
+      {hasPin && <Marker position={[parseFloat(lat), parseFloat(lng)]} icon={PIN_ICON} />}
+    </MapContainer>
+  );
+}
 
 const EVENT_CLASSES = [
   "Mass",
@@ -44,6 +83,13 @@ function AdminSchedules() {
   const [cancelReason, setCancelReason] = useState("");
   const [deletingEvent, setDeletingEvent] = useState(null);
 
+  // Map search state
+  const [mapSearch, setMapSearch] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [flyTarget, setFlyTarget] = useState(null);
+  const searchDebounceRef = useRef(null);
+
   const [activeMinistries, setActiveMinistries] = useState([]);
 
   const [formData, setFormData] = useState({
@@ -59,6 +105,8 @@ function AdminSchedules() {
     isPublic: true,
     ministry: "",
     collaborators: [],
+    latitude: "",
+    longitude: "",
   });
 
   useEffect(() => {
@@ -132,6 +180,38 @@ function AdminSchedules() {
     }));
   };
 
+  const handleMapSearch = (query) => {
+    setMapSearch(query);
+    clearTimeout(searchDebounceRef.current);
+    if (!query.trim()) { setSearchResults([]); return; }
+    searchDebounceRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=ph&addressdetails=1`,
+          { headers: { "Accept-Language": "en", "User-Agent": "SanPedroBautistaParish/1.0" } }
+        );
+        const data = await res.json();
+        setSearchResults(data);
+      } catch { setSearchResults([]); }
+      finally { setSearchLoading(false); }
+    }, 500);
+  };
+
+  const handleSelectResult = (result) => {
+    const lat = parseFloat(result.lat);
+    const lng = parseFloat(result.lon);
+    const placeName = result.display_name.split(",")[0].trim();
+    const addr = result.address || {};
+    const city = addr.city || addr.municipality || addr.town || addr.village || addr.suburb || "";
+    const province = addr.province || addr.state || "";
+    const generalLocation = [city, province].filter(Boolean).join(", ") || result.display_name.split(",").slice(0, 2).join(",").trim();
+    setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, setting: placeName, location: generalLocation }));
+    setFlyTarget({ lat, lng });
+    setMapSearch(placeName);
+    setSearchResults([]);
+  };
+
   const handleOpenEventModal = () => {
     setFormData({
       title: "",
@@ -146,7 +226,12 @@ function AdminSchedules() {
       isPublic: true,
       ministry: "",
       collaborators: [],
+      latitude: "",
+      longitude: "",
     });
+    setMapSearch("");
+    setSearchResults([]);
+    setFlyTarget(null);
     setIsModalOpen(true);
   };
 
@@ -247,6 +332,8 @@ function AdminSchedules() {
         setting:      formData.setting,
         status:       "Active",
         is_public:    formData.isPublic,
+        latitude:     (!formData.isInside && formData.latitude !== "") ? parseFloat(formData.latitude) : null,
+        longitude:    (!formData.isInside && formData.longitude !== "") ? parseFloat(formData.longitude) : null,
       };
 
       let { error } = await restInsert("events", [basePayload]);
@@ -644,11 +731,11 @@ function AdminSchedules() {
                   <label className="text-xs font-bold text-gray-600 uppercase">Setting Type</label>
                   <div className="flex items-center gap-4 mt-2">
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input type="radio" checked={formData.isInside === true} onChange={() => setFormData({ ...formData, isInside: true, setting: "" })} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" />
+                      <input type="radio" checked={formData.isInside === true} onChange={() => setFormData({ ...formData, isInside: true, setting: "", latitude: "", longitude: "", location: "Main Church" })} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" />
                       Indoor
                     </label>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input type="radio" checked={formData.isInside === false} onChange={() => setFormData({ ...formData, isInside: false, setting: "" })} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" />
+                      <input type="radio" checked={formData.isInside === false} onChange={() => setFormData({ ...formData, isInside: false, setting: "", latitude: "", longitude: "", location: "" })} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" />
                       Outdoor
                     </label>
                   </div>
@@ -677,6 +764,104 @@ function AdminSchedules() {
                   placeholder="e.g., Parish Grounds"
                 />
               </div>
+
+              {/* ── Outdoor map pin ── */}
+              {!formData.isInside && (
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-2">
+                    📍 Pin Location on Map
+                    <span className="text-[10px] font-normal normal-case text-gray-400 italic">— for QR check-in geolocation</span>
+                  </label>
+
+                  {/* Search bar */}
+                  <div className="relative">
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-gray-300 focus-within:ring-2 focus-within:ring-[#B59E74] bg-white">
+                      <span className="text-gray-400 text-sm shrink-0">🔍</span>
+                      <input
+                        type="text"
+                        value={mapSearch}
+                        onChange={e => handleMapSearch(e.target.value)}
+                        placeholder="Search a location (e.g. Liloan Cebu)..."
+                        className="flex-1 outline-none text-sm text-gray-700 bg-transparent min-w-0"
+                      />
+                      {searchLoading && (
+                        <div className="w-4 h-4 border-2 border-[#B59E74] border-t-transparent rounded-full animate-spin shrink-0" />
+                      )}
+                      {mapSearch && !searchLoading && (
+                        <button
+                          type="button"
+                          onClick={() => { setMapSearch(""); setSearchResults([]); }}
+                          className="text-gray-400 hover:text-gray-600 text-xs shrink-0"
+                        >✕</button>
+                      )}
+                    </div>
+
+                    {/* Results dropdown */}
+                    {searchResults.length > 0 && (
+                      <div className="absolute z-[1000] top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden">
+                        {searchResults.map((r, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onMouseDown={() => handleSelectResult(r)}
+                            className="w-full text-left px-4 py-3 text-sm hover:bg-[#F6F5ED] border-b border-gray-50 last:border-0 flex flex-col gap-0.5 transition-colors"
+                          >
+                            <span className="font-medium text-gray-800 truncate">{r.display_name.split(",")[0]}</span>
+                            <span className="text-[11px] text-gray-400 truncate">{r.display_name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-gray-400 italic -mt-1">
+                    Search to find a location, or click directly on the map to drop a pin.
+                  </p>
+
+                  {/* Map */}
+                  <div className="rounded-xl overflow-hidden border border-gray-300 shadow-sm">
+                    <MapPicker
+                      lat={formData.latitude}
+                      lng={formData.longitude}
+                      flyTarget={flyTarget}
+                      onChange={(lat, lng) => {
+                        setFormData(prev => ({ ...prev, latitude: lat, longitude: lng }));
+                        setFlyTarget(null);
+                      }}
+                    />
+                  </div>
+
+                  {/* Coordinates */}
+                  {formData.latitude !== "" ? (
+                    <div className="flex gap-3 mt-1">
+                      <div className="flex-1 flex flex-col gap-1">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Latitude</label>
+                        <input readOnly value={parseFloat(formData.latitude).toFixed(6)} className="p-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-600 font-mono" />
+                      </div>
+                      <div className="flex-1 flex flex-col gap-1">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Longitude</label>
+                        <input readOnly value={parseFloat(formData.longitude).toFixed(6)} className="p-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-600 font-mono" />
+                      </div>
+                      <div className="flex items-end pb-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData(prev => ({ ...prev, latitude: "", longitude: "" }));
+                            setMapSearch("");
+                            setFlyTarget(null);
+                          }}
+                          className="text-xs text-red-400 hover:text-red-600 px-2 py-2 rounded-lg hover:bg-red-50 transition-colors"
+                        >✕ Clear</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-xs">
+                      <span>📍</span>
+                      <span>No pin set yet — search or click the map to mark the check-in location.</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-gray-600 uppercase">Description (Optional)</label>

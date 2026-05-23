@@ -161,7 +161,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         child_first_name: formData.childFirstName,
         child_middle_name: formData.childMiddleName,
         child_last_name: formData.childLastName,
-        child_dob: formData.childDob,
+        child_dob: formData.childDob || null,
         child_birthplace: formData.childBirthplace,
         child_gender: formData.childGender,
         father_name: formData.fatherName,
@@ -322,6 +322,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                     value={formData.preferredDate}
                     onChange={handleChange}
                     required
+                    min={new Date().toISOString().split("T")[0]}
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
                   />
                 </div>

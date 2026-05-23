@@ -298,6 +298,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                     value={formData.preferred_date}
                     onChange={handleChange}
                     required
+                    min={new Date().toISOString().split("T")[0]}
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
                   />
                 </div>

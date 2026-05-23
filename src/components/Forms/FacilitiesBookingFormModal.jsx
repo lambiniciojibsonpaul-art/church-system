@@ -238,7 +238,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">Start Date</label>
-                    <input type="date" name="start_date" value={formData.start_date} onChange={handleChange} required className={inputClass} />
+                    <input type="date" name="start_date" value={formData.start_date} onChange={handleChange} required min={new Date().toISOString().split("T")[0]} className={inputClass} />
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">Start Time</label>
@@ -246,7 +246,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">End Date</label>
-                    <input type="date" name="end_date" value={formData.end_date} onChange={handleChange} required className={inputClass} />
+                    <input type="date" name="end_date" value={formData.end_date} onChange={handleChange} required min={new Date().toISOString().split("T")[0]} className={inputClass} />
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">End Time</label>

@@ -210,6 +210,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
                   value={formData.date_of_confirmation}
                   onChange={handleChange}
                   required
+                  min={new Date().toISOString().split("T")[0]}
                   className={inputClass}
                 />
               </div>

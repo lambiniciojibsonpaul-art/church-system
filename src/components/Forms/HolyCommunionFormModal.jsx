@@ -154,7 +154,7 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-white rounded-xl border border-gray-100 shadow-sm">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-bold text-gray-600">Date of Holy Communion:</label>
-                <input type="date" name="date_of_communion" value={formData.date_of_communion} onChange={handleChange} required className={inputClass} />
+                <input type="date" name="date_of_communion" value={formData.date_of_communion} onChange={handleChange} required min={new Date().toISOString().split("T")[0]} className={inputClass} />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-bold text-gray-600">Time:</label>

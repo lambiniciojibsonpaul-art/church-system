@@ -236,7 +236,7 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Date of Wedding <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa ng Kasal)</span></label>
-                  <input type="date" name="wedding_date" value={formData.wedding_date} onChange={handleChange} required className={inputClass} />
+                  <input type="date" name="wedding_date" value={formData.wedding_date} onChange={handleChange} required min={new Date().toISOString().split("T")[0]} className={inputClass} />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Time of Wedding <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Kasal)</span></label>
@@ -268,7 +268,7 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
                 <div className="grid grid-cols-1 gap-4">
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">Date of Reservation</label>
-                    <input type="date" name="reservation_date" value={formData.reservation_date} onChange={handleChange} className={`${inputClass} bg-gray-50`} />
+                    <input type="date" name="reservation_date" value={formData.reservation_date} onChange={handleChange} min={new Date().toISOString().split("T")[0]} className={`${inputClass} bg-gray-50`} />
                   </div>
                 </div>
               </div>
