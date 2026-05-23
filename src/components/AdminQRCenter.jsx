@@ -1,13 +1,96 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import GenerateEventQR from "./Auth/GenerateEventQR";
+
+function EventSearchSelect({ events, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const selected = events.find(ev => ev.id.toString() === (value?.toString() || ""));
+  const filtered = events.filter(ev =>
+    ev.title.toLowerCase().includes(search.toLowerCase())
+  );
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 50);
+    else setSearch("");
+  }, [open]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-100 focus:border-[#B59E74] outline-none bg-gray-50 font-medium transition-all text-left"
+      >
+        <span className={selected ? "text-gray-800" : "text-gray-400"}>
+          {selected ? selected.title : "-- Select an Event --"}
+        </span>
+        <span className="text-gray-400 ml-2">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+          <div className="p-2 border-b border-gray-100">
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-[#B59E74]">
+              <span className="text-gray-400 text-sm">🔍</span>
+              <input
+                ref={inputRef}
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search event..."
+                className="flex-1 outline-none text-sm text-gray-700 bg-transparent"
+              />
+              {search && (
+                <button type="button" onClick={() => setSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+              )}
+            </div>
+          </div>
+          <ul className="max-h-56 overflow-y-auto">
+            <li
+              className="px-4 py-2.5 text-sm text-gray-400 italic cursor-pointer hover:bg-gray-50"
+              onClick={() => { onChange(null); setOpen(false); }}
+            >
+              -- Select an Event --
+            </li>
+            {filtered.length === 0 ? (
+              <li className="px-4 py-3 text-sm text-gray-400 italic text-center">No events found</li>
+            ) : (
+              filtered.map(ev => (
+                <li
+                  key={ev.id}
+                  onClick={() => { onChange(ev); setOpen(false); }}
+                  className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-[#B59E74]/10 hover:text-[#B59E74] transition-colors ${value?.id === ev.id ? "bg-[#B59E74]/10 text-[#B59E74] font-medium" : "text-gray-700"}`}
+                >
+                  {ev.title}
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function AdminQRCenter() {
   const [events, setEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [eventSearch, setEventSearch] = useState("");
 
   useEffect(() => {
     fetchEvents();
@@ -16,14 +99,13 @@ function AdminQRCenter() {
   const fetchEvents = async () => {
     const { data } = await supabase
       .from("events")
-      .select("id, title, event_date") // ✅ IMPORTANT: include event_date
+      .select("id, title, event_date")
       .order("title", { ascending: true });
 
     setEvents(data || []);
     setLoading(false);
   };
 
-  // ✅ COMPUTE QR AVAILABILITY
   const now = new Date();
   const eventTime = selectedEvent?.event_date
     ? new Date(selectedEvent.event_date)
@@ -66,43 +148,11 @@ function AdminQRCenter() {
               <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block text-center">
                 Select Event to Generate QR
               </label>
-
-              {/* Search input */}
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-[#B59E74]">
-                <span className="text-gray-400 text-sm">🔍</span>
-                <input
-                  type="text"
-                  value={eventSearch}
-                  onChange={e => setEventSearch(e.target.value)}
-                  placeholder="Search event..."
-                  className="flex-1 outline-none text-sm text-gray-700 bg-transparent"
-                />
-                {eventSearch && (
-                  <button type="button" onClick={() => setEventSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
-                )}
-              </div>
-
-              <select
-                className="w-full p-4 rounded-2xl border-2 border-gray-100 focus:border-[#B59E74] outline-none bg-gray-50 text-center font-medium transition-all appearance-none cursor-pointer"
-                value={selectedEvent?.id || ""}
-                onChange={(e) => {
-                  const event = events.find(
-                    (ev) => ev.id.toString() === e.target.value
-                  );
-                  setSelectedEvent(event || null);
-                }}
-                size={Math.min(6, events.filter(ev => ev.title.toLowerCase().includes(eventSearch.toLowerCase())).length + 1)}
-              >
-                <option value="">-- Select an Event --</option>
-
-                {events
-                  .filter(ev => ev.title.toLowerCase().includes(eventSearch.toLowerCase()))
-                  .map((ev) => (
-                    <option key={ev.id} value={ev.id}>
-                      {ev.title}
-                    </option>
-                  ))}
-              </select>
+              <EventSearchSelect
+                events={events}
+                value={selectedEvent}
+                onChange={setSelectedEvent}
+              />
             </div>
 
             {/* QR Display Area */}
