@@ -1,21 +1,12 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom"; // ✨ added useLocation
 import { restSelect, restUpdate, restInsert, restDelete } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
 import { sendApprovalEmail } from "../emailNotifications";
+import { supabase } from "../supabaseClient";
 
 const QUERY_TIMEOUT_MS = 12000;
-// Priest list is fetched from the `priests` table on mount — see useEffect below.
 
-// ----------------------------------------------------------------------------
-// TAB CONFIG
-// One entry per request type. Each entry tells the dashboard:
-//   - which DB table to fetch
-//   - how to render the row in the listing table (columns)
-//   - whether a priest assignment is required on approval (sacraments yes,
-//     facilities/certifications no)
-//   - how to label the request in the accept modal ("title" function)
-// ----------------------------------------------------------------------------
 const TAB_CONFIG = {
   Baptisms: {
     table: "baptisms",
@@ -174,58 +165,36 @@ const TAB_CONFIG = {
 };
 
 const TAB_NAMES = Object.keys(TAB_CONFIG);
-
-// Sentinel used in the Viewing dropdown to render every service in one table.
 const ALL_SERVICES = "All Services";
 
-// Key used by EventsPage to cache its events list — keep in sync with
-// EVENTS_CACHE_KEY in src/components/EventsPage.jsx. We bust this key whenever
-// an event's lifecycle changes here so the public calendar reflects it.
 const EVENTS_PAGE_CACHE_KEY = "eventsPage:events";
 function bustEventsPageCache() {
-  try {
-    sessionStorage.removeItem(EVENTS_PAGE_CACHE_KEY);
-  } catch { /* ignore */ }
+  try { sessionStorage.removeItem(EVENTS_PAGE_CACHE_KEY); } catch { /* ignore */ }
 }
 
-// Pull the most relevant date from a record regardless of source table — used
-// only by the "All Services" combined view for sorting + display.
 function extractRecordDate(r) {
-  return (
-    r.preferred_date ||
-    r.wedding_date ||
-    r.date_of_confirmation ||
-    r.date_of_communion ||
-    r.request_date ||
-    r.start_date ||
-    null
-  );
+  return r.preferred_date || r.wedding_date || r.date_of_confirmation ||
+    r.date_of_communion || r.request_date || r.start_date || null;
 }
 
 function extractRecordSubmitter(r) {
   const name = (
-    r.guest_name ||
-    r.submitter_signature ||
-    r.submitter_name ||
-    r.full_name ||
-    r.requested_by ||
-    [r.requestor_first_name, r.requestor_surname].filter(Boolean).join(" ") ||
-    "—"
+    r.guest_name || r.submitter_signature || r.submitter_name ||
+    r.full_name || r.requested_by ||
+    [r.requestor_first_name, r.requestor_surname].filter(Boolean).join(" ") || "—"
   );
   return r.is_guest ? `${name} (Guest)` : name;
 }
 
-// Columns for the combined "All Services" table. Each row is a tagged record
-// with `_tab` (source tab name) and `_config` (TAB_CONFIG entry) attached.
 const ALL_SERVICES_COLUMNS = [
-  { label: "Service", value: (r) => r._tab },
-  { label: "Title", value: (r) => r._config.title(r) },
-  { label: "Date", value: (r) => formatDate(extractRecordDate(r)) },
+  { label: "Service",   value: (r) => r._tab },
+  { label: "Title",     value: (r) => r._config.title(r) },
+  { label: "Date",      value: (r) => formatDate(extractRecordDate(r)) },
   { label: "Submitter", value: (r) => extractRecordSubmitter(r) },
 ];
 
 const ALL_SERVICES_CONFIG = {
-  table: null, // never used directly — actions resolve per-row via _config
+  table: null,
   isSacrament: false,
   columns: ALL_SERVICES_COLUMNS,
   title: (r) => r._config.title(r),
@@ -233,11 +202,7 @@ const ALL_SERVICES_CONFIG = {
 
 function formatDate(d) {
   if (!d) return "";
-  try {
-    return new Date(d).toLocaleDateString();
-  } catch {
-    return "";
-  }
+  try { return new Date(d).toLocaleDateString(); } catch { return ""; }
 }
 
 // ----------------------------------------------------------------------------
@@ -246,50 +211,46 @@ function formatDate(d) {
 function AdminDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation(); // ✨ NEW
 
   const [loading, setLoading] = useState(true);
   const [priestOptions, setPriestOptions] = useState([]);
 
-  // requests is keyed by tab name, value is array of records.
+  // ✨ NEW: highlight state for notification-driven scroll+glow
+  const [highlightId, setHighlightId] = useState(null);
+
   const [requests, setRequests] = useState(
     Object.fromEntries(TAB_NAMES.map((t) => [t, []]))
   );
   const [activeTab, setActiveTab] = useState(ALL_SERVICES);
   const [activeSubTab, setActiveSubTab] = useState("All");
 
-  // Search + sort + pagination
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState("date_desc"); // "date_desc" | "date_asc" | "status" | "title"
+  const [sortBy, setSortBy] = useState("date_desc");
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // View modal
   const [selectedRequest, setSelectedRequest] = useState(null);
 
-  // Reject modal
   const [rejectingRequest, setRejectingRequest] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
 
-  // Accept modal
   const [acceptingRequest, setAcceptingRequest] = useState(null);
   const [assignedPriest, setAssignedPriest] = useState("");
   const [acceptSubmitting, setAcceptSubmitting] = useState(false);
 
-  // Cancel modal
   const [cancellingRequest, setCancellingRequest] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
 
-  // Delete modal (cancelled requests only — hard-deletes the row)
   const [deletingRequest, setDeletingRequest] = useState(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
-  // ---------------- Events table state (independent of services) ----------------
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [eventsSearchQuery, setEventsSearchQuery] = useState("");
   const [eventsSortBy, setEventsSortBy] = useState("date_desc");
-  const [eventsFilter, setEventsFilter] = useState("All"); // All | Upcoming | Past
+  const [eventsFilter, setEventsFilter] = useState("All");
   const [eventsPageSize, setEventsPageSize] = useState(10);
   const [eventsCurrentPage, setEventsCurrentPage] = useState(1);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -299,7 +260,7 @@ function AdminDashboard() {
   const [deletingEvent, setDeletingEvent] = useState(null);
   const [deleteEventSubmitting, setDeleteEventSubmitting] = useState(false);
 
-  // Fetch all 8 tables + priests list in parallel on mount.
+  // ── Initial data fetch ───────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -307,18 +268,14 @@ function AdminDashboard() {
       const [tabResults, priestsResult] = await Promise.all([
         Promise.allSettled(
           entries.map(([, cfg]) =>
-            restSelect(cfg.table, {
-              order: "created_at.desc",
-              timeoutMs: QUERY_TIMEOUT_MS,
-            })
+            restSelect(cfg.table, { order: "created_at.desc", timeoutMs: QUERY_TIMEOUT_MS })
           )
         ),
         restSelect("priests", { match: { is_active: true }, order: "name.asc", timeoutMs: 10000 }),
       ]);
       if (cancelled) return;
 
-      // Populate priest dropdown from DB; fall back to empty (UI will show no options)
-      if (priestsResult.data && priestsResult.data.length > 0) {
+      if (priestsResult.data?.length > 0) {
         setPriestOptions(priestsResult.data.map((p) => p.name));
       }
 
@@ -329,57 +286,102 @@ function AdminDashboard() {
           merged[tabName] = r.value.data;
         } else {
           merged[tabName] = [];
-          if (r.status === "fulfilled" && r.value?.error) {
+          if (r.status === "fulfilled" && r.value?.error)
             console.warn(`[AdminDashboard] ${tabName} fetch error:`, r.value.error.message);
-          }
         }
       });
       setRequests(merged);
       setLoading(false);
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  // Fetch events independently — failure here must not block the services UI.
+  // ── Events fetch ─────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const { data, error } = await restSelect("events", {
-        order: "event_date.desc",
-        timeoutMs: QUERY_TIMEOUT_MS,
+        order: "event_date.desc", timeoutMs: QUERY_TIMEOUT_MS,
       });
       if (cancelled) return;
-      if (error) {
-        console.warn("[AdminDashboard] events fetch error:", error.message);
-      }
+      if (error) console.warn("[AdminDashboard] events fetch error:", error.message);
       setEvents(Array.isArray(data) ? data : []);
       setEventsLoading(false);
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  // ----------------------- Derived values -----------------------
+  // ✨ NEW: Handle notification click → switch tab → scroll → highlight → open modal
+  useEffect(() => {
+    if (!location.state?.highlightId || loading) return;
+
+    const { highlightId: targetId, highlightTable } = location.state;
+
+    // Find which tab owns this table
+    const targetTab = Object.entries(TAB_CONFIG).find(
+      ([, cfg]) => cfg.table === highlightTable
+    )?.[0];
+
+    if (!targetTab) return;
+
+    // Switch to the correct tab and show all statuses so the row is visible
+    setActiveTab(targetTab);
+    setActiveSubTab("All");
+
+    // Poll for the row to appear in the DOM after tab switch + render
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      const rowEl = document.getElementById(`request-row-${targetId}`);
+
+      if (rowEl) {
+        clearInterval(interval);
+
+        // Scroll the row into the center of the viewport
+        rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        // Trigger the gold glow highlight
+        setHighlightId(targetId);
+
+        // Open the details modal after scroll settles
+        setTimeout(() => {
+          const targetReq = (requests[targetTab] || []).find((r) => r.id === targetId);
+          if (targetReq) {
+            setSelectedRequest({
+              ...targetReq,
+              _tab: targetTab,
+              _config: TAB_CONFIG[targetTab],
+            });
+          }
+        }, 700);
+
+        // Remove highlight after 2.5s
+        setTimeout(() => setHighlightId(null), 2500);
+
+        // Clear location state so a page refresh doesn't re-trigger
+        window.history.replaceState({}, document.title);
+      }
+
+      // Give up after 3 seconds (30 × 100ms)
+      if (attempts > 30) clearInterval(interval);
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [location.state, loading, requests]);
+
+  // ── Derived values ───────────────────────────────────────────────────────
   const isAllServices = activeTab === ALL_SERVICES;
   const activeConfig = isAllServices ? ALL_SERVICES_CONFIG : TAB_CONFIG[activeTab];
-  // For All Services: tag every record with its source tab + config so row-level
-  // actions (accept/reject/cancel/delete) can resolve the right table.
   const activeData = isAllServices
-    ? TAB_NAMES
-        .flatMap((t) =>
-          (requests[t] || []).map((r) => ({ ...r, _tab: t, _config: TAB_CONFIG[t] }))
-        )
-        .sort((a, b) =>
-          String(b.created_at || "").localeCompare(String(a.created_at || ""))
-        )
+    ? TAB_NAMES.flatMap((t) =>
+        (requests[t] || []).map((r) => ({ ...r, _tab: t, _config: TAB_CONFIG[t] }))
+      ).sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
     : requests[activeTab] || [];
-  const statusFiltered =
-    activeSubTab === "All"
-      ? activeData
-      : activeData.filter((r) => r.status === activeSubTab);
+
+  const statusFiltered = activeSubTab === "All"
+    ? activeData
+    : activeData.filter((r) => r.status === activeSubTab);
+
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const searchedData = trimmedQuery
     ? statusFiltered.filter((r) =>
@@ -389,421 +391,270 @@ function AdminDashboard() {
         })
       )
     : statusFiltered;
-  // Sort: copy then sort so we never mutate state arrays.
-  const titleOf = (r) => {
-    const cfg = r._config || activeConfig;
-    return String(cfg.title?.(r) || "").toLowerCase();
-  };
-  const dateKeyOf = (r) =>
-    extractRecordDate(r) || r.created_at || "";
+
+  const titleOf = (r) => String((r._config || activeConfig).title?.(r) || "").toLowerCase();
+  const dateKeyOf = (r) => extractRecordDate(r) || r.created_at || "";
+
   const filteredData = [...searchedData].sort((a, b) => {
-    if (sortBy === "title") {
-      return titleOf(a).localeCompare(titleOf(b));
-    }
+    if (sortBy === "title") return titleOf(a).localeCompare(titleOf(b));
     if (sortBy === "status") {
       const sa = String(a.status || "").localeCompare(String(b.status || ""));
       if (sa !== 0) return sa;
-      // Tie-break by newest date so status groups stay readable.
       return String(dateKeyOf(b)).localeCompare(String(dateKeyOf(a)));
     }
     if (sortBy === "date_asc") {
-      // Oldest first — push records with no date to the end.
-      const da = dateKeyOf(a);
-      const db = dateKeyOf(b);
+      const da = dateKeyOf(a), db = dateKeyOf(b);
       if (!da && !db) return 0;
       if (!da) return 1;
       if (!db) return -1;
       return String(da).localeCompare(String(db));
     }
-    // "date_desc" (default) — newest first.
     return String(dateKeyOf(b)).localeCompare(String(dateKeyOf(a)));
   });
+
   const totalRecords = filteredData.length;
-  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
-  const safePage = Math.min(currentPage, totalPages);
-  const pageStart = (safePage - 1) * pageSize;
-  const pageEnd = Math.min(pageStart + pageSize, totalRecords);
-  const pageData = filteredData.slice(pageStart, pageEnd);
+  const totalPages   = Math.max(1, Math.ceil(totalRecords / pageSize));
+  const safePage     = Math.min(currentPage, totalPages);
+  const pageStart    = (safePage - 1) * pageSize;
+  const pageEnd      = Math.min(pageStart + pageSize, totalRecords);
+  const pageData     = filteredData.slice(pageStart, pageEnd);
+
   const pendingCount = (tab) =>
-    (requests[tab] || []).filter((r) => r.status === "Pending").length;
+    (requests[tab] || []).filter((r) => r.status === "Staff Approved").length;
   const totalPending = TAB_NAMES.reduce((sum, t) => sum + pendingCount(t), 0);
 
-  // Reset to page 1 whenever the visible slice could shift.
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab, activeSubTab, searchQuery, sortBy, pageSize]);
+  useEffect(() => { setCurrentPage(1); }, [activeTab, activeSubTab, searchQuery, sortBy, pageSize]);
 
-  // ---------------- Events derived values ----------------
+  // ── Events derived values ────────────────────────────────────────────────
   const todayKey = (() => {
     const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const dd = String(now.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
+    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
   })();
-  // Only show events created via the ministries' Events page / Schedules page.
-  // Sacrament-approved events carry a `source_table` reference back to their
-  // originating request — exclude those so this table is purely ministry-led.
-  const ministryEvents = events.filter((ev) => !ev.source_table);
-  const eventsTimeFiltered = ministryEvents.filter((ev) => {
+
+  const ministryEvents      = events.filter((ev) => !ev.source_table);
+  const eventsTimeFiltered  = ministryEvents.filter((ev) => {
     const d = String(ev.event_date || "");
-    const status = ev.status || "Active";
-    if (eventsFilter === "Cancelled") return status === "Cancelled";
-    if (eventsFilter === "Upcoming") return d && d >= todayKey;
-    if (eventsFilter === "Past") return d && d < todayKey;
+    const s = ev.status || "Active";
+    if (eventsFilter === "Cancelled") return s === "Cancelled";
+    if (eventsFilter === "Upcoming")  return d && d >= todayKey;
+    if (eventsFilter === "Past")      return d && d <  todayKey;
     return true;
   });
-  const eventsTrimmedQuery = eventsSearchQuery.trim().toLowerCase();
-  const eventsSearchedData = eventsTrimmedQuery
+  const eventsTrimmedQuery  = eventsSearchQuery.trim().toLowerCase();
+  const eventsSearchedData  = eventsTrimmedQuery
     ? eventsTimeFiltered.filter((ev) =>
         [ev.title, ev.event_class, ev.priest_name, ev.location, ev.description]
-          .filter(Boolean)
-          .some((v) => String(v).toLowerCase().includes(eventsTrimmedQuery))
+          .filter(Boolean).some((v) => String(v).toLowerCase().includes(eventsTrimmedQuery))
       )
     : eventsTimeFiltered;
   const eventsSortedData = [...eventsSearchedData].sort((a, b) => {
-    if (eventsSortBy === "title") {
-      return String(a.title || "").toLowerCase().localeCompare(
-        String(b.title || "").toLowerCase()
-      );
-    }
+    if (eventsSortBy === "title") return String(a.title||"").toLowerCase().localeCompare(String(b.title||"").toLowerCase());
     if (eventsSortBy === "class") {
-      const ca = String(a.event_class || "").localeCompare(String(b.event_class || ""));
+      const ca = String(a.event_class||"").localeCompare(String(b.event_class||""));
       if (ca !== 0) return ca;
-      return String(b.event_date || "").localeCompare(String(a.event_date || ""));
+      return String(b.event_date||"").localeCompare(String(a.event_date||""));
     }
     if (eventsSortBy === "date_asc") {
-      const da = String(a.event_date || "");
-      const db = String(b.event_date || "");
-      if (!da && !db) return 0;
-      if (!da) return 1;
-      if (!db) return -1;
+      const da = String(a.event_date||""), db = String(b.event_date||"");
+      if (!da && !db) return 0; if (!da) return 1; if (!db) return -1;
       return da.localeCompare(db);
     }
-    return String(b.event_date || "").localeCompare(String(a.event_date || ""));
+    return String(b.event_date||"").localeCompare(String(a.event_date||""));
   });
-  const eventsTotal = eventsSortedData.length;
+
+  const eventsTotal      = eventsSortedData.length;
   const eventsTotalPages = Math.max(1, Math.ceil(eventsTotal / eventsPageSize));
-  const eventsSafePage = Math.min(eventsCurrentPage, eventsTotalPages);
-  const eventsPageStart = (eventsSafePage - 1) * eventsPageSize;
-  const eventsPageEnd = Math.min(eventsPageStart + eventsPageSize, eventsTotal);
-  const eventsPageData = eventsSortedData.slice(eventsPageStart, eventsPageEnd);
+  const eventsSafePage   = Math.min(eventsCurrentPage, eventsTotalPages);
+  const eventsPageStart  = (eventsSafePage - 1) * eventsPageSize;
+  const eventsPageEnd    = Math.min(eventsPageStart + eventsPageSize, eventsTotal);
+  const eventsPageData   = eventsSortedData.slice(eventsPageStart, eventsPageEnd);
 
-  useEffect(() => {
-    setEventsCurrentPage(1);
-  }, [eventsSearchQuery, eventsSortBy, eventsFilter, eventsPageSize]);
+  useEffect(() => { setEventsCurrentPage(1); }, [eventsSearchQuery, eventsSortBy, eventsFilter, eventsPageSize]);
 
-  // Resolve the source tab + config for a record. In normal mode it's the
-  // active tab; in "All Services" mode the record carries its own _tab/_config.
-  const resolveTabFor = (req) => req?._tab || activeTab;
-  const resolveConfigFor = (req) =>
-    req?._config || TAB_CONFIG[resolveTabFor(req)] || activeConfig;
+  const resolveTabFor    = (req) => req?._tab || activeTab;
+  const resolveConfigFor = (req) => req?._config || TAB_CONFIG[resolveTabFor(req)] || activeConfig;
 
-  // ----------------------- Accept handlers -----------------------
-  const openAcceptModal = (req) => {
-    setAcceptingRequest(req);
-    setAssignedPriest("");
-  };
-  const closeAcceptModal = () => {
-    setAcceptingRequest(null);
-    setAssignedPriest("");
-    setAcceptSubmitting(false);
-  };
+  // ── Accept handlers ──────────────────────────────────────────────────────
+  const openAcceptModal  = (req) => { setAcceptingRequest(req); setAssignedPriest(""); };
+  const closeAcceptModal = () => { setAcceptingRequest(null); setAssignedPriest(""); setAcceptSubmitting(false); };
 
   const confirmAccept = async () => {
     if (!acceptingRequest) return;
-    const reqTab = resolveTabFor(acceptingRequest);
+    const reqTab    = resolveTabFor(acceptingRequest);
     const reqConfig = resolveConfigFor(acceptingRequest);
-    if (reqConfig.isSacrament && !assignedPriest) {
-      alert("Please assign a priest before approving.");
-      return;
-    }
-
+    if (reqConfig.isSacrament && !assignedPriest) { alert("Please assign a priest before approving."); return; }
     setAcceptSubmitting(true);
 
-    // 1. Update request status to Approved.
-    const { error: updateErr } = await restUpdate(
-      reqConfig.table,
-      { id: acceptingRequest.id },
-      { status: "Approved" }
-    );
-    if (updateErr) {
-      setAcceptSubmitting(false);
-      alert("Error approving request: " + updateErr.message);
-      return;
-    }
+    const { error: updateErr } = await restUpdate(reqConfig.table, { id: acceptingRequest.id }, { status: "Approved" });
+    if (updateErr) { setAcceptSubmitting(false); alert("Error approving request: " + updateErr.message); return; }
 
-    // 2. For sacraments, also create a calendar event with the priest.
     if (reqConfig.isSacrament && reqConfig.eventBuilder) {
       const eventPayload = {
-        ...reqConfig.eventBuilder(
-          acceptingRequest,
-          assignedPriest,
-          user?.id || null
-        ),
-        source_table: reqConfig.table,
-        source_id: acceptingRequest.id,
+        ...reqConfig.eventBuilder(acceptingRequest, assignedPriest, user?.id || null),
+        source_table: reqConfig.table, source_id: acceptingRequest.id,
       };
       if (eventPayload?.event_date) {
         let { error: eventErr } = await restInsert("events", [eventPayload]);
-
-        // If a column doesn't exist (PGRST204), strip optional new columns and retry
         if (eventErr && (eventErr.code === "PGRST204" || eventErr.message?.includes("column"))) {
           const fallback = { ...eventPayload };
-          delete fallback.collaborators;
-          delete fallback.is_public;
+          delete fallback.collaborators; delete fallback.is_public;
           const retry = await restInsert("events", [fallback]);
           eventErr = retry.error;
         }
-
         if (eventErr) {
           console.warn("[AdminDashboard] event creation failed:", eventErr.message);
-          alert(
-            "Request approved, but the calendar event could not be created: " +
-              eventErr.message +
-              "\n\nYou can add it manually from the Schedules page."
-          );
+          alert("Request approved, but the calendar event could not be created: " + eventErr.message + "\n\nYou can add it manually from the Schedules page.");
         }
       }
     }
 
-    // 3. Approval email.
     if (acceptingRequest.submitter_email) {
       sendApprovalEmail({
         to: acceptingRequest.submitter_email,
         serviceName: reqTab.toLowerCase(),
         eventDate: formatDate(
-          acceptingRequest.preferred_date ||
-            acceptingRequest.wedding_date ||
-            acceptingRequest.date_of_confirmation ||
-            acceptingRequest.date_of_communion ||
-            acceptingRequest.start_date ||
-            acceptingRequest.request_date
+          acceptingRequest.preferred_date || acceptingRequest.wedding_date ||
+          acceptingRequest.date_of_confirmation || acceptingRequest.date_of_communion ||
+          acceptingRequest.start_date || acceptingRequest.request_date
         ),
-        eventTime:
-          acceptingRequest.preferred_time ||
-          acceptingRequest.wedding_time ||
-          acceptingRequest.time_of_confirmation ||
-          acceptingRequest.time_of_communion ||
-          acceptingRequest.start_time ||
-          "",
+        eventTime: acceptingRequest.preferred_time || acceptingRequest.wedding_time ||
+          acceptingRequest.time_of_confirmation || acceptingRequest.time_of_communion ||
+          acceptingRequest.start_time || "",
         location: acceptingRequest.location || "Parish",
         priestName: assignedPriest,
       });
     }
 
-    // 4. Sync local state.
+    if (acceptingRequest.user_id) {
+      await supabase.rpc('notify_parishioner', {
+        target_user_id: acceptingRequest.user_id,
+        notif_title: `Your ${reqTab} Request — Fully Approved! ✓`,
+        notif_message: `Great news! Your request has been fully approved by the parish admin. Please coordinate with the parish office for next steps.`,
+        notif_link: '/profile',
+        p_source_id: acceptingRequest.id,
+        p_source_table: reqConfig.table,
+      });
+    }
+
     setRequests((prev) => ({
       ...prev,
-      [reqTab]: prev[reqTab].map((r) =>
-        r.id === acceptingRequest.id ? { ...r, status: "Approved" } : r
-      ),
+      [reqTab]: prev[reqTab].map((r) => r.id === acceptingRequest.id ? { ...r, status: "Approved" } : r),
     }));
     closeAcceptModal();
   };
 
-  // ----------------------- Reject handlers -----------------------
-  const openRejectModal = (req) => {
-    setRejectingRequest(req);
-    setRejectionReason("");
-  };
-  const closeRejectModal = () => {
-    setRejectingRequest(null);
-    setRejectionReason("");
-  };
+  // ── Reject handlers ──────────────────────────────────────────────────────
+  const openRejectModal  = (req) => { setRejectingRequest(req); setRejectionReason(""); };
+  const closeRejectModal = () => { setRejectingRequest(null); setRejectionReason(""); };
 
   const confirmReject = async () => {
     if (!rejectingRequest) return;
-    if (!rejectionReason.trim()) {
-      alert("Please provide a reason for rejection.");
-      return;
-    }
-    const reqTab = resolveTabFor(rejectingRequest);
+    if (!rejectionReason.trim()) { alert("Please provide a reason for rejection."); return; }
+    const reqTab    = resolveTabFor(rejectingRequest);
     const reqConfig = resolveConfigFor(rejectingRequest);
-    const { error } = await restUpdate(
-      reqConfig.table,
-      { id: rejectingRequest.id },
-      { status: "Rejected", rejection_remarks: rejectionReason }
-    );
-    if (error) {
-      alert("Error rejecting request: " + error.message);
-      return;
+    const { error } = await restUpdate(reqConfig.table, { id: rejectingRequest.id }, { status: "Rejected", rejection_remarks: rejectionReason });
+    if (error) { alert("Error rejecting request: " + error.message); return; }
+
+    if (rejectingRequest.user_id) {
+      await supabase.rpc('notify_parishioner', {
+        target_user_id: rejectingRequest.user_id,
+        notif_title: `Your ${reqTab} Request — Not Approved`,
+        notif_message: `We regret to inform you that your request was not approved by the parish admin. Reason: ${rejectionReason}. Please contact the parish office for more information.`,
+        notif_link: '/profile',
+        p_source_id: rejectingRequest.id,
+        p_source_table: reqConfig.table,
+      });
     }
+
     setRequests((prev) => ({
       ...prev,
       [reqTab]: prev[reqTab].map((r) =>
-        r.id === rejectingRequest.id
-          ? { ...r, status: "Rejected", rejection_remarks: rejectionReason }
-          : r
+        r.id === rejectingRequest.id ? { ...r, status: "Rejected", rejection_remarks: rejectionReason } : r
       ),
     }));
     closeRejectModal();
   };
 
-  // ----------------------- Cancel handlers -----------------------
-  const openCancelModal = (req) => {
-    setCancellingRequest(req);
-    setCancelReason("");
-  };
-  const closeCancelModal = () => {
-    setCancellingRequest(null);
-    setCancelReason("");
-    setCancelSubmitting(false);
-  };
+  // ── Cancel handlers ──────────────────────────────────────────────────────
+  const openCancelModal  = (req) => { setCancellingRequest(req); setCancelReason(""); };
+  const closeCancelModal = () => { setCancellingRequest(null); setCancelReason(""); setCancelSubmitting(false); };
 
   const confirmCancel = async () => {
     if (!cancellingRequest) return;
-    if (!cancelReason.trim()) {
-      alert("Please provide a reason for cancellation.");
-      return;
-    }
-    const reqTab = resolveTabFor(cancellingRequest);
+    if (!cancelReason.trim()) { alert("Please provide a reason for cancellation."); return; }
+    const reqTab    = resolveTabFor(cancellingRequest);
     const reqConfig = resolveConfigFor(cancellingRequest);
     setCancelSubmitting(true);
-    const { error } = await restUpdate(
-      reqConfig.table,
-      { id: cancellingRequest.id },
-      { status: "Cancelled", rejection_remarks: cancelReason }
-    );
-    if (error) {
-      setCancelSubmitting(false);
-      alert("Error cancelling request: " + error.message);
-      return;
-    }
+    const { error } = await restUpdate(reqConfig.table, { id: cancellingRequest.id }, { status: "Cancelled", rejection_remarks: cancelReason });
+    if (error) { setCancelSubmitting(false); alert("Error cancelling request: " + error.message); return; }
 
-    // Remove the calendar event created at approval time, if any.
-    // 1. Try the source-id link (works for events created after the migration).
-    // 2. Fall back to event_class + event_date + title — covers legacy events
-    //    approved before source_table/source_id existed, or cases where the
-    //    columns were never added.
     if (reqConfig.isSacrament) {
       let removed = 0;
-      const { data: bySource, error: srcErr } = await restDelete("events", {
-        source_table: reqConfig.table,
-        source_id: cancellingRequest.id,
-      });
+      const { data: bySource, error: srcErr } = await restDelete("events", { source_table: reqConfig.table, source_id: cancellingRequest.id });
       if (!srcErr && Array.isArray(bySource)) removed = bySource.length;
-
       if (removed === 0 && reqConfig.eventBuilder) {
         const legacy = reqConfig.eventBuilder(cancellingRequest, "", null);
         if (legacy?.event_date && legacy?.event_class && legacy?.title) {
-          const { data: byHeur, error: heurErr } = await restDelete("events", {
-            event_class: legacy.event_class,
-            event_date: legacy.event_date,
-            title: legacy.title,
-          });
-          if (heurErr) {
-            console.warn("[AdminDashboard] legacy event delete failed:", heurErr.message);
-          } else if (Array.isArray(byHeur)) {
-            removed = byHeur.length;
-          }
+          const { data: byHeur, error: heurErr } = await restDelete("events", { event_class: legacy.event_class, event_date: legacy.event_date, title: legacy.title });
+          if (heurErr) console.warn("[AdminDashboard] legacy event delete failed:", heurErr.message);
+          else if (Array.isArray(byHeur)) removed = byHeur.length;
         }
       }
-
-      if (removed === 0) {
-        console.warn(
-          "[AdminDashboard] no calendar event matched this cancellation",
-          srcErr ? `(source delete error: ${srcErr.message})` : ""
-        );
-      }
+      if (removed === 0) console.warn("[AdminDashboard] no calendar event matched this cancellation", srcErr ? `(source delete error: ${srcErr.message})` : "");
     }
 
     setRequests((prev) => ({
       ...prev,
       [reqTab]: prev[reqTab].map((r) =>
-        r.id === cancellingRequest.id
-          ? { ...r, status: "Cancelled", rejection_remarks: cancelReason }
-          : r
+        r.id === cancellingRequest.id ? { ...r, status: "Cancelled", rejection_remarks: cancelReason } : r
       ),
     }));
     closeCancelModal();
   };
 
-  // ----------------------- Delete handlers -----------------------
-  const openDeleteModal = (req) => setDeletingRequest(req);
-  const closeDeleteModal = () => {
-    setDeletingRequest(null);
-    setDeleteSubmitting(false);
-  };
+  // ── Delete handlers ──────────────────────────────────────────────────────
+  const openDeleteModal  = (req) => setDeletingRequest(req);
+  const closeDeleteModal = () => { setDeletingRequest(null); setDeleteSubmitting(false); };
 
   const confirmDelete = async () => {
     if (!deletingRequest) return;
-    const reqTab = resolveTabFor(deletingRequest);
+    const reqTab    = resolveTabFor(deletingRequest);
     const reqConfig = resolveConfigFor(deletingRequest);
     setDeleteSubmitting(true);
-    const { error } = await restDelete(reqConfig.table, {
-      id: deletingRequest.id,
-    });
-    if (error) {
-      setDeleteSubmitting(false);
-      alert("Error deleting request: " + error.message);
-      return;
-    }
-    setRequests((prev) => ({
-      ...prev,
-      [reqTab]: prev[reqTab].filter((r) => r.id !== deletingRequest.id),
-    }));
+    const { error } = await restDelete(reqConfig.table, { id: deletingRequest.id });
+    if (error) { setDeleteSubmitting(false); alert("Error deleting request: " + error.message); return; }
+    setRequests((prev) => ({ ...prev, [reqTab]: prev[reqTab].filter((r) => r.id !== deletingRequest.id) }));
     closeDeleteModal();
   };
 
-  // ----------------------- Events cancel handler -----------------------
-  const openCancelEventModal = (ev) => {
-    setCancellingEvent(ev);
-    setEventCancelReason("");
-  };
-  const closeCancelEventModal = () => {
-    setCancellingEvent(null);
-    setEventCancelReason("");
-    setCancelEventSubmitting(false);
-  };
+  // ── Event cancel/delete handlers ─────────────────────────────────────────
+  const openCancelEventModal  = (ev) => { setCancellingEvent(ev); setEventCancelReason(""); };
+  const closeCancelEventModal = () => { setCancellingEvent(null); setEventCancelReason(""); setCancelEventSubmitting(false); };
+
   const confirmCancelEvent = async () => {
     if (!cancellingEvent) return;
-    if (!eventCancelReason.trim()) {
-      alert("Please provide a reason for cancellation.");
-      return;
-    }
+    if (!eventCancelReason.trim()) { alert("Please provide a reason for cancellation."); return; }
     setCancelEventSubmitting(true);
-    const { error } = await restUpdate(
-      "events",
-      { id: cancellingEvent.id },
-      { status: "Cancelled", cancellation_remarks: eventCancelReason }
-    );
-    if (error) {
-      setCancelEventSubmitting(false);
-      alert("Error cancelling event: " + error.message);
-      return;
-    }
-    setEvents((prev) =>
-      prev.map((ev) =>
-        ev.id === cancellingEvent.id
-          ? { ...ev, status: "Cancelled", cancellation_remarks: eventCancelReason }
-          : ev
-      )
-    );
+    const { error } = await restUpdate("events", { id: cancellingEvent.id }, { status: "Cancelled", cancellation_remarks: eventCancelReason });
+    if (error) { setCancelEventSubmitting(false); alert("Error cancelling event: " + error.message); return; }
+    setEvents((prev) => prev.map((ev) => ev.id === cancellingEvent.id ? { ...ev, status: "Cancelled", cancellation_remarks: eventCancelReason } : ev));
     bustEventsPageCache();
     closeCancelEventModal();
   };
 
-  // ----------------------- Events delete handler -----------------------
-  const closeDeleteEventModal = () => {
-    setDeletingEvent(null);
-    setDeleteEventSubmitting(false);
-  };
+  const closeDeleteEventModal = () => { setDeletingEvent(null); setDeleteEventSubmitting(false); };
+
   const confirmDeleteEvent = async () => {
     if (!deletingEvent) return;
     setDeleteEventSubmitting(true);
     const { error } = await restDelete("events", { id: deletingEvent.id });
-    if (error) {
-      setDeleteEventSubmitting(false);
-      alert("Error deleting event: " + error.message);
-      return;
-    }
+    if (error) { setDeleteEventSubmitting(false); alert("Error deleting event: " + error.message); return; }
     setEvents((prev) => prev.filter((ev) => ev.id !== deletingEvent.id));
     bustEventsPageCache();
     closeDeleteEventModal();
   };
 
-  // ----------------------- Render -----------------------
+  // ── Render ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -815,36 +666,23 @@ function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-28 md:pt-32 pb-12">
+
         {/* Header */}
         <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-gray-200 pb-4">
           <div>
-            <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] mb-2 uppercase tracking-wide">
-              Parish Dashboard
-            </h1>
+            <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] mb-2 uppercase tracking-wide">Parish Dashboard</h1>
             <p className="text-gray-500 font-serif italic">
-              Welcome back. You are logged in as{" "}
-              <span className="font-semibold not-italic">{user?.email}</span>
+              Welcome back. You are logged in as <span className="font-semibold not-italic">{user?.email}</span>
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link 
-              to="/admin/manage-users" 
-              className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"
-            >
+            <Link to="/admin/manage-users" className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95">
               <span>👤</span> Manage Accounts
             </Link>
-            <button onClick={() => navigate("/admin/schedules")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95">
-              <span>📅</span> Schedules
-            </button>
-            <button onClick={() => navigate("/admin/reports")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95">
-              <span>📊</span> Reports
-            </button>
-            <button onClick={() => navigate("/admin/attendance-list")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95">
-              <span>👥</span> Attendance
-            </button>
-            <button onClick={() => navigate("/admin/qr-generator")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95">
-              <span>🔳</span> QR Codes
-            </button>
+            <button onClick={() => navigate("/admin/schedules")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>📅</span> Schedules</button>
+            <button onClick={() => navigate("/admin/reports")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>📊</span> Reports</button>
+            <button onClick={() => navigate("/admin/attendance-list")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>👥</span> Attendance</button>
+            <button onClick={() => navigate("/admin/qr-generator")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>🔳</span> QR Codes</button>
           </div>
         </div>
 
@@ -852,97 +690,63 @@ function AdminDashboard() {
         <div className="mb-6 bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between relative overflow-hidden">
           <div className="absolute top-0 left-0 w-1 h-full bg-[#B59E74]"></div>
           <div>
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">
-              Total Pending Across All Forms
-            </h3>
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Awaiting Admin Approval (Staff Approved)</h3>
             <p className="text-3xl text-gray-800 font-serif mt-1">{totalPending}</p>
           </div>
           <div className="text-4xl text-[#B59E74]/30">📋</div>
         </div>
 
-        {/* Stat cards — one per form (8 cards, clickable to jump to tab) */}
+        {/* Stat cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {TAB_NAMES.map((tab) => (
-            <StatCard
-              key={tab}
-              label={`Pending ${tab}`}
-              count={pendingCount(tab)}
-              active={activeTab === tab}
-              onClick={() => {
-                setActiveTab(tab);
-                setActiveSubTab("Pending");
-              }}
-            />
+            <StatCard key={tab} label={`Pending ${tab}`} count={pendingCount(tab)} active={activeTab === tab}
+              onClick={() => { setActiveTab(tab); setActiveSubTab("Staff Approved"); }} />
           ))}
         </div>
 
-        {/* Tabs container */}
+        {/* Requests table container */}
         <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px]">
-          {/* Request-type selector (dropdown) */}
+
+          {/* Service selector header */}
           <div className="border-b border-gray-100 bg-gray-50/50 px-4 sm:px-6 py-4 md:py-5 flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
             <div className="flex items-center gap-3 w-full md:w-auto">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                Viewing:
-              </label>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Viewing:</label>
               <div className="relative flex-1 md:flex-none">
-                <select
-                  value={activeTab}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setActiveTab(next);
-                    setActiveSubTab(next === ALL_SERVICES ? "All" : "Pending");
-                  }}
+                <select value={activeTab}
+                  onChange={(e) => { const next = e.target.value; setActiveTab(next); setActiveSubTab(next === ALL_SERVICES ? "All" : "Pending"); }}
                   className="appearance-none w-full pl-4 pr-12 py-3 rounded-xl bg-white border-2 border-[#B59E74]/40 hover:border-[#B59E74] focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-[#B59E74] cursor-pointer transition-colors md:min-w-[260px]"
                 >
-                  <option value={ALL_SERVICES}>
-                    {ALL_SERVICES}{totalPending > 0 ? `  •  ${totalPending} pending` : ""}
-                  </option>
+                  <option value={ALL_SERVICES}>{ALL_SERVICES}{totalPending > 0 ? `  •  ${totalPending} pending` : ""}</option>
                   {TAB_NAMES.map((tab) => {
                     const count = pendingCount(tab);
-                    return (
-                      <option key={tab} value={tab}>
-                        {tab}{count > 0 ? `  •  ${count} pending` : ""}
-                      </option>
-                    );
+                    return <option key={tab} value={tab}>{tab}{count > 0 ? `  •  ${count} pending` : ""}</option>;
                   })}
                 </select>
-                {/* Custom chevron */}
-                <svg
-                  className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B59E74]"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
+                <svg className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B59E74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                 </svg>
               </div>
             </div>
-
             {(() => {
               const badgeCount = isAllServices ? totalPending : pendingCount(activeTab);
               if (badgeCount === 0) return null;
               return (
                 <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-red-600">
-                  <span className="inline-flex items-center justify-center w-6 h-6 text-[11px] text-white bg-red-500 rounded-full">
-                    {badgeCount}
-                  </span>
-                  pending request{badgeCount === 1 ? "" : "s"} {isAllServices ? "across all services" : "in this tab"}
+                  <span className="inline-flex items-center justify-center w-6 h-6 text-[11px] text-white bg-red-500 rounded-full">{badgeCount}</span>
+                  staff-approved request{badgeCount === 1 ? "" : "s"} awaiting your approval
                 </span>
               );
             })()}
           </div>
 
           <div className="p-4 sm:p-6 md:p-8">
-            {/* Sub-tabs — dropdown on mobile, original pill row on sm+ */}
+
+            {/* Sub-tabs */}
             <div className="mb-6 md:mb-8">
-              {/* Mobile dropdown */}
               <div className="relative sm:hidden">
-                <select
-                  value={activeSubTab}
-                  onChange={(e) => setActiveSubTab(e.target.value)}
-                  className="appearance-none w-full pl-4 pr-10 py-3 rounded-xl bg-[#F6F5ED] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-gray-700 cursor-pointer"
-                >
-                  {["All", "Pending", "Approved", "Rejected", "Cancelled"].map((sub) => (
+                <select value={activeSubTab} onChange={(e) => setActiveSubTab(e.target.value)}
+                  className="appearance-none w-full pl-4 pr-10 py-3 rounded-xl bg-[#F6F5ED] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-gray-700 cursor-pointer">
+                  {["All", "Pending", "Staff Approved", "Approved", "Rejected", "Cancelled"].map((sub) => (
                     <option key={sub} value={sub}>{sub} Requests</option>
                   ))}
                 </select>
@@ -950,180 +754,101 @@ function AdminDashboard() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                 </svg>
               </div>
-              {/* Desktop pill tabs */}
               <div className="hidden sm:flex justify-center gap-1 sm:gap-3 p-1.5 sm:p-2 bg-[#F6F5ED] rounded-full w-full sm:w-fit mx-auto border border-gray-100">
-                {["All", "Pending", "Approved", "Rejected", "Cancelled"].map((sub) => (
-                  <button
-                    key={sub}
-                    onClick={() => setActiveSubTab(sub)}
-                    className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${
-                      activeSubTab === sub
-                        ? "bg-[#B59E74] text-white shadow-md"
-                        : "text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
+                {["All", "Pending", "Staff Approved", "Approved", "Rejected", "Cancelled"].map((sub) => (
+                  <button key={sub} onClick={() => setActiveSubTab(sub)}
+                    className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${activeSubTab === sub ? "bg-[#B59E74] text-white shadow-md" : "text-gray-500 hover:text-gray-700"}`}>
                     {sub} Requests
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Search + page size */}
+            {/* Search + sort + page size */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
               <div className="relative flex-1">
-                <svg
-                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
+                <svg className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.85-5.4a7.25 7.25 0 11-14.5 0 7.25 7.25 0 0114.5 0z" />
                 </svg>
-                <input
-                  type="search"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={isAllServices ? "Search all services…" : `Search ${activeTab.toLowerCase()}…`}
-                  className="w-full pl-11 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm transition-colors"
-                />
+                  className="w-full pl-11 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm transition-colors" />
                 {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-                    aria-label="Clear search"
-                  >
-                    ✕
-                  </button>
+                  <button type="button" onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors" aria-label="Clear search">✕</button>
                 )}
               </div>
               <div className="flex items-center gap-2 sm:gap-3">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                  Sort
-                </label>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Sort</label>
                 <div className="relative">
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors"
-                  >
+                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+                    className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors">
                     <option value="date_desc">Date (newest first)</option>
                     <option value="date_asc">Date (oldest first)</option>
                     <option value="status">Status</option>
                     <option value="title">Title (A–Z)</option>
                   </select>
-                  <svg
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
+                  <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                   </svg>
                 </div>
               </div>
               <div className="flex items-center gap-2 sm:gap-3">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                  Show
-                </label>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Show</label>
                 <div className="relative">
-                  <select
-                    value={pageSize}
-                    onChange={(e) => setPageSize(Math.min(25, Number(e.target.value) || 10))}
-                    className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors"
-                  >
-                    {[5, 10, 25].map((n) => (
-                      <option key={n} value={n}>{n} rows</option>
-                    ))}
+                  <select value={pageSize} onChange={(e) => setPageSize(Math.min(25, Number(e.target.value) || 10))}
+                    className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors">
+                    {[5, 10, 25].map((n) => <option key={n} value={n}>{n} rows</option>)}
                   </select>
-                  <svg
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
+                  <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                   </svg>
                 </div>
               </div>
             </div>
 
-            {/* Table (desktop) */}
+            {/* Desktop table */}
             <div className="hidden md:block overflow-x-auto animate-fade-in">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-widest">
-                    {activeConfig.columns.map((col) => (
-                      <th key={col.label} className="p-4 font-bold">
-                        {col.label}
-                      </th>
-                    ))}
+                    {activeConfig.columns.map((col) => <th key={col.label} className="p-4 font-bold">{col.label}</th>)}
                     <th className="p-4 font-bold">Status</th>
                     <th className="p-4 font-bold text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pageData.map((req) => (
+                    // ✨ NEW: id for DOM targeting, dynamic highlight classes
                     <tr
+                      id={`request-row-${req.id}`}
                       key={`${req._tab || activeTab}:${req.id}`}
-                      className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                      className={`border-b transition-all duration-500
+                        ${highlightId === req.id
+                          ? "bg-[#B59E74]/10 border-[#B59E74]/40"
+                          : "border-gray-50 hover:bg-gray-50"
+                        }`}
                     >
                       {activeConfig.columns.map((col, i) => (
-                        <td
-                          key={col.label}
-                          className={`p-4 text-sm ${
-                            i === 0
-                              ? "font-serif text-gray-800 font-medium"
-                              : "text-gray-600"
-                          }`}
-                        >
+                        <td key={col.label} className={`p-4 text-sm ${i === 0 ? "font-serif text-gray-800 font-medium" : "text-gray-600"}`}>
                           {col.value(req) || "—"}
                         </td>
                       ))}
-                      <td className="p-4">
-                        <StatusBadge status={req.status} />
-                      </td>
+                      <td className="p-4"><StatusBadge status={req.status} /></td>
                       <td className="p-4 text-right">
                         <div className="flex justify-end gap-2">
-                          {req.status === "Pending" && (
+                          {req.status === "Staff Approved" && (
                             <>
-                              <button
-                                onClick={() => openAcceptModal(req)}
-                                className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-600 hover:text-white transition-all"
-                                title="Accept"
-                              >
-                                <span className="font-bold">✓</span>
-                              </button>
-                              <button
-                                onClick={() => openRejectModal(req)}
-                                className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all"
-                                title="Reject"
-                              >
-                                <span className="font-bold">✕</span>
-                              </button>
+                              <button onClick={() => openAcceptModal(req)} className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-600 hover:text-white transition-all" title="Accept"><span className="font-bold">✓</span></button>
+                              <button onClick={() => openRejectModal(req)} className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all" title="Reject"><span className="font-bold">✕</span></button>
                             </>
                           )}
-                          <button
-                            onClick={() => setSelectedRequest(req)}
-                            className="text-[#B59E74] hover:text-[#9c8760] text-xs font-bold uppercase tracking-widest px-3 py-2 rounded hover:bg-[#B59E74]/10 transition-colors"
-                          >
-                            View
-                          </button>
+                          <button onClick={() => setSelectedRequest(req)} className="text-[#B59E74] hover:text-[#9c8760] text-xs font-bold uppercase tracking-widest px-3 py-2 rounded hover:bg-[#B59E74]/10 transition-colors">View</button>
                           {req.status === "Approved" && (
-                            <button
-                              onClick={() => openCancelModal(req)}
-                              className="text-orange-600 hover:text-white hover:bg-orange-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-orange-50 transition-colors"
-                            >
-                              Cancel
-                            </button>
+                            <button onClick={() => openCancelModal(req)} className="text-orange-600 hover:text-white hover:bg-orange-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-orange-50 transition-colors">Cancel</button>
                           )}
                           {(req.status === "Cancelled" || req.status === "Rejected") && (
-                            <button
-                              onClick={() => openDeleteModal(req)}
-                              className="text-red-600 hover:text-white hover:bg-red-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-red-50 transition-colors"
-                            >
-                              Delete
-                            </button>
+                            <button onClick={() => openDeleteModal(req)} className="text-red-600 hover:text-white hover:bg-red-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-red-50 transition-colors">Delete</button>
                           )}
                         </div>
                       </td>
@@ -1133,78 +858,49 @@ function AdminDashboard() {
               </table>
             </div>
 
-            {/* Card list (mobile) */}
+            {/* Mobile cards */}
             <div className="md:hidden space-y-3 animate-fade-in">
               {pageData.map((req) => {
                 const [primaryCol, ...restCols] = activeConfig.columns;
                 return (
+                  // ✨ NEW: id for DOM targeting, dynamic highlight classes
                   <div
+                    id={`request-row-${req.id}`}
                     key={`${req._tab || activeTab}:${req.id}`}
-                    className="border border-gray-100 rounded-2xl p-4 bg-white shadow-sm"
+                    className={`border rounded-2xl p-4 shadow-sm transition-all duration-500
+                      ${highlightId === req.id
+                        ? "border-[#B59E74] bg-[#B59E74]/10 shadow-[#B59E74]/20"
+                        : "border-gray-100 bg-white"
+                      }`}
                   >
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div className="min-w-0 flex-1">
-                        <p className="text-[10px] uppercase tracking-widest text-gray-400">
-                          {primaryCol.label}
-                        </p>
-                        <p className="font-serif text-gray-800 font-medium text-base break-words">
-                          {primaryCol.value(req) || "—"}
-                        </p>
+                        <p className="text-[10px] uppercase tracking-widest text-gray-400">{primaryCol.label}</p>
+                        <p className="font-serif text-gray-800 font-medium text-base break-words">{primaryCol.value(req) || "—"}</p>
                       </div>
                       <StatusBadge status={req.status} />
                     </div>
-
                     <div className="grid grid-cols-2 gap-x-3 gap-y-2 mb-4">
                       {restCols.map((col) => (
                         <div key={col.label} className="min-w-0">
-                          <p className="text-[10px] uppercase tracking-widest text-gray-400">
-                            {col.label}
-                          </p>
-                          <p className="text-sm text-gray-700 break-words">
-                            {col.value(req) || "—"}
-                          </p>
+                          <p className="text-[10px] uppercase tracking-widest text-gray-400">{col.label}</p>
+                          <p className="text-sm text-gray-700 break-words">{col.value(req) || "—"}</p>
                         </div>
                       ))}
                     </div>
-
                     <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-50">
-                      {req.status === "Pending" && (
+                      {req.status === "Staff Approved" && (
                         <>
-                          <button
-                            onClick={() => openAcceptModal(req)}
-                            className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
-                          >
-                            ✓ Accept
-                          </button>
-                          <button
-                            onClick={() => openRejectModal(req)}
-                            className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
-                          >
-                            ✕ Reject
-                          </button>
+                          <button onClick={() => openAcceptModal(req)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">✓ Accept</button>
+                          <button onClick={() => openRejectModal(req)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">✕ Reject</button>
                         </>
                       )}
-                      <button
-                        onClick={() => setSelectedRequest(req)}
-                        className="flex-1 min-w-[100px] py-2.5 rounded-lg border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74]/10 text-xs font-bold uppercase tracking-widest transition-all"
-                      >
-                        View
-                      </button>
+                      <button onClick={() => setSelectedRequest(req)} className="flex-1 min-w-[100px] py-2.5 rounded-lg border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74]/10 text-xs font-bold uppercase tracking-widest transition-all">View</button>
                       {req.status === "Approved" && (
-                        <button
-                          onClick={() => openCancelModal(req)}
-                          className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
-                        >
-                          Cancel
-                        </button>
+                        <button onClick={() => openCancelModal(req)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">Cancel</button>
                       )}
                       {(req.status === "Cancelled" || req.status === "Rejected") && (
-                        <button
-                          onClick={() => openDeleteModal(req)}
-                          className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
-                        >
-                          Delete
-                        </button>
+                        <button onClick={() => openDeleteModal(req)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">Delete</button>
                       )}
                     </div>
                   </div>
@@ -1215,109 +911,51 @@ function AdminDashboard() {
             {totalRecords === 0 && (
               <div className="text-center py-16 md:py-20 text-gray-400 italic font-serif">
                 {trimmedQuery
-                  ? `No requests match "${searchQuery.trim()}"${
-                      activeSubTab === "All" ? "" : ` in ${activeSubTab.toLowerCase()}`
-                    }.`
-                  : activeSubTab === "All"
-                  ? "No requests found."
-                  : `No ${activeSubTab.toLowerCase()} requests found.`}
+                  ? `No requests match "${searchQuery.trim()}"${activeSubTab === "All" ? "" : ` in ${activeSubTab.toLowerCase()}`}.`
+                  : activeSubTab === "All" ? "No requests found." : `No ${activeSubTab.toLowerCase()} requests found.`}
               </div>
             )}
 
-            {/* Pagination footer */}
             {totalRecords > 0 && (
               <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <p className="text-xs text-gray-500 font-medium tracking-wide">
-                  Showing <span className="font-bold text-gray-700">{pageStart + 1}</span>–
-                  <span className="font-bold text-gray-700">{pageEnd}</span> of{" "}
-                  <span className="font-bold text-gray-700">{totalRecords}</span>
-                  {trimmedQuery ? " (filtered)" : ""}
+                  Showing <span className="font-bold text-gray-700">{pageStart + 1}</span>–<span className="font-bold text-gray-700">{pageEnd}</span> of <span className="font-bold text-gray-700">{totalRecords}</span>{trimmedQuery ? " (filtered)" : ""}
                 </p>
                 <div className="flex items-center justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage(1)}
-                    disabled={safePage === 1}
-                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    aria-label="First page"
-                  >
-                    «
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={safePage === 1}
-                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Prev
-                  </button>
-                  <span className="px-3 py-2 text-xs font-bold tracking-widest text-gray-700">
-                    Page {safePage} / {totalPages}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={safePage === totalPages}
-                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Next
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage(totalPages)}
-                    disabled={safePage === totalPages}
-                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    aria-label="Last page"
-                  >
-                    »
-                  </button>
+                  <button type="button" onClick={() => setCurrentPage(1)} disabled={safePage === 1} className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="First page">«</button>
+                  <button type="button" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={safePage === 1} className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Prev</button>
+                  <span className="px-3 py-2 text-xs font-bold tracking-widest text-gray-700">Page {safePage} / {totalPages}</span>
+                  <button type="button" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Next</button>
+                  <button type="button" onClick={() => setCurrentPage(totalPages)} disabled={safePage === totalPages} className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Last page">»</button>
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* ============================================================ */}
-        {/* PARISH EVENTS TABLE (events created via the events page) */}
-        {/* ============================================================ */}
+        {/* ── Parish Events Table ─────────────────────────────────────────── */}
         <div className="mt-8 bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden min-h-[400px]">
           <div className="border-b border-gray-100 bg-gray-50/50 px-4 sm:px-6 py-4 md:py-5 flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
             <div className="flex items-center gap-3 min-w-0">
               <span className="text-2xl">📅</span>
               <div className="min-w-0">
-                <h2 className="text-base md:text-lg font-serif text-[#B59E74] font-medium uppercase tracking-widest leading-tight">
-                  Parish Events
-                </h2>
-                <p className="text-xs text-gray-500 italic truncate">
-                  Events scheduled by ministries on the parish calendar.
-                </p>
+                <h2 className="text-base md:text-lg font-serif text-[#B59E74] font-medium uppercase tracking-widest leading-tight">Parish Events</h2>
+                <p className="text-xs text-gray-500 italic truncate">Events scheduled by ministries on the parish calendar.</p>
               </div>
             </div>
             <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#B59E74]">
-              <span className="inline-flex items-center justify-center w-6 h-6 text-[11px] text-white bg-[#B59E74] rounded-full">
-                {ministryEvents.length}
-              </span>
+              <span className="inline-flex items-center justify-center w-6 h-6 text-[11px] text-white bg-[#B59E74] rounded-full">{ministryEvents.length}</span>
               total event{ministryEvents.length === 1 ? "" : "s"}
             </span>
           </div>
 
           <div className="p-4 sm:p-6 md:p-8">
-            {/* Filter pills (All / Upcoming / Past / Cancelled) */}
             <div className="flex justify-center gap-1 sm:gap-3 mb-6 md:mb-8 p-1.5 sm:p-2 bg-[#F6F5ED] rounded-full w-full sm:w-fit mx-auto border border-gray-100">
               {["All", "Upcoming", "Past", "Cancelled"].map((f) => {
                 const active = eventsFilter === f;
-                const activeCls =
-                  f === "Cancelled"
-                    ? "bg-orange-600 text-white shadow-md"
-                    : "bg-[#B59E74] text-white shadow-md";
+                const activeCls = f === "Cancelled" ? "bg-orange-600 text-white shadow-md" : "bg-[#B59E74] text-white shadow-md";
                 return (
-                  <button
-                    key={f}
-                    onClick={() => setEventsFilter(f)}
-                    className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${
-                      active ? activeCls : "text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
+                  <button key={f} onClick={() => setEventsFilter(f)} className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${active ? activeCls : "text-gray-500 hover:text-gray-700"}`}>
                     <span className="sm:hidden">{f}</span>
                     <span className="hidden sm:inline">{f} Events</span>
                   </button>
@@ -1325,150 +963,64 @@ function AdminDashboard() {
               })}
             </div>
 
-            {/* Search + Sort + Show */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
               <div className="relative flex-1">
-                <svg
-                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
+                <svg className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.85-5.4a7.25 7.25 0 11-14.5 0 7.25 7.25 0 0114.5 0z" />
                 </svg>
-                <input
-                  type="search"
-                  value={eventsSearchQuery}
-                  onChange={(e) => setEventsSearchQuery(e.target.value)}
-                  placeholder="Search events…"
-                  className="w-full pl-11 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm transition-colors"
-                />
-                {eventsSearchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setEventsSearchQuery("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-                    aria-label="Clear search"
-                  >
-                    ✕
-                  </button>
-                )}
+                <input type="search" value={eventsSearchQuery} onChange={(e) => setEventsSearchQuery(e.target.value)} placeholder="Search events…" className="w-full pl-11 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm transition-colors" />
+                {eventsSearchQuery && <button type="button" onClick={() => setEventsSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors" aria-label="Clear search">✕</button>}
               </div>
               <div className="flex items-center gap-2 sm:gap-3">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                  Sort
-                </label>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Sort</label>
                 <div className="relative">
-                  <select
-                    value={eventsSortBy}
-                    onChange={(e) => setEventsSortBy(e.target.value)}
-                    className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors"
-                  >
+                  <select value={eventsSortBy} onChange={(e) => setEventsSortBy(e.target.value)} className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors">
                     <option value="date_desc">Date (newest first)</option>
                     <option value="date_asc">Date (oldest first)</option>
                     <option value="title">Title (A–Z)</option>
                     <option value="class">Class</option>
                   </select>
-                  <svg
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                  </svg>
+                  <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
                 </div>
               </div>
               <div className="flex items-center gap-2 sm:gap-3">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                  Show
-                </label>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Show</label>
                 <div className="relative">
-                  <select
-                    value={eventsPageSize}
-                    onChange={(e) => setEventsPageSize(Math.min(25, Number(e.target.value) || 10))}
-                    className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors"
-                  >
-                    {[5, 10, 25].map((n) => (
-                      <option key={n} value={n}>{n} rows</option>
-                    ))}
+                  <select value={eventsPageSize} onChange={(e) => setEventsPageSize(Math.min(25, Number(e.target.value) || 10))} className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors">
+                    {[5, 10, 25].map((n) => <option key={n} value={n}>{n} rows</option>)}
                   </select>
-                  <svg
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                  </svg>
+                  <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
                 </div>
               </div>
             </div>
 
-            {/* Loading state */}
-            {eventsLoading && (
-              <div className="flex justify-center py-12">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#B59E74]"></div>
-              </div>
-            )}
+            {eventsLoading && <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#B59E74]"></div></div>}
 
-            {/* Desktop table */}
             {!eventsLoading && (
               <div className="hidden md:block overflow-x-auto animate-fade-in">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-widest">
-                      <th className="p-4 font-bold">Title</th>
-                      <th className="p-4 font-bold">Date</th>
-                      <th className="p-4 font-bold">Time</th>
-                      <th className="p-4 font-bold">Class</th>
-                      <th className="p-4 font-bold">Hosted By</th>
-                      <th className="p-4 font-bold">Location</th>
-                      <th className="p-4 font-bold">Status</th>
-                      <th className="p-4 font-bold text-right">Actions</th>
+                      <th className="p-4 font-bold">Title</th><th className="p-4 font-bold">Date</th><th className="p-4 font-bold">Time</th>
+                      <th className="p-4 font-bold">Class</th><th className="p-4 font-bold">Hosted By</th><th className="p-4 font-bold">Location</th>
+                      <th className="p-4 font-bold">Status</th><th className="p-4 font-bold text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {eventsPageData.map((ev) => (
-                      <tr
-                        key={ev.id}
-                        className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
-                      >
-                        <td className="p-4 text-sm font-serif text-gray-800 font-medium">
-                          {ev.title || "—"}
-                        </td>
+                      <tr key={ev.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                        <td className="p-4 text-sm font-serif text-gray-800 font-medium">{ev.title || "—"}</td>
                         <td className="p-4 text-sm text-gray-600">{formatDate(ev.event_date)}</td>
                         <td className="p-4 text-sm text-gray-600">{ev.event_time || "—"}</td>
                         <td className="p-4 text-sm text-gray-600">{ev.event_class || "—"}</td>
                         <td className="p-4 text-sm text-gray-600">{ev.priest_name || "—"}</td>
                         <td className="p-4 text-sm text-gray-600">{ev.location || "—"}</td>
-                        <td className="p-4">
-                          <StatusBadge status={ev.status || "Active"} />
-                        </td>
+                        <td className="p-4"><StatusBadge status={ev.status || "Active"} /></td>
                         <td className="p-4 text-right">
                           <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => setSelectedEvent(ev)}
-                              className="text-[#B59E74] hover:text-[#9c8760] text-xs font-bold uppercase tracking-widest px-3 py-2 rounded hover:bg-[#B59E74]/10 transition-colors"
-                            >
-                              View
-                            </button>
-                            {(ev.status || "Active") !== "Cancelled" && (
-                              <button
-                                onClick={() => openCancelEventModal(ev)}
-                                className="text-orange-600 hover:text-white hover:bg-orange-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-orange-50 transition-colors"
-                              >
-                                Cancel
-                              </button>
-                            )}
-                            {(ev.status || "Active") === "Cancelled" && (
-                              <button
-                                onClick={() => setDeletingEvent(ev)}
-                                className="text-red-600 hover:text-white hover:bg-red-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-red-50 transition-colors"
-                              >
-                                Delete
-                              </button>
-                            )}
+                            <button onClick={() => setSelectedEvent(ev)} className="text-[#B59E74] hover:text-[#9c8760] text-xs font-bold uppercase tracking-widest px-3 py-2 rounded hover:bg-[#B59E74]/10 transition-colors">View</button>
+                            {(ev.status || "Active") !== "Cancelled" && <button onClick={() => openCancelEventModal(ev)} className="text-orange-600 hover:text-white hover:bg-orange-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-orange-50 transition-colors">Cancel</button>}
+                            {(ev.status || "Active") === "Cancelled" && <button onClick={() => setDeletingEvent(ev)} className="text-red-600 hover:text-white hover:bg-red-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-red-50 transition-colors">Delete</button>}
                           </div>
                         </td>
                       </tr>
@@ -1478,136 +1030,48 @@ function AdminDashboard() {
               </div>
             )}
 
-            {/* Mobile cards */}
             {!eventsLoading && (
               <div className="md:hidden space-y-3 animate-fade-in">
                 {eventsPageData.map((ev) => (
-                  <div
-                    key={ev.id}
-                    className="border border-gray-100 rounded-2xl p-4 bg-white shadow-sm"
-                  >
+                  <div key={ev.id} className="border border-gray-100 rounded-2xl p-4 bg-white shadow-sm">
                     <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[10px] uppercase tracking-widest text-gray-400">Title</p>
-                        <p className="font-serif text-gray-800 font-medium text-base break-words">
-                          {ev.title || "—"}
-                        </p>
-                      </div>
+                      <div className="min-w-0 flex-1"><p className="text-[10px] uppercase tracking-widest text-gray-400">Title</p><p className="font-serif text-gray-800 font-medium text-base break-words">{ev.title || "—"}</p></div>
                       <StatusBadge status={ev.status || "Active"} />
                     </div>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-2 mb-4">
-                      <div className="min-w-0">
-                        <p className="text-[10px] uppercase tracking-widest text-gray-400">Date</p>
-                        <p className="text-sm text-gray-700 break-words">{formatDate(ev.event_date) || "—"}</p>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] uppercase tracking-widest text-gray-400">Time</p>
-                        <p className="text-sm text-gray-700 break-words">{ev.event_time || "—"}</p>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] uppercase tracking-widest text-gray-400">Class</p>
-                        <p className="text-sm text-gray-700 break-words">{ev.event_class || "—"}</p>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] uppercase tracking-widest text-gray-400">Hosted By</p>
-                        <p className="text-sm text-gray-700 break-words">{ev.priest_name || "—"}</p>
-                      </div>
-                      <div className="col-span-2 min-w-0">
-                        <p className="text-[10px] uppercase tracking-widest text-gray-400">Location</p>
-                        <p className="text-sm text-gray-700 break-words">{ev.location || "—"}</p>
-                      </div>
+                      <div className="min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Date</p><p className="text-sm text-gray-700 break-words">{formatDate(ev.event_date) || "—"}</p></div>
+                      <div className="min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Time</p><p className="text-sm text-gray-700 break-words">{ev.event_time || "—"}</p></div>
+                      <div className="min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Class</p><p className="text-sm text-gray-700 break-words">{ev.event_class || "—"}</p></div>
+                      <div className="min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Hosted By</p><p className="text-sm text-gray-700 break-words">{ev.priest_name || "—"}</p></div>
+                      <div className="col-span-2 min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Location</p><p className="text-sm text-gray-700 break-words">{ev.location || "—"}</p></div>
                     </div>
                     <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-50">
-                      <button
-                        onClick={() => setSelectedEvent(ev)}
-                        className="flex-1 min-w-[100px] py-2.5 rounded-lg border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74]/10 text-xs font-bold uppercase tracking-widest transition-all"
-                      >
-                        View
-                      </button>
-                      {(ev.status || "Active") !== "Cancelled" && (
-                        <button
-                          onClick={() => openCancelEventModal(ev)}
-                          className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                      {(ev.status || "Active") === "Cancelled" && (
-                        <button
-                          onClick={() => setDeletingEvent(ev)}
-                          className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
-                        >
-                          Delete
-                        </button>
-                      )}
+                      <button onClick={() => setSelectedEvent(ev)} className="flex-1 min-w-[100px] py-2.5 rounded-lg border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74]/10 text-xs font-bold uppercase tracking-widest transition-all">View</button>
+                      {(ev.status || "Active") !== "Cancelled" && <button onClick={() => openCancelEventModal(ev)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">Cancel</button>}
+                      {(ev.status || "Active") === "Cancelled" && <button onClick={() => setDeletingEvent(ev)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">Delete</button>}
                     </div>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Empty state */}
             {!eventsLoading && eventsTotal === 0 && (
               <div className="text-center py-16 md:py-20 text-gray-400 italic font-serif">
-                {eventsTrimmedQuery
-                  ? `No events match "${eventsSearchQuery.trim()}".`
-                  : eventsFilter === "Upcoming"
-                  ? "No upcoming events."
-                  : eventsFilter === "Past"
-                  ? "No past events."
-                  : eventsFilter === "Cancelled"
-                  ? "No cancelled events."
-                  : "No events found."}
+                {eventsTrimmedQuery ? `No events match "${eventsSearchQuery.trim()}".` : eventsFilter === "Upcoming" ? "No upcoming events." : eventsFilter === "Past" ? "No past events." : eventsFilter === "Cancelled" ? "No cancelled events." : "No events found."}
               </div>
             )}
 
-            {/* Pagination */}
             {!eventsLoading && eventsTotal > 0 && (
               <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <p className="text-xs text-gray-500 font-medium tracking-wide">
-                  Showing <span className="font-bold text-gray-700">{eventsPageStart + 1}</span>–
-                  <span className="font-bold text-gray-700">{eventsPageEnd}</span> of{" "}
-                  <span className="font-bold text-gray-700">{eventsTotal}</span>
-                  {eventsTrimmedQuery ? " (filtered)" : ""}
+                  Showing <span className="font-bold text-gray-700">{eventsPageStart + 1}</span>–<span className="font-bold text-gray-700">{eventsPageEnd}</span> of <span className="font-bold text-gray-700">{eventsTotal}</span>{eventsTrimmedQuery ? " (filtered)" : ""}
                 </p>
                 <div className="flex items-center justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEventsCurrentPage(1)}
-                    disabled={eventsSafePage === 1}
-                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    aria-label="First page"
-                  >
-                    «
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEventsCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={eventsSafePage === 1}
-                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Prev
-                  </button>
-                  <span className="px-3 py-2 text-xs font-bold tracking-widest text-gray-700">
-                    Page {eventsSafePage} / {eventsTotalPages}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setEventsCurrentPage((p) => Math.min(eventsTotalPages, p + 1))}
-                    disabled={eventsSafePage === eventsTotalPages}
-                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Next
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEventsCurrentPage(eventsTotalPages)}
-                    disabled={eventsSafePage === eventsTotalPages}
-                    className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    aria-label="Last page"
-                  >
-                    »
-                  </button>
+                  <button type="button" onClick={() => setEventsCurrentPage(1)} disabled={eventsSafePage === 1} className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="First page">«</button>
+                  <button type="button" onClick={() => setEventsCurrentPage((p) => Math.max(1, p - 1))} disabled={eventsSafePage === 1} className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Prev</button>
+                  <span className="px-3 py-2 text-xs font-bold tracking-widest text-gray-700">Page {eventsSafePage} / {eventsTotalPages}</span>
+                  <button type="button" onClick={() => setEventsCurrentPage((p) => Math.min(eventsTotalPages, p + 1))} disabled={eventsSafePage === eventsTotalPages} className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Next</button>
+                  <button type="button" onClick={() => setEventsCurrentPage(eventsTotalPages)} disabled={eventsSafePage === eventsTotalPages} className="px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Last page">»</button>
                 </div>
               </div>
             )}
@@ -1615,62 +1079,38 @@ function AdminDashboard() {
         </div>
       </main>
 
-      {/* ACCEPT / ASSIGN PRIEST MODAL */}
+      {/* ── MODALS ─────────────────────────────────────────────────────────── */}
+
+      {/* ACCEPT */}
       {acceptingRequest && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
             <div className="bg-green-50 px-8 py-6 border-b border-green-100">
               <h2 className="text-xl font-serif text-green-800 font-medium uppercase tracking-widest">Approve Request</h2>
-              <p className="text-sm text-green-700 italic">
-                For {resolveConfigFor(acceptingRequest).title(acceptingRequest)}
-              </p>
+              <p className="text-sm text-green-700 italic">For {resolveConfigFor(acceptingRequest).title(acceptingRequest)}</p>
             </div>
             <div className="p-8 space-y-6">
               <div className="bg-gray-50 rounded-2xl p-4 text-sm text-gray-600 space-y-1 border border-gray-100">
-                <div>
-                  <span className="text-gray-400 uppercase text-[10px] tracking-widest mr-2">Tab</span>
-                  {resolveTabFor(acceptingRequest)}
-                </div>
+                <div><span className="text-gray-400 uppercase text-[10px] tracking-widest mr-2">Tab</span>{resolveTabFor(acceptingRequest)}</div>
               </div>
-
               {resolveConfigFor(acceptingRequest).isSacrament && (
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Assign Priest *
-                  </label>
-                  <select
-                    value={assignedPriest}
-                    onChange={(e) => setAssignedPriest(e.target.value)}
-                    className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white"
-                  >
+                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Assign Priest *</label>
+                  <select value={assignedPriest} onChange={(e) => setAssignedPriest(e.target.value)} className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white">
                     <option value="" disabled>Select a priest…</option>
-                    {priestOptions.length > 0 ? (
-                      priestOptions.map((p) => (
-                        <option key={p} value={p}>{p}</option>
-                      ))
-                    ) : (
-                      <option value="" disabled>No priests configured — add one in Manage Users</option>
-                    )}
+                    {priestOptions.length > 0
+                      ? priestOptions.map((p) => <option key={p} value={p}>{p}</option>)
+                      : <option value="" disabled>No priests configured — add one in Manage Users</option>}
                   </select>
-                  <p className="text-xs text-gray-400 italic mt-1">
-                    The selected priest will host this on the parish events calendar.
-                  </p>
+                  <p className="text-xs text-gray-400 italic mt-1">The selected priest will host this on the parish events calendar.</p>
                 </div>
               )}
-
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700 font-serif">
+                ℹ️ The <strong>parishioner</strong> will be notified that their request has been fully approved by the parish admin.
+              </div>
               <div className="flex gap-3">
-                <button
-                  onClick={closeAcceptModal}
-                  disabled={acceptSubmitting}
-                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmAccept}
-                  disabled={acceptSubmitting || (resolveConfigFor(acceptingRequest).isSacrament && !assignedPriest)}
-                  className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <button onClick={closeAcceptModal} disabled={acceptSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Cancel</button>
+                <button onClick={confirmAccept} disabled={acceptSubmitting || (resolveConfigFor(acceptingRequest).isSacrament && !assignedPriest)} className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed">
                   {acceptSubmitting ? "Approving…" : resolveConfigFor(acceptingRequest).isSacrament ? "Approve & Schedule" : "Approve"}
                 </button>
               </div>
@@ -1679,89 +1119,48 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* REJECT MODAL */}
+      {/* REJECT */}
       {rejectingRequest && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
             <div className="bg-red-50 px-8 py-6 border-b border-red-100">
               <h2 className="text-xl font-serif text-red-800 font-medium uppercase tracking-widest">Reject Request</h2>
-              <p className="text-sm text-red-600 italic">
-                For {activeConfig.title(rejectingRequest)}
-              </p>
+              <p className="text-sm text-red-600 italic">For {activeConfig.title(rejectingRequest)}</p>
             </div>
             <div className="p-8 space-y-6">
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                  Reason for Rejection
-                </label>
-                <textarea
-                  className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-red-500 outline-none h-32 text-sm resize-none"
-                  placeholder="Please specify why this request cannot be approved..."
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                />
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Reason for Rejection</label>
+                <textarea className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-red-500 outline-none h-32 text-sm resize-none" placeholder="Please specify why this request cannot be approved..." value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} />
+              </div>
+              <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-xs text-red-700 font-serif">
+                ℹ️ The <strong>parishioner</strong> will be notified of this rejection and the reason provided.
               </div>
               <div className="flex gap-3">
-                <button
-                  onClick={closeRejectModal}
-                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmReject}
-                  className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200"
-                >
-                  Confirm Rejection
-                </button>
+                <button onClick={closeRejectModal} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all">Cancel</button>
+                <button onClick={confirmReject} className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200">Confirm Rejection</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* CANCEL MODAL */}
+      {/* CANCEL */}
       {cancellingRequest && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
             <div className="bg-orange-50 px-6 sm:px-8 py-6 border-b border-orange-100">
-              <h2 className="text-xl font-serif text-orange-800 font-medium uppercase tracking-widest">
-                Cancel Request
-              </h2>
-              <p className="text-sm text-orange-700 italic">
-                For {activeConfig.title(cancellingRequest)}
-              </p>
+              <h2 className="text-xl font-serif text-orange-800 font-medium uppercase tracking-widest">Cancel Request</h2>
+              <p className="text-sm text-orange-700 italic">For {activeConfig.title(cancellingRequest)}</p>
             </div>
             <div className="p-6 sm:p-8 space-y-6">
-              <p className="text-sm text-gray-600">
-                This request is currently <span className="font-bold">Approved</span>. Cancelling will mark it as
-                {" "}<span className="font-bold">Cancelled</span> and record your reason. Any calendar event already created
-                must be removed from the Schedules page manually.
-              </p>
+              <p className="text-sm text-gray-600">This request is currently <span className="font-bold">Approved</span>. Cancelling will mark it as <span className="font-bold">Cancelled</span> and record your reason.</p>
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                  Reason for Cancellation *
-                </label>
-                <textarea
-                  className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none h-32 text-sm resize-none"
-                  placeholder="Please specify why this approved request needs to be cancelled..."
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                />
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Reason for Cancellation *</label>
+                <textarea className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none h-32 text-sm resize-none" placeholder="Please specify why this approved request needs to be cancelled..." value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
               </div>
               <div className="flex gap-3">
-                <button
-                  onClick={closeCancelModal}
-                  disabled={cancelSubmitting}
-                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50"
-                >
-                  Keep Approved
-                </button>
-                <button
-                  onClick={confirmCancel}
-                  disabled={cancelSubmitting || !cancelReason.trim()}
-                  className="flex-1 py-3 rounded-xl bg-orange-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-orange-700 transition-all shadow-lg shadow-orange-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <button onClick={closeCancelModal} disabled={cancelSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Keep Approved</button>
+                <button onClick={confirmCancel} disabled={cancelSubmitting || !cancelReason.trim()} className="flex-1 py-3 rounded-xl bg-orange-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-orange-700 transition-all shadow-lg shadow-orange-200 disabled:opacity-50 disabled:cursor-not-allowed">
                   {cancelSubmitting ? "Cancelling…" : "Confirm Cancellation"}
                 </button>
               </div>
@@ -1770,44 +1169,23 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* DELETE CONFIRMATION MODAL */}
+      {/* DELETE REQUEST */}
       {deletingRequest && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
             <div className="bg-red-50 px-6 sm:px-8 py-6 border-b border-red-100">
-              <h2 className="text-xl font-serif text-red-800 font-medium uppercase tracking-widest">
-                Delete Request
-              </h2>
-              <p className="text-sm text-red-700 italic">
-                For {activeConfig.title(deletingRequest)}
-              </p>
+              <h2 className="text-xl font-serif text-red-800 font-medium uppercase tracking-widest">Delete Request</h2>
+              <p className="text-sm text-red-700 italic">For {activeConfig.title(deletingRequest)}</p>
             </div>
             <div className="p-6 sm:p-8 space-y-6">
               <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-800 space-y-2">
                 <p className="font-bold uppercase tracking-wider text-xs">⚠ Warning — this cannot be undone</p>
-                <p>
-                  This will permanently remove the record from the{" "}
-                  <span className="font-mono font-bold">{resolveConfigFor(deletingRequest)?.table || "database"}</span> table in the database.
-                  All submitted information will be lost.
-                </p>
+                <p>This will permanently remove the record from the <span className="font-mono font-bold">{resolveConfigFor(deletingRequest)?.table || "database"}</span> table.</p>
               </div>
-              <p className="text-sm text-gray-600">
-                If you want to keep a record of this request, leave it in its current list instead. Delete only when you
-                are certain the record is no longer needed.
-              </p>
+              <p className="text-sm text-gray-600">If you want to keep a record of this request, leave it in its current list instead.</p>
               <div className="flex gap-3">
-                <button
-                  onClick={closeDeleteModal}
-                  disabled={deleteSubmitting}
-                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50"
-                >
-                  Keep Record
-                </button>
-                <button
-                  onClick={confirmDelete}
-                  disabled={deleteSubmitting}
-                  className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <button onClick={closeDeleteModal} disabled={deleteSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Keep Record</button>
+                <button onClick={confirmDelete} disabled={deleteSubmitting} className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200 disabled:opacity-50 disabled:cursor-not-allowed">
                   {deleteSubmitting ? "Deleting…" : "Delete Permanently"}
                 </button>
               </div>
@@ -1816,66 +1194,29 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* VIEW DETAILS MODAL */}
-      {selectedRequest && (
-        <DetailsModal
-          request={selectedRequest}
-          tabName={selectedRequest._tab || activeTab}
-          onClose={() => setSelectedRequest(null)}
-        />
-      )}
+      {/* VIEW DETAILS */}
+      {selectedRequest && <DetailsModal request={selectedRequest} tabName={selectedRequest._tab || activeTab} onClose={() => setSelectedRequest(null)} />}
 
-      {/* EVENT DETAILS MODAL */}
-      {selectedEvent && (
-        <DetailsModal
-          request={selectedEvent}
-          tabName="Parish Event"
-          onClose={() => setSelectedEvent(null)}
-        />
-      )}
+      {/* EVENT DETAILS */}
+      {selectedEvent && <DetailsModal request={selectedEvent} tabName="Parish Event" onClose={() => setSelectedEvent(null)} />}
 
-      {/* CANCEL EVENT MODAL */}
+      {/* CANCEL EVENT */}
       {cancellingEvent && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
             <div className="bg-orange-50 px-6 sm:px-8 py-6 border-b border-orange-100">
-              <h2 className="text-xl font-serif text-orange-800 font-medium uppercase tracking-widest">
-                Cancel Event
-              </h2>
-              <p className="text-sm text-orange-700 italic">
-                {cancellingEvent.title || "Untitled event"}
-              </p>
+              <h2 className="text-xl font-serif text-orange-800 font-medium uppercase tracking-widest">Cancel Event</h2>
+              <p className="text-sm text-orange-700 italic">{cancellingEvent.title || "Untitled event"}</p>
             </div>
             <div className="p-6 sm:p-8 space-y-6">
-              <p className="text-sm text-gray-600">
-                Cancelling marks this event as <span className="font-bold">Cancelled</span> on
-                the parish calendar and records your reason. The record stays in the
-                table — you can permanently delete it later.
-              </p>
+              <p className="text-sm text-gray-600">Cancelling marks this event as <span className="font-bold">Cancelled</span> on the parish calendar.</p>
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                  Reason for Cancellation *
-                </label>
-                <textarea
-                  className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none h-32 text-sm resize-none"
-                  placeholder="Please specify why this event is being cancelled..."
-                  value={eventCancelReason}
-                  onChange={(e) => setEventCancelReason(e.target.value)}
-                />
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Reason for Cancellation *</label>
+                <textarea className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none h-32 text-sm resize-none" placeholder="Please specify why this event is being cancelled..." value={eventCancelReason} onChange={(e) => setEventCancelReason(e.target.value)} />
               </div>
               <div className="flex gap-3">
-                <button
-                  onClick={closeCancelEventModal}
-                  disabled={cancelEventSubmitting}
-                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50"
-                >
-                  Keep Active
-                </button>
-                <button
-                  onClick={confirmCancelEvent}
-                  disabled={cancelEventSubmitting || !eventCancelReason.trim()}
-                  className="flex-1 py-3 rounded-xl bg-orange-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-orange-700 transition-all shadow-lg shadow-orange-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <button onClick={closeCancelEventModal} disabled={cancelEventSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Keep Active</button>
+                <button onClick={confirmCancelEvent} disabled={cancelEventSubmitting || !eventCancelReason.trim()} className="flex-1 py-3 rounded-xl bg-orange-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-orange-700 transition-all shadow-lg shadow-orange-200 disabled:opacity-50 disabled:cursor-not-allowed">
                   {cancelEventSubmitting ? "Cancelling…" : "Confirm Cancellation"}
                 </button>
               </div>
@@ -1884,44 +1225,23 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* DELETE EVENT MODAL */}
+      {/* DELETE EVENT */}
       {deletingEvent && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
             <div className="bg-red-50 px-6 sm:px-8 py-6 border-b border-red-100">
-              <h2 className="text-xl font-serif text-red-800 font-medium uppercase tracking-widest">
-                Delete Event
-              </h2>
-              <p className="text-sm text-red-700 italic">
-                {deletingEvent.title || "Untitled event"}
-              </p>
+              <h2 className="text-xl font-serif text-red-800 font-medium uppercase tracking-widest">Delete Event</h2>
+              <p className="text-sm text-red-700 italic">{deletingEvent.title || "Untitled event"}</p>
             </div>
             <div className="p-6 sm:p-8 space-y-6">
               <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-800 space-y-2">
                 <p className="font-bold uppercase tracking-wider text-xs">⚠ Warning — this cannot be undone</p>
-                <p>
-                  This will permanently remove the event from the parish calendar.
-                  Anyone scheduled to attend will no longer see it.
-                </p>
+                <p>This will permanently remove the event from the parish calendar.</p>
               </div>
-              <p className="text-sm text-gray-600">
-                If the event was created from an approved sacrament request, the
-                source request will not be affected — only the calendar entry is
-                removed.
-              </p>
+              <p className="text-sm text-gray-600">If the event was created from an approved sacrament request, the source request will not be affected — only the calendar entry is removed.</p>
               <div className="flex gap-3">
-                <button
-                  onClick={closeDeleteEventModal}
-                  disabled={deleteEventSubmitting}
-                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50"
-                >
-                  Keep Event
-                </button>
-                <button
-                  onClick={confirmDeleteEvent}
-                  disabled={deleteEventSubmitting}
-                  className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <button onClick={closeDeleteEventModal} disabled={deleteEventSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Keep Event</button>
+                <button onClick={confirmDeleteEvent} disabled={deleteEventSubmitting} className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200 disabled:opacity-50 disabled:cursor-not-allowed">
                   {deleteEventSubmitting ? "Deleting…" : "Delete Permanently"}
                 </button>
               </div>
@@ -1938,24 +1258,12 @@ function AdminDashboard() {
 // ----------------------------------------------------------------------------
 function StatCard({ label, count, active, onClick }) {
   return (
-    <button
-      onClick={onClick}
-      type="button"
-      className={`text-left bg-white p-5 rounded-2xl shadow-sm border flex flex-col gap-2 relative overflow-hidden transition-all hover:shadow-md hover:-translate-y-0.5 ${
-        active ? "border-[#B59E74] ring-2 ring-[#B59E74]/20" : "border-gray-100"
-      }`}
-    >
+    <button onClick={onClick} type="button" className={`text-left bg-white p-5 rounded-2xl shadow-sm border flex flex-col gap-2 relative overflow-hidden transition-all hover:shadow-md hover:-translate-y-0.5 ${active ? "border-[#B59E74] ring-2 ring-[#B59E74]/20" : "border-gray-100"}`}>
       <div className="absolute top-0 left-0 w-1 h-full bg-[#B59E74]"></div>
-      <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-widest leading-snug">
-        {label}
-      </h3>
+      <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-widest leading-snug">{label}</h3>
       <div className="flex items-baseline gap-2">
         <p className="text-3xl text-gray-800 font-serif">{count}</p>
-        {count > 0 && (
-          <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">
-            {count === 1 ? "1 new" : `${count} new`}
-          </span>
-        )}
+        {count > 0 && <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">{count === 1 ? "1 new" : `${count} new`}</span>}
       </div>
     </button>
   );
@@ -1963,48 +1271,28 @@ function StatCard({ label, count, active, onClick }) {
 
 function StatusBadge({ status }) {
   const cls =
-    status === "Pending"
-      ? "bg-yellow-100 text-yellow-700"
-      : status === "Approved"
-      ? "bg-green-100 text-green-700"
-      : status === "Active"
-      ? "bg-emerald-100 text-emerald-700"
-      : status === "Cancelled"
-      ? "bg-orange-100 text-orange-700"
-      : "bg-red-100 text-red-700";
+    status === "Pending"        ? "bg-yellow-100 text-yellow-700" :
+    status === "Staff Approved" ? "bg-blue-100 text-blue-700"     :
+    status === "Approved"       ? "bg-green-100 text-green-700"   :
+    status === "Active"         ? "bg-emerald-100 text-emerald-700":
+    status === "Cancelled"      ? "bg-orange-100 text-orange-700" :
+                                  "bg-red-100 text-red-700";
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${cls}`}>
-      {status}
-    </span>
+    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${cls}`}>{status}</span>
   );
 }
 
-// Generic details viewer — shows every non-empty field of the request,
-// pretty-formatted. Skips internal columns (id, timestamps).
-const HIDDEN_FIELDS = new Set([
-  "id",
-  "created_at",
-  "user_id",
-  "declaration_consent",
-  // Helper fields injected by the "All Services" combined view — not real data.
-  "_tab",
-  "_config",
-]);
+const HIDDEN_FIELDS = new Set(["id","created_at","user_id","declaration_consent","_tab","_config"]);
 
 function humanizeKey(key) {
-  return key
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function formatValue(key, val) {
   if (val == null || val === "") return null;
   if (typeof val === "boolean") return val ? "Yes" : "No";
   if (key.match(/_date|_dob$/i) || key === "preferred_date" || key === "wedding_date") {
-    try {
-      const d = new Date(val);
-      if (!isNaN(d)) return d.toLocaleDateString();
-    } catch { /* ignore */ }
+    try { const d = new Date(val); if (!isNaN(d)) return d.toLocaleDateString(); } catch { /* ignore */ }
   }
   return String(val);
 }
@@ -2020,30 +1308,17 @@ function DetailsModal({ request, tabName, onClose }) {
       <div className="bg-white w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">
         <div className="sticky top-0 bg-white px-8 py-6 z-10 flex justify-between items-center border-b border-gray-100">
           <div>
-            <h2 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest">
-              {tabName} Request Details
-            </h2>
-            <h1 className="text-2xl font-serif text-gray-800 mt-1">
-              Request #{String(request.id).slice(0, 8)}
-            </h1>
+            <h2 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest">{tabName} Request Details</h2>
+            <h1 className="text-2xl font-serif text-gray-800 mt-1">Request #{String(request.id).slice(0, 8)}</h1>
           </div>
-          <button
-            onClick={onClose}
-            className="w-10 h-10 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-600"
-          >
-            ✕
-          </button>
+          <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-600">✕</button>
         </div>
         <div className="p-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
             {entries.map(([key, val]) => (
               <div key={key} className={key === "additional_notes" || key === "notes" || key === "request_details" || key === "intention_detail" || key === "rejection_remarks" ? "md:col-span-2" : ""}>
-                <p className="text-xs uppercase tracking-widest text-gray-400">
-                  {humanizeKey(key)}
-                </p>
-                <p className="text-gray-800 font-medium mt-1 whitespace-pre-wrap break-words">
-                  {val}
-                </p>
+                <p className="text-xs uppercase tracking-widest text-gray-400">{humanizeKey(key)}</p>
+                <p className="text-gray-800 font-medium mt-1 whitespace-pre-wrap break-words">{val}</p>
               </div>
             ))}
           </div>
