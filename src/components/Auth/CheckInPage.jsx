@@ -18,8 +18,9 @@ function CheckInPage() {
   const [guestForm, setGuestForm]       = useState({ firstName: "", lastName: "", contactNumber: "" });
 
   // Modal state
-  const [modalType, setModalType]       = useState(null); // null | "success" | "too_far" | "duplicate" | "error"
+  const [modalType, setModalType]       = useState(null); // null | "success" | "too_far" | "duplicate" | "error" | "location_denied"
   const [errorMsg, setErrorMsg]         = useState("");
+  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -43,7 +44,12 @@ function CheckInPage() {
     new Promise((resolve, reject) =>
       navigator.geolocation.getCurrentPosition(
         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        (err) => reject(err)
+        (err) => {
+          if (err.code === 1) reject(new Error("location_denied"));
+          else if (err.code === 2) reject(new Error("location_unavailable"));
+          else reject(new Error("location_timeout"));
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       )
     );
 
@@ -118,8 +124,18 @@ function CheckInPage() {
       setModalType("success");
       setStatus("idle");
     } catch (err) {
-      setModalType("error");
-      setErrorMsg(err.message || "Location access is required to check in.");
+      if (err.message === "location_denied") {
+        setModalType("location_denied");
+      } else if (err.message === "location_unavailable") {
+        setModalType("error");
+        setErrorMsg("Your device could not determine your location. Please move to an open area and try again.");
+      } else if (err.message === "location_timeout") {
+        setModalType("error");
+        setErrorMsg("Location request timed out. Please try again.");
+      } else {
+        setModalType("error");
+        setErrorMsg(err.message || "Something went wrong. Please try again.");
+      }
       setStatus("error");
     }
   };
@@ -157,7 +173,7 @@ function CheckInPage() {
             <>
               <div className="flex flex-col gap-3">
                 <Link
-                  to="/login"
+                  to={`/login?redirect=/check-in/${eventId}`}
                   className="block w-full bg-[#B59E74] text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-lg hover:bg-[#9c8760] transition-all text-sm"
                 >
                   Sign In
@@ -276,7 +292,7 @@ function CheckInPage() {
           )}
 
           <button
-            onClick={handleCheckIn}
+            onClick={() => setShowLocationPrompt(true)}
             disabled={status === "loading"}
             className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-6 rounded-3xl text-xl uppercase tracking-[0.2em] transition-all shadow-xl active:scale-95 disabled:opacity-50"
           >
@@ -288,6 +304,43 @@ function CheckInPage() {
           </div>
         </div>
       </main>
+
+      {/* ── LOCATION PERMISSION PROMPT ── */}
+      {showLocationPrompt && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl text-center p-10 border border-gray-100">
+            <div className="w-16 h-16 mx-auto rounded-full bg-[#F6F5ED] flex items-center justify-center text-3xl mb-5 border-2 border-[#B59E74]">
+              📍
+            </div>
+            <h2 className="text-xl font-serif text-gray-800 uppercase tracking-widest mb-2">
+              Allow Location Access
+            </h2>
+            <p className="text-gray-500 italic text-sm leading-relaxed mb-6">
+              <span className="font-semibold text-gray-700">San Pedro Bautista Parish System</span> needs your location to confirm you are physically present at <span className="font-semibold text-gray-700">{event?.title}</span>.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowLocationPrompt(false);
+                  setModalType("location_denied");
+                }}
+                className="flex-1 py-3 rounded-2xl border-2 border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all"
+              >
+                Don&apos;t Allow
+              </button>
+              <button
+                onClick={() => {
+                  setShowLocationPrompt(false);
+                  handleCheckIn();
+                }}
+                className="flex-1 py-3 rounded-2xl bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-xs uppercase tracking-widest shadow-md transition-all"
+              >
+                Allow
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── SUCCESS MODAL ── */}
       {modalType === "success" && (
@@ -350,6 +403,33 @@ function CheckInPage() {
               className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm"
             >
               OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── LOCATION DENIED MODAL ── */}
+      {modalType === "location_denied" && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl text-center p-10 border border-gray-100">
+            <div className="text-7xl mb-6">📵</div>
+            <h2 className="text-2xl font-serif text-red-600 uppercase tracking-widest mb-3">
+              Location Blocked
+            </h2>
+            <p className="text-gray-500 italic mb-4 leading-relaxed">
+              Location access was denied. You must allow location permission to check in.
+            </p>
+            <div className="bg-gray-50 rounded-2xl p-4 text-left mb-6 space-y-2">
+              <p className="text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">How to fix:</p>
+              <p className="text-xs text-gray-500">1. Tap the <span className="font-semibold text-gray-700">lock 🔒</span> or <span className="font-semibold text-gray-700">info ℹ️</span> icon in your browser address bar.</p>
+              <p className="text-xs text-gray-500">2. Find <span className="font-semibold text-gray-700">Location</span> and set it to <span className="font-semibold text-green-600">Allow</span>.</p>
+              <p className="text-xs text-gray-500">3. Reload the page and tap check-in again.</p>
+            </div>
+            <button
+              onClick={closeModal}
+              className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm"
+            >
+              Got It
             </button>
           </div>
         </div>

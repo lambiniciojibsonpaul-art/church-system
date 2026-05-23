@@ -7,6 +7,7 @@ function AdminQRCenter() {
   const [events, setEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [eventSearch, setEventSearch] = useState("");
 
   useEffect(() => {
     fetchEvents();
@@ -66,6 +67,21 @@ function AdminQRCenter() {
                 Select Event to Generate QR
               </label>
 
+              {/* Search input */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-[#B59E74]">
+                <span className="text-gray-400 text-sm">🔍</span>
+                <input
+                  type="text"
+                  value={eventSearch}
+                  onChange={e => setEventSearch(e.target.value)}
+                  placeholder="Search event..."
+                  className="flex-1 outline-none text-sm text-gray-700 bg-transparent"
+                />
+                {eventSearch && (
+                  <button type="button" onClick={() => setEventSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+                )}
+              </div>
+
               <select
                 className="w-full p-4 rounded-2xl border-2 border-gray-100 focus:border-[#B59E74] outline-none bg-gray-50 text-center font-medium transition-all appearance-none cursor-pointer"
                 value={selectedEvent?.id || ""}
@@ -73,16 +89,19 @@ function AdminQRCenter() {
                   const event = events.find(
                     (ev) => ev.id.toString() === e.target.value
                   );
-                  setSelectedEvent(event);
+                  setSelectedEvent(event || null);
                 }}
+                size={Math.min(6, events.filter(ev => ev.title.toLowerCase().includes(eventSearch.toLowerCase())).length + 1)}
               >
                 <option value="">-- Select an Event --</option>
 
-                {events.map((ev) => (
-                  <option key={ev.id} value={ev.id}>
-                    {ev.title}
-                  </option>
-                ))}
+                {events
+                  .filter(ev => ev.title.toLowerCase().includes(eventSearch.toLowerCase()))
+                  .map((ev) => (
+                    <option key={ev.id} value={ev.id}>
+                      {ev.title}
+                    </option>
+                  ))}
               </select>
             </div>
 

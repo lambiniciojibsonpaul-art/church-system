@@ -7,6 +7,7 @@ function AdminAttendanceList() {
   const [selectedEvent, setSelectedEvent] = useState("");
   const [attendance, setAttendance] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [eventSearch, setEventSearch] = useState("");
 
   useEffect(() => {
     fetchEvents();
@@ -69,20 +70,37 @@ function AdminAttendanceList() {
 
         <div className="bg-white rounded-[2rem] shadow-xl border border-gray-100 overflow-hidden">
           <div className="p-8 bg-gray-50 border-b border-gray-100 flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4 w-full md:w-auto">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+            <div className="flex flex-col gap-2 w-full md:w-auto">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">
                 Select Event:
               </label>
-              <select 
-                className="p-3 rounded-xl border border-gray-200 bg-white text-sm focus:ring-2 focus:ring-[#B59E74] outline-none min-w-[250px]"
+              {/* Search input */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-[#B59E74]">
+                <span className="text-gray-400 text-sm">🔍</span>
+                <input
+                  type="text"
+                  value={eventSearch}
+                  onChange={e => setEventSearch(e.target.value)}
+                  placeholder="Search event..."
+                  className="flex-1 outline-none text-sm text-gray-700 bg-transparent min-w-[200px]"
+                />
+                {eventSearch && (
+                  <button type="button" onClick={() => setEventSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+                )}
+              </div>
+              <select
+                className="p-3 rounded-xl border border-gray-200 bg-white text-sm focus:ring-2 focus:ring-[#B59E74] outline-none min-w-[280px]"
                 value={selectedEvent}
                 onChange={(e) => setSelectedEvent(e.target.value)}
+                size={Math.min(6, events.filter(ev => ev.title.toLowerCase().includes(eventSearch.toLowerCase())).length + 1)}
               >
                 <option value="">-- Choose an Event --</option>
-                {events.map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}
+                {events
+                  .filter(ev => ev.title.toLowerCase().includes(eventSearch.toLowerCase()))
+                  .map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}
               </select>
             </div>
-            <button 
+            <button
               onClick={fetchAttendance}
               className="bg-[#B59E74] text-white px-8 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#9c8760] transition-all shadow-md"
             >
