@@ -11,18 +11,21 @@ function CheckInPage() {
   const [session, setSession]           = useState(null);
   const [event, setEvent]               = useState(null);
   const [loading, setLoading]           = useState(true);
-  const [status, setStatus]             = useState("idle"); // idle | loading | success | error
+  const [status, setStatus]             = useState("idle"); // idle | loading | error
 
-  const [guestInfo, setGuestInfo]       = useState(null);  // { firstName, lastName, contactNumber } after form
+  const [guestInfo, setGuestInfo]       = useState(null);
   const [showGuestForm, setShowGuestForm] = useState(false);
   const [guestForm, setGuestForm]       = useState({ firstName: "", lastName: "", contactNumber: "" });
+
+  // Modal state
+  const [modalType, setModalType]       = useState(null); // null | "success" | "too_far" | "duplicate" | "error"
+  const [errorMsg, setErrorMsg]         = useState("");
 
   useEffect(() => {
     const init = async () => {
       const { data: { session: s } } = await supabase.auth.getSession();
       setSession(s);
 
-      // Always fetch the event so guests also see it
       const { data, error } = await supabase
         .from("events")
         .select("title, location, latitude, longitude")
@@ -59,7 +62,10 @@ function CheckInPage() {
       const userLocation = await getUserLocation();
 
       if (!event.latitude || !event.longitude) {
-        throw new Error("Event location is not configured.");
+        setModalType("error");
+        setErrorMsg("Event location is not configured. Please contact the parish admin.");
+        setStatus("error");
+        return;
       }
 
       const distance = getDistanceInMeters(
@@ -67,18 +73,16 @@ function CheckInPage() {
         event.latitude,   event.longitude
       );
 
-      if (distance > 100) {
-        throw new Error("You are too far from the event location to check in.");
+      if (distance > 150) {
+        setModalType("too_far");
+        setStatus("error");
+        return;
       }
 
       if (guestInfo) {
-        // Guest — use edge function (service role, bypasses RLS)
         const res = await fetch(`${SUPABASE_URL}/functions/v1/submit-guest-form`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": SUPABASE_ANON,
-          },
+          headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON },
           body: JSON.stringify({
             table: "attendance",
             payload: {
@@ -90,22 +94,32 @@ function CheckInPage() {
           }),
         });
         const json = await res.json().catch(() => ({}));
+        if (res.status === 409 || json.error === "already_checked_in") {
+          setModalType("duplicate");
+          setStatus("error");
+          return;
+        }
         if (!res.ok) throw new Error(json.error || "Check-in failed.");
       } else {
-        // Authenticated user
         const { error } = await supabase.from("attendance").insert([{
           user_id: session.user.id,
           event_id: eventId,
         }]);
         if (error) {
-          if (error.code === "23505") throw new Error("You have already checked in for this event!");
+          if (error.code === "23505") {
+            setModalType("duplicate");
+            setStatus("error");
+            return;
+          }
           throw error;
         }
       }
 
-      setStatus("success");
+      setModalType("success");
+      setStatus("idle");
     } catch (err) {
-      alert(err.message || "Location access is required to check in.");
+      setModalType("error");
+      setErrorMsg(err.message || "Location access is required to check in.");
       setStatus("error");
     }
   };
@@ -113,6 +127,12 @@ function CheckInPage() {
   const handleGuestSubmit = (e) => {
     e.preventDefault();
     setGuestInfo({ firstName: guestForm.firstName.trim(), lastName: guestForm.lastName.trim(), contactNumber: guestForm.contactNumber.trim() });
+  };
+
+  const closeModal = () => {
+    setModalType(null);
+    setErrorMsg("");
+    if (status === "error") setStatus("idle");
   };
 
   // ── LOADING ────────────────────────────────────────────────────────────────
@@ -255,29 +275,104 @@ function CheckInPage() {
             </div>
           )}
 
-          {status === "success" ? (
-            <div className="animate-fade-in py-10">
-              <div className="text-7xl mb-6">✅</div>
-              <h2 className="text-2xl font-serif text-green-600 font-medium uppercase tracking-widest mb-4">
-                Check-in Complete!
-              </h2>
-              <p className="text-gray-500 italic text-lg">God bless! Your attendance is recorded.</p>
-            </div>
-          ) : (
-            <button
-              onClick={handleCheckIn}
-              disabled={status === "loading"}
-              className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-6 rounded-3xl text-xl uppercase tracking-[0.2em] transition-all shadow-xl active:scale-95 disabled:opacity-50"
-            >
-              {status === "loading" ? "Processing..." : "Tap to Mark Presence"}
-            </button>
-          )}
+          <button
+            onClick={handleCheckIn}
+            disabled={status === "loading"}
+            className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-6 rounded-3xl text-xl uppercase tracking-[0.2em] transition-all shadow-xl active:scale-95 disabled:opacity-50"
+          >
+            {status === "loading" ? "Processing..." : "Tap to Mark Presence"}
+          </button>
 
           <div className="mt-10 text-gray-400 text-xs uppercase tracking-widest">
             San Pedro Bautista Parish System
           </div>
         </div>
       </main>
+
+      {/* ── SUCCESS MODAL ── */}
+      {modalType === "success" && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl text-center p-10 border border-gray-100">
+            <div className="text-7xl mb-6">✅</div>
+            <h2 className="text-2xl font-serif text-green-600 uppercase tracking-widest mb-3">
+              Check-in Complete!
+            </h2>
+            <p className="text-gray-500 italic mb-8 leading-relaxed">
+              God bless! Your attendance for <span className="font-semibold text-gray-700">{event.title}</span> has been recorded.
+            </p>
+            <button
+              onClick={closeModal}
+              className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── TOO FAR MODAL ── */}
+      {modalType === "too_far" && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl text-center p-10 border border-gray-100">
+            <div className="text-7xl mb-6">📍</div>
+            <h2 className="text-2xl font-serif text-orange-500 uppercase tracking-widest mb-3">
+              Not in Location
+            </h2>
+            <p className="text-gray-500 italic mb-2 leading-relaxed">
+              You must be within <span className="font-bold text-gray-700">150 meters</span> of the event venue to check in.
+            </p>
+            <p className="text-gray-400 text-sm mb-8">
+              Please move closer to the event location and try again.
+            </p>
+            <button
+              onClick={closeModal}
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── ALREADY CHECKED IN MODAL ── */}
+      {modalType === "duplicate" && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl text-center p-10 border border-gray-100">
+            <div className="text-7xl mb-6">🙏</div>
+            <h2 className="text-2xl font-serif text-[#B59E74] uppercase tracking-widest mb-3">
+              Already Checked In
+            </h2>
+            <p className="text-gray-500 italic mb-8 leading-relaxed">
+              Your attendance for <span className="font-semibold text-gray-700">{event.title}</span> is already recorded. God bless!
+            </p>
+            <button
+              onClick={closeModal}
+              className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── GENERIC ERROR MODAL ── */}
+      {modalType === "error" && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl text-center p-10 border border-gray-100">
+            <div className="text-7xl mb-6">⚠️</div>
+            <h2 className="text-2xl font-serif text-red-600 uppercase tracking-widest mb-3">
+              Check-in Failed
+            </h2>
+            <p className="text-gray-500 italic mb-8 leading-relaxed">{errorMsg}</p>
+            <button
+              onClick={closeModal}
+              className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

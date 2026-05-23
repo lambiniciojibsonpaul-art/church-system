@@ -30,7 +30,7 @@ function FlyToLocation({ lat, lng }) {
 function MapPicker({ lat, lng, flyTarget, onChange }) {
   const hasPin = lat !== "" && lng !== "";
   return (
-    <MapContainer center={[10.3562, 123.9615]} zoom={14} style={{ height: 260, width: "100%" }}>
+    <MapContainer center={[14.6349, 121.0052]} zoom={15} style={{ height: 260, width: "100%" }}>
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -50,6 +50,8 @@ const EVENT_CLASSES = [
   "Seminar / Formation",
   "General Event"
 ];
+
+const CHURCH_ADDRESS = "San Francisco del Monte, Quezon City, Metro Manila";
 
 const INDOOR_FACILITIES = [
   "St. Francis of Assisi Hall (2nd Floor)",
@@ -98,7 +100,7 @@ function AdminSchedules() {
     priestName: "",
     eventDate: "",
     eventTime: "",
-    location: "Main Church",
+    location: CHURCH_ADDRESS,
     description: "",
     isInside: true,
     setting: "",
@@ -201,15 +203,36 @@ function AdminSchedules() {
   const handleSelectResult = (result) => {
     const lat = parseFloat(result.lat);
     const lng = parseFloat(result.lon);
-    const placeName = result.display_name.split(",")[0].trim();
+    const shortName = result.display_name.split(",")[0].trim();
     const addr = result.address || {};
     const city = addr.city || addr.municipality || addr.town || addr.village || addr.suburb || "";
     const province = addr.province || addr.state || "";
     const generalLocation = [city, province].filter(Boolean).join(", ") || result.display_name.split(",").slice(0, 2).join(",").trim();
-    setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, setting: placeName, location: generalLocation }));
+    setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, setting: result.display_name, location: generalLocation }));
     setFlyTarget({ lat, lng });
-    setMapSearch(placeName);
+    setMapSearch(shortName);
     setSearchResults([]);
+  };
+
+  const handleMapClick = async (lat, lng) => {
+    setFormData(prev => ({ ...prev, latitude: lat, longitude: lng }));
+    setFlyTarget(null);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
+        { headers: { "Accept-Language": "en", "User-Agent": "SanPedroBautistaParish/1.0" } }
+      );
+      const data = await res.json();
+      if (data && !data.error) {
+        const shortName = data.display_name.split(",")[0].trim();
+        const addr = data.address || {};
+        const city = addr.city || addr.municipality || addr.town || addr.village || addr.suburb || "";
+        const province = addr.province || addr.state || "";
+        const generalLocation = [city, province].filter(Boolean).join(", ") || data.display_name.split(",").slice(0, 2).join(",").trim();
+        setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, setting: data.display_name, location: generalLocation }));
+        setMapSearch(shortName);
+      }
+    } catch { /* non-fatal — coordinates are still saved */ }
   };
 
   const handleOpenEventModal = () => {
@@ -219,7 +242,7 @@ function AdminSchedules() {
       priestName: "",
       eventDate: "",
       eventTime: "",
-      location: "Main Church",
+      location: CHURCH_ADDRESS,
       description: "",
       isInside: true,
       setting: "",
@@ -731,7 +754,7 @@ function AdminSchedules() {
                   <label className="text-xs font-bold text-gray-600 uppercase">Setting Type</label>
                   <div className="flex items-center gap-4 mt-2">
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input type="radio" checked={formData.isInside === true} onChange={() => setFormData({ ...formData, isInside: true, setting: "", latitude: "", longitude: "", location: "Main Church" })} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" />
+                      <input type="radio" checked={formData.isInside === true} onChange={() => setFormData({ ...formData, isInside: true, setting: "", latitude: "", longitude: "", location: CHURCH_ADDRESS })} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" />
                       Indoor
                     </label>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -824,10 +847,7 @@ function AdminSchedules() {
                       lat={formData.latitude}
                       lng={formData.longitude}
                       flyTarget={flyTarget}
-                      onChange={(lat, lng) => {
-                        setFormData(prev => ({ ...prev, latitude: lat, longitude: lng }));
-                        setFlyTarget(null);
-                      }}
+                      onChange={handleMapClick}
                     />
                   </div>
 

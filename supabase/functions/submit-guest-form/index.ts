@@ -64,6 +64,24 @@ serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     })
 
+    // Duplicate guest check-in guard
+    if (table === "attendance" && payload.is_guest && payload.guest_name && payload.event_id) {
+      const { data: existing } = await supabase
+        .from("attendance")
+        .select("id")
+        .eq("event_id", payload.event_id)
+        .eq("guest_name", payload.guest_name)
+        .eq("is_guest", true)
+        .maybeSingle()
+
+      if (existing) {
+        return new Response(JSON.stringify({ error: "already_checked_in" }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 409,
+        })
+      }
+    }
+
     const { error } = await supabase.from(table).insert([payload])
 
     if (error) {
