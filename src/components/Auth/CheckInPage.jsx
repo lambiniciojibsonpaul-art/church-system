@@ -40,20 +40,33 @@ function CheckInPage() {
     init();
   }, [eventId]);
 
-  const getUserLocation = () =>
+  // Phase 1 — fast wifi/cell location. Works reliably on both iOS and Android.
+  // maximumAge:60000 allows a cached fix up to 1 min old (user hasn't moved).
+  const getLocationFast = () =>
     new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error("location_unavailable"));
-        return;
-      }
+      if (!navigator.geolocation) { reject(new Error("location_unavailable")); return; }
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
         (err) => {
           if (err.code === 1) reject(new Error("location_denied"));
           else if (err.code === 2) reject(new Error("location_unavailable"));
           else reject(new Error("location_timeout"));
         },
-        { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 }
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+      );
+    });
+
+  // Phase 2 — GPS fallback. Only used when Phase 1 is too inaccurate to trust.
+  const getLocationGPS = () =>
+    new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+        (err) => {
+          if (err.code === 1) reject(new Error("location_denied"));
+          else if (err.code === 2) reject(new Error("location_unavailable"));
+          else reject(new Error("location_timeout"));
+        },
+        { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 }
       );
     });
 
@@ -67,10 +80,20 @@ function CheckInPage() {
   }
 
   const handleCheckIn = async () => {
-    setStatus("loading");
-    try {
-      const userLocation = await getUserLocation();
+    // Pre-check: if browser already knows permission is denied, skip the silent failure
+    if (navigator.permissions) {
+      try {
+        const perm = await navigator.permissions.query({ name: "geolocation" });
+        if (perm.state === "denied") {
+          setModalType("location_denied");
+          setStatus("error");
+          return;
+        }
+      } catch { /* Permissions API not supported — proceed normally */ }
+    }
 
+    setStatus("locating");
+    try {
       if (!event.latitude || !event.longitude) {
         setModalType("error");
         setErrorMsg("Event location is not configured. Please contact the parish admin.");
@@ -78,16 +101,25 @@ function CheckInPage() {
         return;
       }
 
-      const distance = getDistanceInMeters(
-        userLocation.lat, userLocation.lng,
-        event.latitude,   event.longitude
-      );
+      // Phase 1: fast wifi/cell position
+      let loc = await getLocationFast();
+      let distance = getDistanceInMeters(loc.lat, loc.lng, event.latitude, event.longitude);
+
+      // Phase 2: GPS retry only when wifi location is too inaccurate to trust
+      // (accuracy > 100m means the wifi fix could be off by enough to falsely fail the 150m check)
+      if (distance > 150 && loc.accuracy > 100) {
+        setStatus("improving");
+        loc = await getLocationGPS();
+        distance = getDistanceInMeters(loc.lat, loc.lng, event.latitude, event.longitude);
+      }
 
       if (distance > 150) {
         setModalType("too_far");
         setStatus("error");
         return;
       }
+
+      setStatus("checking_in");
 
       if (guestInfo) {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/submit-guest-form`, {
@@ -135,7 +167,7 @@ function CheckInPage() {
         setErrorMsg("Your device could not determine your location. Please move to an open area and try again.");
       } else if (err.message === "location_timeout") {
         setModalType("error");
-        setErrorMsg("Location request timed out. Move to an open area (away from roofs or buildings) and try again.");
+        setErrorMsg("Location timed out. Step outside or away from thick walls and try again.");
       } else {
         setModalType("error");
         setErrorMsg(err.message || "Something went wrong. Please try again.");
@@ -297,10 +329,13 @@ function CheckInPage() {
 
           <button
             onClick={() => setShowLocationPrompt(true)}
-            disabled={status === "loading"}
+            disabled={status === "locating" || status === "improving" || status === "checking_in"}
             className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-6 rounded-3xl text-xl uppercase tracking-[0.2em] transition-all shadow-xl active:scale-95 disabled:opacity-50"
           >
-            {status === "loading" ? "Processing..." : "Tap to Mark Presence"}
+            {status === "locating" ? "Getting Location..." :
+             status === "improving" ? "Improving Accuracy..." :
+             status === "checking_in" ? "Checking In..." :
+             "Tap to Mark Presence"}
           </button>
 
           <div className="mt-10 text-gray-400 text-xs uppercase tracking-widest">
