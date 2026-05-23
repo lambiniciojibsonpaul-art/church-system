@@ -77,7 +77,8 @@ function AdminSchedules() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [activeTab, setActiveTab] = useState("All");
+  const [activeTab, setActiveTab] = useState("Upcoming");
+  const [eventSearch, setEventSearch] = useState("");
 
   const [rejectingEvent, setRejectingEvent] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -383,29 +384,38 @@ function AdminSchedules() {
     }
   };
 
-  // --- BULLET-PROOF CHRONOLOGICAL SORTING ---
+  const today = new Date().toISOString().split("T")[0];
+
   const visibleEvents = events
     .filter(ev => {
-      const status = ev.status || "Active";
+      const q = eventSearch.toLowerCase();
+      if (q && !ev.title?.toLowerCase().includes(q) && !ev.location?.toLowerCase().includes(q) && !ev.setting?.toLowerCase().includes(q)) return false;
+      const isCancelledOrRejected = ev.status === "Cancelled" || ev.status === "Rejected";
       if (activeTab === "All") return true;
-      return status === activeTab;
+      if (activeTab === "Active") return ev.event_date === today && !isCancelledOrRejected;
+      if (activeTab === "Upcoming") return ev.event_date > today && !isCancelledOrRejected;
+      if (activeTab === "Past") return ev.event_date < today && !isCancelledOrRejected;
+      if (activeTab === "Pending") return ev.status === "Pending";
+      if (activeTab === "Cancelled") return isCancelledOrRejected;
+      return true;
     })
     .sort((a, b) => {
       const dateA = a.event_date || "9999-12-31";
-      const timeA = a.event_time || "23:59:59";
+      const timeA = a.event_time || "00:00:00";
       const dateB = b.event_date || "9999-12-31";
-      const timeB = b.event_time || "23:59:59";
-      
+      const timeB = b.event_time || "00:00:00";
       const dtA = new Date(`${dateA}T${timeA}`).getTime();
       const dtB = new Date(`${dateB}T${timeB}`).getTime();
-      
-      if (isNaN(dtA) || isNaN(dtB)) {
-        return `${dateA}T${timeA}`.localeCompare(`${dateB}T${timeB}`);
-      }
-      return dtA - dtB;
+      const dir = activeTab === "Past" ? -1 : 1;
+      if (isNaN(dtA) || isNaN(dtB)) return dir * `${dateA}T${timeA}`.localeCompare(`${dateB}T${timeB}`);
+      return dir * (dtA - dtB);
     });
 
-  const pendingCount = events.filter(ev => ev.status === "Pending").length;
+  const pendingCount   = events.filter(ev => ev.status === "Pending").length;
+  const activeCount    = events.filter(ev => ev.event_date === today && ev.status !== "Cancelled" && ev.status !== "Rejected").length;
+  const upcomingCount  = events.filter(ev => ev.event_date > today).length;
+  const pastCount      = events.filter(ev => ev.event_date < today).length;
+  const cancelledCount = events.filter(ev => ev.status === "Cancelled" || ev.status === "Rejected").length;
 
   if (loading)
     return (
@@ -439,12 +449,39 @@ function AdminSchedules() {
           </button>
         </div>
 
-        <div className="flex gap-2 sm:gap-4 mb-6 p-2 bg-[#F6F5ED] rounded-full w-fit border border-gray-100 overflow-x-auto">
-          {["All", "Pending", "Active", "Cancelled", "Rejected"].map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 sm:px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all relative ${activeTab === tab ? "bg-[#B59E74] text-white shadow-md" : "text-gray-500 hover:text-gray-700"}`}>
-              {tab}
-              {tab === "Pending" && pendingCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] text-white">{pendingCount}</span>
+        {/* Search bar */}
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-[#B59E74] mb-4 max-w-md shadow-sm">
+          <span className="text-gray-400 text-sm">🔍</span>
+          <input
+            type="text"
+            value={eventSearch}
+            onChange={e => setEventSearch(e.target.value)}
+            placeholder="Search events by title or location..."
+            className="flex-1 outline-none text-sm text-gray-700 bg-transparent"
+          />
+          {eventSearch && (
+            <button type="button" onClick={() => setEventSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+          )}
+        </div>
+
+        {/* Time-based tabs */}
+        <div className="flex gap-2 sm:gap-3 mb-6 p-2 bg-[#F6F5ED] rounded-full w-fit border border-gray-100 overflow-x-auto">
+          {[
+            { key: "Upcoming", label: "Upcoming", count: upcomingCount, color: "bg-blue-500" },
+            { key: "Active",   label: "Active Today", count: activeCount,   color: "bg-green-500" },
+            { key: "Past",     label: "Past Events",  count: pastCount,     color: null },
+            { key: "Pending",  label: "Pending",      count: pendingCount,  color: "bg-red-500" },
+            { key: "Cancelled",label: "Cancelled",    count: cancelledCount,color: null },
+            { key: "All",      label: "All",          count: null,          color: null },
+          ].map(({ key, label, count, color }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`px-4 sm:px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all relative whitespace-nowrap ${activeTab === key ? "bg-[#B59E74] text-white shadow-md" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              {label}
+              {count > 0 && color && (
+                <span className={`absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full ${color} text-[9px] text-white`}>{count}</span>
               )}
             </button>
           ))}
@@ -454,8 +491,17 @@ function AdminSchedules() {
           {visibleEvents.length === 0 ? (
             <div className="text-center text-gray-400 py-12">
               <div className="text-4xl mb-4">📅</div>
-              <h3 className="text-lg font-serif">No {activeTab !== "All" ? activeTab.toLowerCase() : ""} schedules found.</h3>
-              <p className="text-sm">Click "Add Event" to create a new schedule.</p>
+              <h3 className="text-lg font-serif">
+                {eventSearch
+                  ? `No events matching "${eventSearch}".`
+                  : activeTab === "Active" ? "No events scheduled for today."
+                  : activeTab === "Upcoming" ? "No upcoming events."
+                  : activeTab === "Past" ? "No past events on record."
+                  : activeTab === "Pending" ? "No events awaiting approval."
+                  : activeTab === "Cancelled" ? "No cancelled events."
+                  : "No schedules found."}
+              </h3>
+              {!eventSearch && <p className="text-sm mt-1">Click "Add Event" to create a new schedule.</p>}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -468,9 +514,11 @@ function AdminSchedules() {
                   <div className={`absolute top-0 left-0 w-1.5 h-full rounded-l-2xl ${isPending ? "bg-yellow-400" : isCancelledOrRejected ? "bg-red-400" : ev.event_class === "Mass" ? "bg-[#B59E74]" : "bg-gray-800"}`}></div>
                   
                   <div className="flex justify-between items-start mb-3 gap-2">
-                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md shrink-0 ${isPending ? "bg-yellow-100 text-yellow-700" : isCancelledOrRejected ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
-                      {ev.status || "Active"}
-                    </span>
+                    {(isPending || isCancelledOrRejected || (activeTab !== "Upcoming" && activeTab !== "Past")) && (
+                      <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md shrink-0 ${isPending ? "bg-yellow-100 text-yellow-700" : isCancelledOrRejected ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
+                        {ev.status || "Active"}
+                      </span>
+                    )}
                     <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-100 text-gray-600 truncate text-right">
                       {ev.event_class}
                     </span>

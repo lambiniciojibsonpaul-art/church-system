@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { restSelect } from "../supabaseRest";
 import church3 from "../assets/Images/church3.jpg";
@@ -79,6 +79,8 @@ function cleanContactNumber(raw) {
 
 function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectAfterLogin = new URLSearchParams(location.search).get("redirect") || null;
   const [mode, setMode] = useState("login");
 
   // ----- LOGIN STATE --------------------------------------------------------
@@ -162,7 +164,7 @@ function LoginPage() {
       });
 
       console.log("[Login] Cache hit → navigating via cached role:", cachedRole);
-      navigate(getRoleDest(cachedRole), { replace: true });
+      navigate(redirectAfterLogin || getRoleDest(cachedRole), { replace: true });
       return;
     }
 
@@ -193,7 +195,7 @@ function LoginPage() {
 
     // Derive destination. No row → parishioner → "/". Never blindly go to /admin.
     const resolvedRole = roleData ? String(roleData.role || "").toLowerCase() : "parishioner";
-    navigate(getRoleDest(resolvedRole), { replace: true });
+    navigate(redirectAfterLogin || getRoleDest(resolvedRole), { replace: true });
   };
 
   const handleSubmit = async (e) => {

@@ -18,8 +18,9 @@ function CheckInPage() {
   const [guestForm, setGuestForm]       = useState({ firstName: "", lastName: "", contactNumber: "" });
 
   // Modal state
-  const [modalType, setModalType]       = useState(null); // null | "success" | "too_far" | "duplicate" | "error"
+  const [modalType, setModalType]       = useState(null); // null | "success" | "too_far" | "duplicate" | "error" | "location_denied"
   const [errorMsg, setErrorMsg]         = useState("");
+  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -39,13 +40,35 @@ function CheckInPage() {
     init();
   }, [eventId]);
 
-  const getUserLocation = () =>
-    new Promise((resolve, reject) =>
+  // Phase 1 — fast wifi/cell location. Works reliably on both iOS and Android.
+  // maximumAge:60000 allows a cached fix up to 1 min old (user hasn't moved).
+  const getLocationFast = () =>
+    new Promise((resolve, reject) => {
+      if (!navigator.geolocation) { reject(new Error("location_unavailable")); return; }
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        (err) => reject(err)
-      )
-    );
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+        (err) => {
+          if (err.code === 1) reject(new Error("location_denied"));
+          else if (err.code === 2) reject(new Error("location_unavailable"));
+          else reject(new Error("location_timeout"));
+        },
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+      );
+    });
+
+  // Phase 2 — GPS fallback. Only used when Phase 1 is too inaccurate to trust.
+  const getLocationGPS = () =>
+    new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+        (err) => {
+          if (err.code === 1) reject(new Error("location_denied"));
+          else if (err.code === 2) reject(new Error("location_unavailable"));
+          else reject(new Error("location_timeout"));
+        },
+        { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 }
+      );
+    });
 
   function getDistanceInMeters(lat1, lon1, lat2, lon2) {
     const R = 6371e3;
@@ -57,10 +80,20 @@ function CheckInPage() {
   }
 
   const handleCheckIn = async () => {
-    setStatus("loading");
-    try {
-      const userLocation = await getUserLocation();
+    // Pre-check: if browser already knows permission is denied, skip the silent failure
+    if (navigator.permissions) {
+      try {
+        const perm = await navigator.permissions.query({ name: "geolocation" });
+        if (perm.state === "denied") {
+          setModalType("location_denied");
+          setStatus("error");
+          return;
+        }
+      } catch { /* Permissions API not supported — proceed normally */ }
+    }
 
+    setStatus("locating");
+    try {
       if (!event.latitude || !event.longitude) {
         setModalType("error");
         setErrorMsg("Event location is not configured. Please contact the parish admin.");
@@ -68,16 +101,25 @@ function CheckInPage() {
         return;
       }
 
-      const distance = getDistanceInMeters(
-        userLocation.lat, userLocation.lng,
-        event.latitude,   event.longitude
-      );
+      // Phase 1: fast wifi/cell position
+      let loc = await getLocationFast();
+      let distance = getDistanceInMeters(loc.lat, loc.lng, event.latitude, event.longitude);
+
+      // Phase 2: GPS retry only when wifi location is too inaccurate to trust
+      // (accuracy > 100m means the wifi fix could be off by enough to falsely fail the 150m check)
+      if (distance > 150 && loc.accuracy > 100) {
+        setStatus("improving");
+        loc = await getLocationGPS();
+        distance = getDistanceInMeters(loc.lat, loc.lng, event.latitude, event.longitude);
+      }
 
       if (distance > 150) {
         setModalType("too_far");
         setStatus("error");
         return;
       }
+
+      setStatus("checking_in");
 
       if (guestInfo) {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/submit-guest-form`, {
@@ -118,8 +160,18 @@ function CheckInPage() {
       setModalType("success");
       setStatus("idle");
     } catch (err) {
-      setModalType("error");
-      setErrorMsg(err.message || "Location access is required to check in.");
+      if (err.message === "location_denied") {
+        setModalType("location_denied");
+      } else if (err.message === "location_unavailable") {
+        setModalType("error");
+        setErrorMsg("Your device could not determine your location. Please move to an open area and try again.");
+      } else if (err.message === "location_timeout") {
+        setModalType("error");
+        setErrorMsg("Location timed out. Step outside or away from thick walls and try again.");
+      } else {
+        setModalType("error");
+        setErrorMsg(err.message || "Something went wrong. Please try again.");
+      }
       setStatus("error");
     }
   };
@@ -157,7 +209,7 @@ function CheckInPage() {
             <>
               <div className="flex flex-col gap-3">
                 <Link
-                  to="/login"
+                  to={`/login?redirect=/check-in/${eventId}`}
                   className="block w-full bg-[#B59E74] text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-lg hover:bg-[#9c8760] transition-all text-sm"
                 >
                   Sign In
@@ -276,11 +328,14 @@ function CheckInPage() {
           )}
 
           <button
-            onClick={handleCheckIn}
-            disabled={status === "loading"}
+            onClick={() => setShowLocationPrompt(true)}
+            disabled={status === "locating" || status === "improving" || status === "checking_in"}
             className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-6 rounded-3xl text-xl uppercase tracking-[0.2em] transition-all shadow-xl active:scale-95 disabled:opacity-50"
           >
-            {status === "loading" ? "Processing..." : "Tap to Mark Presence"}
+            {status === "locating" ? "Getting Location..." :
+             status === "improving" ? "Improving Accuracy..." :
+             status === "checking_in" ? "Checking In..." :
+             "Tap to Mark Presence"}
           </button>
 
           <div className="mt-10 text-gray-400 text-xs uppercase tracking-widest">
@@ -288,6 +343,43 @@ function CheckInPage() {
           </div>
         </div>
       </main>
+
+      {/* ── LOCATION PERMISSION PROMPT ── */}
+      {showLocationPrompt && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl text-center p-10 border border-gray-100">
+            <div className="w-16 h-16 mx-auto rounded-full bg-[#F6F5ED] flex items-center justify-center text-3xl mb-5 border-2 border-[#B59E74]">
+              📍
+            </div>
+            <h2 className="text-xl font-serif text-gray-800 uppercase tracking-widest mb-2">
+              Allow Location Access
+            </h2>
+            <p className="text-gray-500 italic text-sm leading-relaxed mb-6">
+              <span className="font-semibold text-gray-700">San Pedro Bautista Parish System</span> needs your location to confirm you are physically present at <span className="font-semibold text-gray-700">{event?.title}</span>.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowLocationPrompt(false);
+                  setModalType("location_denied");
+                }}
+                className="flex-1 py-3 rounded-2xl border-2 border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all"
+              >
+                Don&apos;t Allow
+              </button>
+              <button
+                onClick={() => {
+                  setShowLocationPrompt(false);
+                  handleCheckIn();
+                }}
+                className="flex-1 py-3 rounded-2xl bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-xs uppercase tracking-widest shadow-md transition-all"
+              >
+                Allow
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── SUCCESS MODAL ── */}
       {modalType === "success" && (
@@ -350,6 +442,49 @@ function CheckInPage() {
               className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm"
             >
               OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── LOCATION DENIED MODAL ── */}
+      {modalType === "location_denied" && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl text-center p-10 border border-gray-100">
+            <div className="text-7xl mb-6">📵</div>
+            <h2 className="text-2xl font-serif text-red-600 uppercase tracking-widest mb-3">
+              Location Blocked
+            </h2>
+            <p className="text-gray-500 italic mb-4 leading-relaxed">
+              Location access was denied. You must allow location permission to check in.
+            </p>
+            <div className="bg-blue-50 rounded-2xl p-4 text-left mb-3 space-y-1.5">
+              <p className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-2">iPhone / iPad (Safari)</p>
+              <p className="text-xs text-gray-600">1. Open the <span className="font-semibold">Settings</span> app.</p>
+              <p className="text-xs text-gray-600">2. Scroll down and tap <span className="font-semibold">Safari</span>.</p>
+              <p className="text-xs text-gray-600">3. Tap <span className="font-semibold">Location</span> → select <span className="font-semibold text-green-600">Allow</span>.</p>
+              <p className="text-xs text-gray-600">4. Return here and tap check-in again.</p>
+            </div>
+            <div className="bg-gray-50 rounded-2xl p-4 text-left mb-4 space-y-1.5">
+              <p className="text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">Android / Chrome</p>
+              <p className="text-xs text-gray-500">1. Tap the <span className="font-semibold text-gray-700">lock 🔒</span> icon in the address bar.</p>
+              <p className="text-xs text-gray-500">2. Tap <span className="font-semibold text-gray-700">Location</span> → set to <span className="font-semibold text-green-600">Allow</span>.</p>
+              <p className="text-xs text-gray-500">3. Reload and try again.</p>
+            </div>
+            <p className="text-[11px] text-amber-600 italic mb-4">
+              ⚠️ If you scanned the QR with a camera app, open this link in <span className="font-semibold">Safari</span> (iPhone) or <span className="font-semibold">Chrome</span> (Android) instead.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm mb-2"
+            >
+              Reload &amp; Try Again
+            </button>
+            <button
+              onClick={closeModal}
+              className="w-full py-3 rounded-2xl border border-gray-200 text-gray-400 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all"
+            >
+              Cancel
             </button>
           </div>
         </div>
