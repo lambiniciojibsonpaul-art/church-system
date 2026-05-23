@@ -53,7 +53,7 @@ function CheckInPage() {
           else if (err.code === 2) reject(new Error("location_unavailable"));
           else reject(new Error("location_timeout"));
         },
-        { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 }
       );
     });
 
@@ -440,10 +440,16 @@ function CheckInPage() {
               ⚠️ If you scanned the QR with a camera app, open this link in <span className="font-semibold">Safari</span> (iPhone) or <span className="font-semibold">Chrome</span> (Android) instead.
             </p>
             <button
-              onClick={closeModal}
-              className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm"
+              onClick={() => window.location.reload()}
+              className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm mb-2"
             >
-              Got It
+              Reload &amp; Try Again
+            </button>
+            <button
+              onClick={closeModal}
+              className="w-full py-3 rounded-2xl border border-gray-200 text-gray-400 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all"
+            >
+              Cancel
             </button>
           </div>
         </div>
