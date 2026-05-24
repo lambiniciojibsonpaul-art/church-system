@@ -99,7 +99,7 @@ function NotificationBell({ isSolid }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Close dropdown when clicking outside
+  // Close on outside click
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -110,106 +110,208 @@ function NotificationBell({ isSolid }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Fetch initial notifications & listen for new ones
+  // Fetch + realtime
   useEffect(() => {
     if (!user?.id) return;
 
-    // 1. Fetch the 10 most recent notifications for this user
     const fetchNotifications = async () => {
       const { data } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
+        .from("notifications")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(20);
       if (data) setNotifications(data);
     };
 
     fetchNotifications();
 
-    // 2. Realtime listener to update the badge when a new one arrives!
     const channel = supabase
-      .channel('header-notifications')
+      .channel("header-notifications")
       .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
         (payload) => {
-          setNotifications((prev) => [payload.new, ...prev].slice(0, 10));
+          setNotifications((prev) => [payload.new, ...prev].slice(0, 20));
         }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => supabase.removeChannel(channel);
   }, [user]);
 
-  const unreadCount = notifications.filter(n => !n.is_read).length;
+  // ── Helpers ──────────────────────────────────────────────
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
 
+  function timeAgo(dateStr) {
+    if (!dateStr) return "";
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins  = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days  = Math.floor(diff / 86400000);
+    if (mins < 1)   return "Just now";
+    if (mins < 60)  return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days === 1) return "Yesterday";
+    return new Date(dateStr).toLocaleDateString();
+  }
+
+  // ── Actions ──────────────────────────────────────────────
   const handleNotificationClick = async (notif) => {
-    // Mark as read in DB if it's currently unread
     if (!notif.is_read) {
-      await supabase.from('notifications').update({ is_read: true }).eq('id', notif.id);
-      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
+      await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("id", notif.id);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n))
+      );
     }
-    
     setIsOpen(false);
-    
-    // Redirect if a link exists
-    if (notif.link) navigate(notif.link);
+    if (notif.link) {
+      navigate(notif.link, {
+        state: {
+          highlightId: notif.source_id,
+          highlightTable: notif.source_table,
+        },
+      });
+    }
   };
 
+  const markAllAsRead = async () => {
+    const unreadIds = notifications.filter((n) => !n.is_read).map((n) => n.id);
+    if (unreadIds.length === 0) return;
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .in("id", unreadIds);
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+  };
+
+  const clearRead = async () => {
+    const readIds = notifications.filter((n) => n.is_read).map((n) => n.id);
+    if (readIds.length === 0) return;
+    await supabase.from("notifications").delete().in("id", readIds);
+    setNotifications((prev) => prev.filter((n) => !n.is_read));
+  };
+
+  // ── Render ───────────────────────────────────────────────
   return (
     <div className="relative" ref={dropdownRef}>
-      <button 
-        onClick={() => setIsOpen(!isOpen)} 
-        className={`relative p-2 rounded-full transition-colors ${isSolid ? "hover:bg-gray-100 text-gray-600" : "hover:bg-white/10 text-white"}`}
+      {/* Bell button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`relative p-2 rounded-full transition-colors ${
+          isSolid
+            ? "hover:bg-gray-100 text-gray-600"
+            : "hover:bg-white/10 text-white"
+        }`}
         aria-label="Notifications"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         </svg>
-        
-        {/* Red Unread Badge */}
+
+        {/* Unread badge */}
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white shadow-sm ring-2 ring-white">
-            {/* The ring color should ideally match the header bg, but white looks fine in solid mode */}
+          <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-sm ring-2 ring-white">
+            {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
       </button>
 
-      {/* Dropdown Menu */}
+      {/* Dropdown */}
       {isOpen && (
         <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-[110] animate-fade-in-up">
-          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Notifications</span>
+
+          {/* Header row */}
+          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-widest">
+                Notifications
+              </span>
+              {unreadCount > 0 && (
+                <span className="inline-flex items-center justify-center h-4 min-w-[1rem] px-1 rounded-full bg-red-500 text-[9px] font-bold text-white">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <button
+                  onClick={markAllAsRead}
+                  className="text-[10px] font-bold uppercase tracking-widest text-[#B59E74] hover:text-[#9c8760] transition-colors"
+                >
+                  Mark all read
+                </button>
+              )}
+              {notifications.some((n) => n.is_read) && (
+                <button
+                  onClick={clearRead}
+                  className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-red-400 transition-colors"
+                >
+                  Clear read
+                </button>
+              )}
+            </div>
           </div>
-          <div className="max-h-[300px] overflow-y-auto">
+
+          {/* List */}
+          <div className="max-h-[360px] overflow-y-auto divide-y divide-gray-50">
             {notifications.length === 0 ? (
-              <div className="p-6 text-center text-sm text-gray-400 italic">No notifications yet.</div>
-            ) : (
-              <div className="flex flex-col">
-                {notifications.map((notif) => (
-                  <button 
-                    key={notif.id}
-                    onClick={() => handleNotificationClick(notif)}
-                    className={`w-full text-left p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors ${!notif.is_read ? 'bg-[#F6F5ED]/50' : 'opacity-70'}`}
-                  >
-                    <div className="flex justify-between items-start gap-2 mb-1">
-                      <strong className={`text-sm font-serif ${!notif.is_read ? 'text-[#B59E74]' : 'text-gray-700'}`}>
-                        {notif.title}
-                      </strong>
-                      {!notif.is_read && <span className="w-2 h-2 rounded-full bg-[#B59E74] shrink-0 mt-1.5" />}
-                    </div>
-                    <p className="text-xs text-gray-600 line-clamp-2">{notif.message}</p>
-                    <span className="text-[9px] text-gray-400 uppercase tracking-wider mt-2 block">
-                      {new Date(notif.created_at).toLocaleDateString()}
-                    </span>
-                  </button>
-                ))}
+              <div className="p-8 text-center">
+                <div className="text-3xl mb-2">🔔</div>
+                <p className="text-sm text-gray-400 italic font-serif">
+                  You're all caught up!
+                </p>
               </div>
+            ) : (
+              notifications.map((notif) => (
+                <button
+                  key={notif.id}
+                  onClick={() => handleNotificationClick(notif)}
+                  className={`w-full text-left px-4 py-3.5 hover:bg-gray-50 transition-colors group ${
+                    !notif.is_read ? "bg-[#faf8f2]" : "bg-white"
+                  }`}
+                >
+                  <div className="flex justify-between items-start gap-2 mb-1">
+                    <span
+                      className={`text-sm font-serif leading-snug ${
+                        !notif.is_read
+                          ? "font-semibold text-[#B59E74]"
+                          : "text-gray-600"
+                      }`}
+                    >
+                      {notif.title}
+                    </span>
+                    {!notif.is_read && (
+                      <span className="w-2 h-2 rounded-full bg-[#B59E74] shrink-0 mt-1.5" />
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
+                    {notif.message}
+                  </p>
+                  <span className="text-[10px] text-gray-400 uppercase tracking-wider mt-1.5 block">
+                    {timeAgo(notif.created_at)}
+                  </span>
+                </button>
+              ))
             )}
           </div>
+
+          {/* Footer */}
+          {notifications.length > 0 && (
+            <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50 text-center">
+              <span className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">
+                {notifications.length} notification{notifications.length === 1 ? "" : "s"} · {unreadCount} unread
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>

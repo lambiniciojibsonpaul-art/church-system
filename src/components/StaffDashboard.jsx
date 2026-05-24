@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { restSelect, restUpdate, restInsert, restDelete } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
@@ -196,7 +196,11 @@ function formatValue(key, val) {
 function StaffDashboard() {
   const { user, role, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation(); // ✨ NEW
   const [activeTab, setActiveTab] = useState("requests");
+
+  // ✨ NEW: highlight state for notification-driven scroll+glow
+  const [highlightId, setHighlightId] = useState(null);
 
   // Role guard — only staff (and admin/superadmin) may access this page
   useEffect(() => {
@@ -205,14 +209,14 @@ function StaffDashboard() {
     }
   }, [authLoading, role, navigate]);
 
-  // NEW: State for Dynamic Priests
+  // State for Dynamic Priests
   const [priestNames, setPriestNames] = useState([]);
 
   // States for Approved Items (Events, Certs, QR)
   const [items, setItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [viewingDetails, setViewingDetails] = useState(null);
-  const [activeQR, setActiveQR] = useState(null); 
+  const [activeQR, setActiveQR] = useState(null);
 
   // States for Pending Requests
   const [requests, setRequests] = useState({});
@@ -236,8 +240,67 @@ function StaffDashboard() {
   useEffect(() => {
     fetchPendingRequests();
     fetchApprovedItems();
-    fetchPriests(); // NEW: Fetch priests on mount
+    fetchPriests();
   }, []);
+
+  // ✨ NEW: Handle notification click → switch tab → scroll → highlight → open modal
+  useEffect(() => {
+    if (!location.state?.highlightId || requestsLoading) return;
+
+    const { highlightId: targetId, highlightTable } = location.state;
+
+    // Find which service tab owns this table
+    const targetTab = Object.entries(TAB_CONFIG).find(
+      ([, cfg]) => cfg.table === highlightTable
+    )?.[0];
+
+    if (!targetTab) return;
+
+    // Switch to requests tab and the correct service filter
+    setActiveTab("requests");
+    setActiveServiceTab(targetTab);
+
+    // Poll for the card to appear in the DOM after tab switch + render
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      const cardEl = document.getElementById(`request-card-${targetId}`);
+
+      if (cardEl) {
+        clearInterval(interval);
+
+        // Scroll the card into the center of the viewport
+        cardEl.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        // Trigger the gold glow highlight
+        setHighlightId(targetId);
+
+        // Open the details modal after scroll settles
+        setTimeout(() => {
+          const allReqs = Object.values(requests).flat();
+          const targetReq = allReqs.find((r) => r.id === targetId);
+          if (targetReq) {
+            setViewingDetails({
+              ...targetReq,
+              request_type: targetTab,
+              display_name: TAB_CONFIG[targetTab].title(targetReq),
+            });
+          }
+        }, 700);
+
+        // Remove highlight after 2.5s
+        setTimeout(() => setHighlightId(null), 2500);
+
+        // Clear location state so a page refresh doesn't re-trigger
+        window.history.replaceState({}, document.title);
+      }
+
+      // Give up after 3 seconds (30 × 100ms)
+      if (attempts > 30) clearInterval(interval);
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [location.state, requestsLoading, requests]);
 
   // --- FETCH DYNAMIC PRIESTS ---
   const fetchPriests = async () => {
@@ -247,11 +310,8 @@ function StaffDashboard() {
         order: "name.asc",
         timeoutMs: 10000,
       });
-
       if (error) throw error;
-      if (data) {
-        setPriestNames(data.map(p => p.name));
-      }
+      if (data) setPriestNames(data.map(p => p.name));
     } catch (err) {
       console.error("Failed to load priests:", err);
     }
@@ -265,7 +325,7 @@ function StaffDashboard() {
       entries.map(([, cfg]) =>
         restSelect(cfg.table, {
           match: { status: "Pending" },
-          order: "created_at.asc", // Oldest first
+          order: "created_at.asc",
           timeoutMs: 12000,
         })
       )
@@ -292,7 +352,8 @@ function StaffDashboard() {
       const { data: baptisms } = await supabase.from("baptisms").select("*").eq("status", "Approved");
       if (baptisms) {
         allItems = [...allItems, ...baptisms.map((b) => ({
-          ...b, request_type: "Baptism", display_date: b.preferred_date || b.created_at, display_name: `${b.child_first_name || ''} ${b.child_last_name || ''}`,
+          ...b, request_type: "Baptism", display_date: b.preferred_date || b.created_at,
+          display_name: `${b.child_first_name || ''} ${b.child_last_name || ''}`,
         }))];
       }
 
@@ -306,8 +367,9 @@ function StaffDashboard() {
 
       const { data: events } = await supabase.from("events").select("*").eq("status", "Active");
       if (events) {
-        allItems = [...allItems, ...events.map(e => ({ 
-          ...e, request_type: "Parish Event", display_date: e.event_date, display_name: e.title, preferred_time: e.event_time 
+        allItems = [...allItems, ...events.map(e => ({
+          ...e, request_type: "Parish Event", display_date: e.event_date,
+          display_name: e.title, preferred_time: e.event_time
         }))];
       }
 
@@ -328,7 +390,7 @@ function StaffDashboard() {
     if (!acceptingRequest) return;
     const reqTab = resolveTabFor(acceptingRequest);
     const reqConfig = resolveConfigFor(acceptingRequest);
-    
+
     if (reqConfig.isSacrament && !assignedPriest) {
       return alert("Please assign a priest before approving.");
     }
@@ -338,7 +400,7 @@ function StaffDashboard() {
     const { error: updateErr } = await restUpdate(
       reqConfig.table,
       { id: acceptingRequest.id },
-      { status: "Approved" }
+      { status: "Staff Approved" }
     );
 
     if (updateErr) {
@@ -346,27 +408,42 @@ function StaffDashboard() {
       return alert("Error approving request: " + updateErr.message);
     }
 
-    if (reqConfig.isSacrament && reqConfig.eventBuilder) {
-      const eventPayload = {
-        ...reqConfig.eventBuilder(acceptingRequest, assignedPriest, user?.id || null),
-        source_table: reqConfig.table,
-        source_id: acceptingRequest.id,
-      };
-      if (eventPayload?.event_date) {
-        await restInsert("events", [eventPayload]);
-      }
-    }
-
     if (acceptingRequest.submitter_email) {
       sendApprovalEmail({
         to: acceptingRequest.submitter_email,
         serviceName: reqTab.toLowerCase(),
         eventDate: formatDate(
-          acceptingRequest.preferred_date || acceptingRequest.wedding_date || acceptingRequest.date_of_confirmation || acceptingRequest.date_of_communion || acceptingRequest.start_date || acceptingRequest.request_date
+          acceptingRequest.preferred_date || acceptingRequest.wedding_date ||
+          acceptingRequest.date_of_confirmation || acceptingRequest.date_of_communion ||
+          acceptingRequest.start_date || acceptingRequest.request_date
         ),
-        eventTime: acceptingRequest.preferred_time || acceptingRequest.wedding_time || acceptingRequest.time_of_confirmation || acceptingRequest.time_of_communion || acceptingRequest.start_time || "",
+        eventTime: acceptingRequest.preferred_time || acceptingRequest.wedding_time ||
+          acceptingRequest.time_of_confirmation || acceptingRequest.time_of_communion ||
+          acceptingRequest.start_time || "",
         location: acceptingRequest.location || "Parish",
         priestName: assignedPriest,
+      });
+    }
+
+    // ✨ NOTIFY ADMIN: Staff has approved, admin needs to give final approval
+    const requestTitle = reqConfig.title(acceptingRequest);
+    await supabase.rpc('notify_admin', {
+      notif_title: `Staff Approved: ${reqTab}`,
+      notif_message: `Staff approved "${requestTitle}". Please review for final approval.`,
+      notif_link: '/admin',
+      p_source_id: acceptingRequest.id,
+      p_source_table: reqConfig.table,
+    });
+
+    // ✨ NOTIFY PARISHIONER: Their request has been approved by staff
+    if (acceptingRequest.user_id) {
+      await supabase.rpc('notify_parishioner', {
+        target_user_id: acceptingRequest.user_id,
+        notif_title: `Your ${reqTab} Request — Staff Approved`,
+        notif_message: `Your request has been reviewed and approved by our staff. It is now pending final admin confirmation.`,
+        notif_link: '/profile',
+        p_source_id: acceptingRequest.id,
+        p_source_table: reqConfig.table,
       });
     }
 
@@ -374,8 +451,8 @@ function StaffDashboard() {
       ...prev,
       [reqTab]: prev[reqTab].filter((r) => r.id !== acceptingRequest.id),
     }));
-    
-    fetchApprovedItems(); 
+
+    fetchApprovedItems();
     setAcceptingRequest(null);
     setAssignedPriest("");
     setAcceptSubmitting(false);
@@ -384,7 +461,7 @@ function StaffDashboard() {
   const confirmReject = async () => {
     if (!rejectingRequest) return;
     if (!rejectionReason.trim()) return alert("Please provide a reason for rejection.");
-    
+
     const reqTab = resolveTabFor(rejectingRequest);
     const reqConfig = resolveConfigFor(rejectingRequest);
     setRejectSubmitting(true);
@@ -398,6 +475,18 @@ function StaffDashboard() {
     if (error) {
       setRejectSubmitting(false);
       return alert("Error rejecting request: " + error.message);
+    }
+
+    // ✨ NOTIFY PARISHIONER: Their request has been rejected
+    if (rejectingRequest.user_id) {
+      await supabase.rpc('notify_parishioner', {
+        target_user_id: rejectingRequest.user_id,
+        notif_title: `Your ${reqTab} Request — Not Approved`,
+        notif_message: `We regret to inform you that your request could not be approved. Reason: ${rejectionReason}`,
+        notif_link: '/profile',
+        p_source_id: rejectingRequest.id,
+        p_source_table: reqConfig.table,
+      });
     }
 
     setRequests((prev) => ({
@@ -414,7 +503,7 @@ function StaffDashboard() {
   const confirmCancelItem = async () => {
     if (!cancellingItem) return;
     if (!cancelItemReason.trim()) return alert("Please provide a reason for cancellation.");
-    
+
     setCancelItemSubmitting(true);
 
     let tableName = "";
@@ -423,7 +512,7 @@ function StaffDashboard() {
     else if (cancellingItem.request_type === "Parish Event") tableName = "events";
 
     try {
-      const payload = tableName === "events" 
+      const payload = tableName === "events"
         ? { status: "Cancelled", cancellation_remarks: cancelItemReason }
         : { status: "Cancelled", rejection_remarks: cancelItemReason };
 
@@ -456,15 +545,15 @@ function StaffDashboard() {
 
     doc.setDrawColor(181, 158, 116);
     doc.setLineWidth(1.5);
-    doc.rect(10, 10, pageWidth - 20, 287); 
+    doc.rect(10, 10, pageWidth - 20, 287);
     doc.setLineWidth(0.5);
     doc.rect(12, 12, pageWidth - 24, 283);
 
     doc.setFont("times", "bold");
     doc.setFontSize(22);
-    doc.setTextColor(181, 158, 116); 
+    doc.setTextColor(181, 158, 116);
     doc.text("Minore Basilica of San Pedro Bautista", centerX, 40, { align: "center" });
-    
+
     doc.setFontSize(12);
     doc.setTextColor(100, 100, 100);
     doc.setFont("times", "italic");
@@ -507,8 +596,8 @@ function StaffDashboard() {
     doc.text("Given this day under the seal of the Parish.", centerX, 180, { align: "center" });
 
     doc.setDrawColor(150, 150, 150);
-    doc.line(40, 240, 100, 240); 
-    doc.line(150, 240, 210, 240); 
+    doc.line(40, 240, 100, 240);
+    doc.line(150, 240, 210, 240);
 
     doc.setFont("times", "normal");
     doc.setFontSize(10);
@@ -528,7 +617,7 @@ function StaffDashboard() {
   };
 
   const totalPending = TAB_NAMES.reduce((sum, t) => sum + (requests[t]?.length || 0), 0);
-  
+
   const pendingData = (activeServiceTab === "All Services"
     ? TAB_NAMES.flatMap(t => (requests[t] || []).map(r => ({ ...r, _tab: t, _config: TAB_CONFIG[t] })))
     : (requests[activeServiceTab] || []).map(r => ({ ...r, _tab: activeServiceTab, _config: TAB_CONFIG[activeServiceTab] }))
@@ -580,8 +669,8 @@ function StaffDashboard() {
             <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 sm:p-8 animate-fade-in-up">
               <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 border-b border-gray-100 pb-6">
                 <h2 className="text-xl font-serif text-gray-800 font-medium uppercase tracking-widest">Awaiting Approval</h2>
-                <select 
-                  value={activeServiceTab} 
+                <select
+                  value={activeServiceTab}
                   onChange={(e) => setActiveServiceTab(e.target.value)}
                   className="w-full sm:w-auto p-3 rounded-xl border-2 border-[#B59E74]/40 hover:border-[#B59E74] outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-[#B59E74] cursor-pointer"
                 >
@@ -599,24 +688,31 @@ function StaffDashboard() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {pendingData.map((req) => (
-                    <div key={`${req._tab}-${req.id}`} className="border border-gray-100 rounded-2xl p-6 bg-gray-50/50 hover:bg-white transition-colors hover:shadow-md flex flex-col">
+                    // ✨ NEW: id for DOM targeting, dynamic highlight classes
+                    <div
+                      id={`request-card-${req.id}`}
+                      key={`${req._tab}-${req.id}`}
+                      className={`border rounded-2xl p-6 flex flex-col transition-all duration-500
+                        ${highlightId === req.id
+                          ? "border-[#B59E74] bg-[#B59E74]/10 shadow-lg shadow-[#B59E74]/20 scale-[1.01]"
+                          : "border-gray-100 bg-gray-50/50 hover:bg-white hover:shadow-md"
+                        }`}
+                    >
                       <div className="flex justify-between items-start mb-3">
                         <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-[#B59E74]/10 text-[#B59E74]">{req._tab}</span>
                         <span className="text-xs text-gray-400 font-serif">{new Date(req.created_at).toLocaleDateString()}</span>
                       </div>
 
-                      {/* --- UPDATED CLEAN UI HEADER --- */}
                       <div className="mb-4">
                         <h3 className="text-lg font-serif text-gray-800 font-medium leading-tight">{req._config.title(req)}</h3>
-                        <button 
-                          onClick={() => setViewingDetails({ ...req, request_type: req._tab, display_name: req._config.title(req) })} 
+                        <button
+                          onClick={() => setViewingDetails({ ...req, request_type: req._tab, display_name: req._config.title(req) })}
                           className="text-[10px] font-bold uppercase tracking-widest text-[#B59E74] hover:text-[#9c8760] transition-colors mt-1"
                         >
                           View Full Details →
                         </button>
                       </div>
-                      
-                      {/* --- UPDATED CLEAN UI COLUMNS --- */}
+
                       <div className="grid grid-cols-2 gap-4 mb-6 text-sm bg-white p-4 rounded-xl border border-gray-100">
                         {req._config.columns.map(col => (
                           <div key={col.label}>
@@ -669,9 +765,8 @@ function StaffDashboard() {
                           <span>🔳</span> Show QR
                         </button>
                       )}
-                      
-                      <button 
-                        onClick={() => { setCancellingItem(item); setCancelItemReason(""); }} 
+                      <button
+                        onClick={() => { setCancellingItem(item); setCancelItemReason(""); }}
                         className="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors flex items-center justify-center"
                         title="Revoke / Cancel"
                       >
@@ -702,12 +797,14 @@ function StaffDashboard() {
                   <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Assign Priest *</label>
                   <select value={assignedPriest} onChange={(e) => setAssignedPriest(e.target.value)} className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white">
                     <option value="" disabled>Select a priest…</option>
-                    {/* NEW: Dynamic Mapping */}
                     {priestNames.map((p) => (<option key={p} value={p}>{p}</option>))}
                   </select>
                   <p className="text-xs text-gray-400 italic mt-1">The selected priest will host this on the parish events calendar.</p>
                 </div>
               )}
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700 font-serif">
+                ℹ️ Approving will notify the <strong>admin</strong> for final confirmation and notify the <strong>parishioner</strong> that their request is under review.
+              </div>
               <div className="flex gap-3">
                 <button onClick={() => setAcceptingRequest(null)} disabled={acceptSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Cancel</button>
                 <button onClick={confirmAccept} disabled={acceptSubmitting || (resolveConfigFor(acceptingRequest).isSacrament && !assignedPriest)} className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed">
@@ -719,7 +816,7 @@ function StaffDashboard() {
         </div>
       )}
 
-      {/* REJECT MODAL (For Pending Items) */}
+      {/* REJECT MODAL */}
       {rejectingRequest && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
@@ -732,6 +829,9 @@ function StaffDashboard() {
                 <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Reason for Rejection *</label>
                 <textarea className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-red-500 outline-none h-32 text-sm resize-none" placeholder="Please specify why this request cannot be approved..." value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} />
               </div>
+              <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-xs text-red-700 font-serif">
+                ℹ️ The <strong>parishioner</strong> will be notified of this rejection and the reason provided.
+              </div>
               <div className="flex gap-3">
                 <button onClick={() => setRejectingRequest(null)} disabled={rejectSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Cancel</button>
                 <button onClick={confirmReject} disabled={rejectSubmitting || !rejectionReason.trim()} className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200 disabled:opacity-50 disabled:cursor-not-allowed">
@@ -743,7 +843,7 @@ function StaffDashboard() {
         </div>
       )}
 
-      {/* CANCEL/REVOKE MODAL (For Approved Items) */}
+      {/* CANCEL/REVOKE MODAL */}
       {cancellingItem && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
