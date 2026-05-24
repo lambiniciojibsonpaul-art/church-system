@@ -190,7 +190,25 @@ function LoginPage() {
       writeLongTermAdminCache(currentUser.email, roleData.role);
       console.log("[Login] Role from DB:", roleData.role);
     } else {
-      console.warn("[Login] No user_roles row found — defaulting to parishioner");
+      // No user_roles row yet — try to recover it now that the user has a live session.
+      // This handles ministry accounts whose role insert failed at sign-up due to the
+      // Supabase anti-enumeration fake-ID behavior.
+      const metaType = currentUser?.user_metadata?.account_type;
+      if (metaType) {
+        const recoveryRole = metaType === "ministry" ? "ministry" : "parishioner";
+        const { error: recoveryErr } = await supabase
+          .from("user_roles")
+          .upsert({ user_id: currentUser.id, role: recoveryRole }, { onConflict: "user_id" });
+        if (!recoveryErr) {
+          roleData = { role: recoveryRole };
+          writeLongTermAdminCache(currentUser.email, recoveryRole);
+          console.log("[Login] Role recovered from metadata:", recoveryRole);
+        } else {
+          console.warn("[Login] Role recovery failed (non-fatal):", recoveryErr.message);
+        }
+      } else {
+        console.warn("[Login] No user_roles row found — defaulting to parishioner");
+      }
     }
 
     // Derive destination. No row → parishioner → "/". Never blindly go to /admin.
@@ -293,6 +311,7 @@ function LoginPage() {
             first_name:     registerData.firstName.trim(),
             last_name:      registerData.lastName.trim(),
             contact_number: contact,
+            account_type:   registerData.accountType,
             ministry_group: registerData.accountType === "ministry" ? registerData.ministryGroup : null,
           },
         },
@@ -312,8 +331,15 @@ function LoginPage() {
           .from("user_roles")
           .upsert({ user_id: createdUser.id, role: userRole }, { onConflict: "user_id" });
 
-        if (roleError) throw new Error(`Failed to set up user permissions: ${roleError.message}`);
-        console.log("[Register] Role assigned:", userRole);
+        if (roleError) {
+          // Non-fatal: Supabase returns a sanitized/fake user ID for duplicate email
+          // sign-up attempts (anti-enumeration), which causes a FK violation here.
+          // The user still gets "parishioner" by default on login (AuthContext fallback).
+          // account_type is saved in user_metadata above as a reliable backup.
+          console.warn("[Register] Role assignment skipped (non-fatal):", roleError.message);
+        } else {
+          console.log("[Register] Role assigned:", userRole);
+        }
       }
 
       if (signupData?.session) {
