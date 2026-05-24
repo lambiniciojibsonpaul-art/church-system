@@ -115,7 +115,7 @@ function AnnouncementsPage() {
   }, []);
 
   // ── Save Draft ─────────────────────────────────────────────────────────────
-  const handleSaveDraft = useCallback(async () => {
+  const handleSaveDraft = async () => {
     if (!form.title.trim()) { showToast("Title is required.", "error"); return; }
     setSaving(true);
 
@@ -163,10 +163,10 @@ function AnnouncementsPage() {
 
     setIsDirty(false);
     setSaving(false);
-  }, [form, selectedId, user, showToast]);
+  };
 
   // ── Publish ────────────────────────────────────────────────────────────────
-  const handlePublish = useCallback(async () => {
+  const handlePublish = async () => {
     if (!form.title.trim()) { showToast("Title is required.", "error"); return; }
     if (!form.body.trim())  { showToast("Body / message is required.", "error"); return; }
     setSaving(true);
@@ -223,9 +223,15 @@ function AnnouncementsPage() {
           p_source_id:    savedId,
           p_source_table: "announcements",
         });
-        if (rpcErr) console.warn("[AnnouncementsPage] notify RPC error:", rpcErr.message);
+        
+        // ✨ NEW: Force an alert if the database rejects the notification
+        if (rpcErr) {
+          alert("⚠️ Notification Failed:\n" + rpcErr.message);
+          console.error("RPC Error Details:", rpcErr);
+        }
       } catch (e) {
-        console.warn("[AnnouncementsPage] notify RPC exception:", e);
+        alert("⚠️ System Exception while notifying:\n" + e.message);
+        console.error("[AnnouncementsPage] notify RPC exception:", e);
       }
     }
 
@@ -238,7 +244,7 @@ function AnnouncementsPage() {
         ? "Published & parishioners notified! 🔔"
         : "Announcement published."
     );
-  }, [form, selectedId, user, showToast]);
+  };
 
   // ── Archive ────────────────────────────────────────────────────────────────
   const handleArchive = useCallback(async () => {
