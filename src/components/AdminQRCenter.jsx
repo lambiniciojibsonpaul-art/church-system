@@ -97,7 +97,8 @@ function AdminQRCenter() {
   }, []);
 
   const fetchEvents = async () => {
-    const today = new Date().toISOString().split("T")[0];
+    const _d = new Date();
+    const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
     const { data } = await supabase
       .from("events")
       .select("id, title, event_date")
@@ -109,12 +110,10 @@ function AdminQRCenter() {
     setLoading(false);
   };
 
-  const now = new Date();
-  const eventTime = selectedEvent?.event_date
-    ? new Date(selectedEvent.event_date)
-    : null;
+  const _now = new Date();
+  const todayLocal = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`;
 
-  const canGenerateQR = eventTime ? now >= eventTime : false;
+  const canGenerateQR = selectedEvent?.event_date ? selectedEvent.event_date <= todayLocal : false;
 
   if (loading)
     return (

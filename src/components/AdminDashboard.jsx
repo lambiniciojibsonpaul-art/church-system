@@ -214,7 +214,6 @@ function AdminDashboard() {
   const location = useLocation(); // ✨ NEW
 
   const [loading, setLoading] = useState(true);
-  const [priestOptions, setPriestOptions] = useState([]);
 
   // ✨ NEW: highlight state for notification-driven scroll+glow
   const [highlightId, setHighlightId] = useState(null);
@@ -236,7 +235,6 @@ function AdminDashboard() {
   const [rejectionReason, setRejectionReason] = useState("");
 
   const [acceptingRequest, setAcceptingRequest] = useState(null);
-  const [assignedPriest, setAssignedPriest] = useState("");
   const [acceptSubmitting, setAcceptSubmitting] = useState(false);
 
   const [cancellingRequest, setCancellingRequest] = useState(null);
@@ -265,19 +263,14 @@ function AdminDashboard() {
     let cancelled = false;
     (async () => {
       const entries = Object.entries(TAB_CONFIG);
-      const [tabResults, priestsResult] = await Promise.all([
+      const [tabResults] = await Promise.all([
         Promise.allSettled(
           entries.map(([, cfg]) =>
             restSelect(cfg.table, { order: "created_at.desc", timeoutMs: QUERY_TIMEOUT_MS })
           )
         ),
-        restSelect("priests", { match: { is_active: true }, order: "name.asc", timeoutMs: 10000 }),
       ]);
       if (cancelled) return;
-
-      if (priestsResult.data?.length > 0) {
-        setPriestOptions(priestsResult.data.map((p) => p.name));
-      }
 
       const merged = {};
       entries.forEach(([tabName], idx) => {
@@ -295,6 +288,35 @@ function AdminDashboard() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Re-fetch all request tables when a new admin notification arrives
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel("admin-dashboard-new-requests")
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${user.id}`,
+      }, () => {
+        const entries = Object.entries(TAB_CONFIG);
+        Promise.allSettled(
+          entries.map(([, cfg]) =>
+            restSelect(cfg.table, { order: "created_at.desc", timeoutMs: QUERY_TIMEOUT_MS })
+          )
+        ).then((tabResults) => {
+          const merged = {};
+          entries.forEach(([tabName], idx) => {
+            const r = tabResults[idx];
+            if (r.status === "fulfilled" && r.value?.data) merged[tabName] = r.value.data;
+          });
+          setRequests(prev => ({ ...prev, ...merged }));
+        });
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [user?.id]);
 
   // ── Events fetch ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -409,6 +431,8 @@ function AdminDashboard() {
       if (!db) return -1;
       return String(da).localeCompare(String(db));
     }
+    if (sortBy === "submitted_desc") return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+    if (sortBy === "submitted_asc")  return String(a.created_at || "").localeCompare(String(b.created_at || ""));
     return String(dateKeyOf(b)).localeCompare(String(dateKeyOf(a)));
   });
 
@@ -459,6 +483,8 @@ function AdminDashboard() {
       if (!da && !db) return 0; if (!da) return 1; if (!db) return -1;
       return da.localeCompare(db);
     }
+    if (eventsSortBy === "created_desc") return String(b.created_at||"").localeCompare(String(a.created_at||""));
+    if (eventsSortBy === "created_asc")  return String(a.created_at||"").localeCompare(String(b.created_at||""));
     return String(b.event_date||"").localeCompare(String(a.event_date||""));
   });
 
@@ -475,14 +501,13 @@ function AdminDashboard() {
   const resolveConfigFor = (req) => req?._config || TAB_CONFIG[resolveTabFor(req)] || activeConfig;
 
   // ── Accept handlers ──────────────────────────────────────────────────────
-  const openAcceptModal  = (req) => { setAcceptingRequest(req); setAssignedPriest(""); };
-  const closeAcceptModal = () => { setAcceptingRequest(null); setAssignedPriest(""); setAcceptSubmitting(false); };
+  const openAcceptModal  = (req) => { setAcceptingRequest(req); };
+  const closeAcceptModal = () => { setAcceptingRequest(null); setAcceptSubmitting(false); };
 
   const confirmAccept = async () => {
     if (!acceptingRequest) return;
     const reqTab    = resolveTabFor(acceptingRequest);
     const reqConfig = resolveConfigFor(acceptingRequest);
-    if (reqConfig.isSacrament && !assignedPriest) { alert("Please assign a priest before approving."); return; }
     setAcceptSubmitting(true);
 
     const { error: updateErr } = await restUpdate(reqConfig.table, { id: acceptingRequest.id }, { status: "Approved" });
@@ -490,7 +515,7 @@ function AdminDashboard() {
 
     if (reqConfig.isSacrament && reqConfig.eventBuilder) {
       const eventPayload = {
-        ...reqConfig.eventBuilder(acceptingRequest, assignedPriest, user?.id || null),
+        ...reqConfig.eventBuilder(acceptingRequest, acceptingRequest.preferred_priest || "", user?.id || null),
         source_table: reqConfig.table, source_id: acceptingRequest.id,
       };
       if (eventPayload?.event_date) {
@@ -521,7 +546,7 @@ function AdminDashboard() {
           acceptingRequest.time_of_confirmation || acceptingRequest.time_of_communion ||
           acceptingRequest.start_time || "",
         location: acceptingRequest.location || "Parish",
-        priestName: assignedPriest,
+        priestName: acceptingRequest.preferred_priest || "",
       });
     }
 
@@ -672,7 +697,7 @@ function AdminDashboard() {
           <div>
             <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] mb-2 uppercase tracking-wide">Parish Dashboard</h1>
             <p className="text-gray-500 font-serif italic">
-              Welcome back. You are logged in as <span className="font-semibold not-italic">{user?.email}</span>
+              Welcome back, <span className="font-semibold not-italic">{user?.user_metadata?.full_name || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(" ") || user?.email?.split("@")[0] || "Admin"}</span>
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -789,8 +814,10 @@ function AdminDashboard() {
                 <div className="relative">
                   <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
                     className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors">
-                    <option value="date_desc">Date (newest first)</option>
-                    <option value="date_asc">Date (oldest first)</option>
+                    <option value="date_desc">Preferred Date — Newest</option>
+                    <option value="date_asc">Preferred Date — Oldest</option>
+                    <option value="submitted_desc">Submitted — Newest</option>
+                    <option value="submitted_asc">Submitted — Oldest</option>
                     <option value="status">Status</option>
                     <option value="title">Title (A–Z)</option>
                   </select>
@@ -981,8 +1008,10 @@ function AdminDashboard() {
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Sort</label>
                 <div className="relative">
                   <select value={eventsSortBy} onChange={(e) => setEventsSortBy(e.target.value)} className="appearance-none pl-4 pr-10 py-3 rounded-xl bg-white border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer transition-colors">
-                    <option value="date_desc">Date (newest first)</option>
-                    <option value="date_asc">Date (oldest first)</option>
+                    <option value="date_desc">Event Date — Newest</option>
+                    <option value="date_asc">Event Date — Oldest</option>
+                    <option value="created_desc">Created — Newest</option>
+                    <option value="created_asc">Created — Oldest</option>
                     <option value="title">Title (A–Z)</option>
                     <option value="class">Class</option>
                   </select>
@@ -1101,14 +1130,11 @@ function AdminDashboard() {
               </div>
               {resolveConfigFor(acceptingRequest).isSacrament && (
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Assign Priest *</label>
-                  <select value={assignedPriest} onChange={(e) => setAssignedPriest(e.target.value)} className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white">
-                    <option value="" disabled>Select a priest…</option>
-                    {priestOptions.length > 0
-                      ? priestOptions.map((p) => <option key={p} value={p}>{p}</option>)
-                      : <option value="" disabled>No priests configured — add one in Manage Users</option>}
-                  </select>
-                  <p className="text-xs text-gray-400 italic mt-1">The selected priest will host this on the parish events calendar.</p>
+                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Assigned Priest</label>
+                  <div className="p-4 rounded-2xl border border-gray-200 bg-gray-50 text-sm text-gray-700 font-medium">
+                    {acceptingRequest.preferred_priest || <span className="text-gray-400 italic">No priest assigned by staff yet</span>}
+                  </div>
+                  <p className="text-xs text-gray-400 italic">Assigned by staff — this priest will host the event on the parish calendar.</p>
                 </div>
               )}
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700 font-serif">
@@ -1116,7 +1142,7 @@ function AdminDashboard() {
               </div>
               <div className="flex gap-3">
                 <button onClick={closeAcceptModal} disabled={acceptSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Cancel</button>
-                <button onClick={confirmAccept} disabled={acceptSubmitting || (resolveConfigFor(acceptingRequest).isSacrament && !assignedPriest)} className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                <button onClick={confirmAccept} disabled={acceptSubmitting} className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed">
                   {acceptSubmitting ? "Approving…" : resolveConfigFor(acceptingRequest).isSacrament ? "Approve & Schedule" : "Approve"}
                 </button>
               </div>

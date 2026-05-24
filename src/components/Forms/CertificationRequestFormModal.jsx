@@ -35,7 +35,7 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
     requestor_first_name: "",
     requestor_middle_name: "",
     requestor_surname: "",
-    relationship_to_record: "",
+    relationship_to_record: "Self",
     address: "",
     contact_number: "",
     email_address: "",

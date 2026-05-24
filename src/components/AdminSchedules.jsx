@@ -30,7 +30,7 @@ function FlyToLocation({ lat, lng }) {
 function MapPicker({ lat, lng, flyTarget, onChange }) {
   const hasPin = lat !== "" && lng !== "";
   return (
-    <MapContainer center={[14.6349, 121.0052]} zoom={15} style={{ height: 260, width: "100%" }}>
+    <MapContainer center={[14.6380885, 121.0129013]} zoom={17} style={{ height: 260, width: "100%" }}>
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -51,7 +51,7 @@ const EVENT_CLASSES = [
   "General Event"
 ];
 
-const CHURCH_ADDRESS = "San Francisco del Monte, Quezon City, Metro Manila";
+const CHURCH_ADDRESS = "69 San Pedro Bautista, San Francisco del Monte, Quezon City, 1104 Metro Manila";
 
 const INDOOR_FACILITIES = [
   "St. Francis of Assisi Hall (2nd Floor)",
@@ -313,7 +313,8 @@ function AdminSchedules() {
     e.preventDefault();
 
     // 1. DATE VALIDATION: Prevent past dates
-    const today = new Date().toISOString().split("T")[0];
+    const _td = new Date();
+    const today = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,'0')}-${String(_td.getDate()).padStart(2,'0')}`;
     if (formData.eventDate < today) {
       alert("Error: You cannot schedule an event in the past. Please select today or a future date.");
       return;
@@ -385,7 +386,8 @@ function AdminSchedules() {
     }
   };
 
-  const today = new Date().toISOString().split("T")[0];
+  const _now = new Date();
+  const today = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`;
 
   const visibleEvents = events
     .filter(ev => {
@@ -764,7 +766,7 @@ function AdminSchedules() {
                   <label className="text-xs font-bold text-gray-600 uppercase">Date *</label>
                   <input
                     type="date" name="eventDate" required
-                    min={new Date().toISOString().split('T')[0]}
+                    min={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })()}
                     value={formData.eventDate} onChange={handleChange}
                     className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                   />

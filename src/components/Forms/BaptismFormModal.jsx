@@ -36,6 +36,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
   const [formData, setFormData] = useState({
     baptismType: "Sunday",
     preferredDate: "",
+    preferredTime: "",
     preferredPriest: "",
     childFirstName: "",
     childMiddleName: "",
@@ -142,11 +143,12 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
       const payload = {
         baptism_type: formData.baptismType,
         preferred_date: formData.preferredDate,
+        preferred_time: formData.preferredTime,
         preferred_priest: formData.preferredPriest || null,
         child_first_name: formData.childFirstName,
         child_middle_name: formData.childMiddleName,
         child_last_name: formData.childLastName,
-        child_dob: formData.childDob || null,
+        child_dob: formData.childDob,
         child_birthplace: formData.childBirthplace,
         child_gender: formData.childGender,
         father_name: formData.fatherName,
@@ -214,6 +216,8 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         notif_title: `New Baptism Request`,
         notif_message: `${submitterName} submitted a baptism request for ${childName || "a child"}.`,
         notif_link: '/staff-dashboard',
+        p_source_id: null,
+        p_source_table: 'baptisms',
       });
 
       if (rpcError) {
@@ -296,7 +300,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
                 Baptism Schedule & Officiant
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Type of Baptism *</label>
                   <select name="baptismType" value={formData.baptismType} onChange={handleChange} required
@@ -309,6 +313,11 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                   <label className="text-xs font-bold text-gray-600">Preferred Date *</label>
                   <input type="date" name="preferredDate" value={formData.preferredDate} onChange={handleChange} required
                     min={new Date().toISOString().split("T")[0]}
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600">Preferred Time *</label>
+                  <input type="time" name="preferredTime" value={formData.preferredTime} onChange={handleChange} required
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -342,8 +351,8 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Date of Birth</label>
-                  <input type="date" name="childDob" value={formData.childDob} onChange={handleChange}
+                  <label className="text-xs font-bold text-gray-600">Date of Birth *</label>
+                  <input type="date" name="childDob" value={formData.childDob} onChange={handleChange} required
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1">

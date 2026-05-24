@@ -239,7 +239,7 @@ function AdminReports() {
       const [sData, mData, evData] = await Promise.all([
         supabase
           .from("events")
-          .select("title, event_class, priest_name, ministry, event_date, location, status")
+          .select("title, event_class, priest_name, ministry, event_date, location, status, created_at")
           .order("event_date", { ascending: true }),
         supabase
           .from("ministries")
@@ -427,10 +427,12 @@ function AdminReports() {
             {activeTab === "services" && (() => {
               const cfg = SERVICE_CONFIGS[selectedService];
               const sorted = [...serviceData].sort((a, b) => {
-                if (sortBy === "newest") return (cfg.getDate(b) || "").localeCompare(cfg.getDate(a) || "");
-                if (sortBy === "oldest") return (cfg.getDate(a) || "").localeCompare(cfg.getDate(b) || "");
-                if (sortBy === "alpha")  return (cfg.getName(a) || "").localeCompare(cfg.getName(b) || "");
-                if (sortBy === "status") return (a.status || "").localeCompare(b.status || "");
+                if (sortBy === "newest")         return (cfg.getDate(b) || "").localeCompare(cfg.getDate(a) || "");
+                if (sortBy === "oldest")         return (cfg.getDate(a) || "").localeCompare(cfg.getDate(b) || "");
+                if (sortBy === "alpha")          return (cfg.getName(a) || "").localeCompare(cfg.getName(b) || "");
+                if (sortBy === "status")         return (a.status || "").localeCompare(b.status || "");
+                if (sortBy === "submitted_desc") return (b.created_at || "").localeCompare(a.created_at || "");
+                if (sortBy === "submitted_asc")  return (a.created_at || "").localeCompare(b.created_at || "");
                 return 0;
               });
 
@@ -457,8 +459,10 @@ function AdminReports() {
                         onChange={e => setSortBy(e.target.value)}
                         className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74]"
                       >
-                        <option value="newest">Newest First</option>
-                        <option value="oldest">Oldest First</option>
+                        <option value="newest">Preferred Date — Newest</option>
+                        <option value="oldest">Preferred Date — Oldest</option>
+                        <option value="submitted_desc">Submitted — Newest</option>
+                        <option value="submitted_asc">Submitted — Oldest</option>
                         <option value="alpha">Alphabetical</option>
                         <option value="status">By Status</option>
                       </select>
@@ -678,10 +682,12 @@ function AdminReports() {
               );
 
               const sorted = [...filtered].sort((a, b) => {
-                if (scheduleSortBy === "newest") return (b.event_date || "").localeCompare(a.event_date || "");
-                if (scheduleSortBy === "oldest") return (a.event_date || "").localeCompare(b.event_date || "");
-                if (scheduleSortBy === "alpha")  return (a.title || "").localeCompare(b.title || "");
-                if (scheduleSortBy === "status") return (a.status || "").localeCompare(b.status || "");
+                if (scheduleSortBy === "newest")       return (b.event_date || "").localeCompare(a.event_date || "");
+                if (scheduleSortBy === "oldest")       return (a.event_date || "").localeCompare(b.event_date || "");
+                if (scheduleSortBy === "alpha")        return (a.title || "").localeCompare(b.title || "");
+                if (scheduleSortBy === "status")       return (a.status || "").localeCompare(b.status || "");
+                if (scheduleSortBy === "created_desc") return (b.created_at || "").localeCompare(a.created_at || "");
+                if (scheduleSortBy === "created_asc")  return (a.created_at || "").localeCompare(b.created_at || "");
                 return 0;
               });
 
@@ -711,8 +717,10 @@ function AdminReports() {
                       onChange={e => setScheduleSortBy(e.target.value)}
                       className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74]"
                     >
-                      <option value="newest">Newest First</option>
-                      <option value="oldest">Oldest First</option>
+                      <option value="newest">Event Date — Newest</option>
+                      <option value="oldest">Event Date — Oldest</option>
+                      <option value="created_desc">Created — Newest</option>
+                      <option value="created_asc">Created — Oldest</option>
                       <option value="alpha">Alphabetical</option>
                       <option value="status">By Status</option>
                     </select>

@@ -352,9 +352,11 @@ function Header({ forceSolidBg = false }) {
   const isSolidRoute = SOLID_BG_PREFIXES.some((p) => location.pathname.startsWith(p));
   const isSolid = scrolled || forceSolidBg || isSolidRoute;
 
-  const displayName = user?.user_metadata?.full_name
-    ? user.user_metadata.full_name.split(" ")[0]
-    : user?.email?.split("@")[0] ?? "";
+  const displayName =
+    user?.user_metadata?.full_name
+    || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(" ")
+    || user?.email?.split("@")[0]
+    || "";
 
   return (
     <>

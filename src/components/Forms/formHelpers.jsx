@@ -250,6 +250,7 @@ export async function submitRequest({
   sendRequestEmail,
 }) {
   const cleanPayload = Object.entries(payload).reduce((acc, [key, value]) => {
+    if (key === "declaration_consent" || key === "submitter_signature") return acc;
     if (value === "" || value === null || value === undefined) return acc;
     acc[key] = value;
     return acc;
@@ -272,18 +273,10 @@ export async function submitRequest({
 
   let submitSuccess = false;
 
-  // Guest path: edge function uses service role — no RLS issues
   if (guestInfo && !user) {
-    console.log("🟣 Taking GUEST path via edge function");
     await submitGuestViaEdgeFunction(table, fullPayload);
     submitSuccess = true;
   } else {
-    // Authenticated path: direct REST with JWT
-    console.log("🔵 Taking AUTHENTICATED path");
-    console.log("🔵 Table:", table);
-    console.log("🔵 User ID:", user?.id);
-    console.log("🔵 Full payload:", fullPayload);
-
     const parseErr = (raw) => {
       try {
         const p = JSON.parse(raw?.message ?? raw ?? "");
@@ -292,68 +285,43 @@ export async function submitRequest({
     };
 
     let attempt = await restInsert(table, [fullPayload]);
-    console.log("🔵 Attempt 1 result:", JSON.stringify(attempt));
 
     if (attempt.error) {
-      console.warn("⚠️ Attempt 1 failed:", attempt.error);
       const fallback = { ...fullPayload };
       delete fallback.user_id;
       delete fallback.submitter_email;
       delete fallback.submitter_phone;
 
-      console.log("🔵 Attempt 2 payload:", fallback);
       const retry = await restInsert(table, [fallback]);
-      console.log("🔵 Attempt 2 result:", JSON.stringify(retry));
 
       if (retry.error) {
-        console.warn("⚠️ Attempt 2 failed:", retry.error);
         const minFallback = { ...fallback };
         delete minFallback.is_guest;
         delete minFallback.guest_name;
         delete minFallback.guest_contact;
 
-        console.log("🔵 Attempt 3 payload:", minFallback);
         const lastRetry = await restInsert(table, [minFallback]);
-        console.log("🔵 Attempt 3 result:", JSON.stringify(lastRetry));
-
-        if (lastRetry.error) {
-          console.error("❌ All 3 insert attempts failed. Throwing error.");
-          throw new Error(parseErr(lastRetry.error));
-        }
+        if (lastRetry.error) throw new Error(parseErr(lastRetry.error));
       }
     }
 
     submitSuccess = true;
-    console.log("✅ submitSuccess = true — insert succeeded");
   }
 
-  // ✨ TRIGGER REALTIME NOTIFICATION TO ALL STAFF/ADMINS
   if (submitSuccess) {
-    console.log("✅ Calling notify_staff RPC...");
-    console.log("serviceName:", serviceName);
-
     const submitterName = user
       ? (user.user_metadata?.first_name || user.email)
       : `${guestInfo?.firstName} ${guestInfo?.lastName}`;
 
-    console.log("submitterName:", submitterName);
-
-    const { data: rpcData, error: rpcError } = await supabase.rpc('notify_staff', {
+    const { error: rpcError } = await supabase.rpc('notify_staff', {
       notif_title: `New ${serviceName} Request`,
-      notif_message: `${submitterName} just submitted a new request.`,
-      notif_link: '/staff-dashboard'
+      notif_message: `${submitterName} submitted a new ${serviceName} request.`,
+      notif_link: '/staff-dashboard',
+      p_source_id: null,
+      p_source_table: table,
     });
 
-    console.log("RPC result — data:", rpcData, "| error:", rpcError);
-
-    if (rpcError) {
-      alert("⚠️ Supabase Notification Error:\n" + rpcError.message + "\n\nDetails: " + rpcError.details);
-      console.error("❌ RPC Error Full:", rpcError);
-    } else {
-      console.log("✅ notify_staff called successfully! Check notifications table.");
-    }
-  } else {
-    console.warn("❌ submitSuccess is false — RPC never called.");
+    if (rpcError) console.error("notify_staff error:", rpcError.message);
   }
 
   if (sendRequestEmail && user?.email) {

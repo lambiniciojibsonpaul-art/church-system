@@ -171,10 +171,21 @@ function PriestDashboard() {
     }
   };
 
-  const pendingRequests = requests.filter((r) => r.status === "Pending" || !r.status);
+  const [priestSortBy, setPriestSortBy] = useState("date_asc");
+  const [priestViewMode, setPriestViewMode] = useState("card"); // "card" | "table"
+
+  const pendingRequests  = requests.filter((r) => r.status === "Pending" || !r.status);
   const approvedRequests = requests.filter((r) => r.status === "Approved" || r.status === "Active");
 
-  const currentList = activeTab === "pending" ? pendingRequests : approvedRequests;
+  const sortList = (list) => [...list].sort((a, b) => {
+    if (priestSortBy === "date_asc")       return new Date(a.display_date) - new Date(b.display_date);
+    if (priestSortBy === "date_desc")      return new Date(b.display_date) - new Date(a.display_date);
+    if (priestSortBy === "submitted_desc") return new Date(b.created_at) - new Date(a.created_at);
+    if (priestSortBy === "submitted_asc")  return new Date(a.created_at) - new Date(b.created_at);
+    return 0;
+  });
+
+  const currentList = sortList(activeTab === "pending" ? pendingRequests : approvedRequests);
 
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans relative">
@@ -248,7 +259,94 @@ function PriestDashboard() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in-up">
+          <div className="animate-fade-in-up">
+          <div className="flex justify-end mb-4 gap-2">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Sort</label>
+              <select
+                value={priestSortBy}
+                onChange={e => setPriestSortBy(e.target.value)}
+                className="p-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74]"
+              >
+                <option value="date_asc">Preferred Date — Oldest</option>
+                <option value="date_desc">Preferred Date — Newest</option>
+                <option value="submitted_desc">Submitted — Newest</option>
+                <option value="submitted_asc">Submitted — Oldest</option>
+              </select>
+            </div>
+            <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white">
+              <button
+                onClick={() => setPriestViewMode("card")}
+                title="Card view"
+                className={`px-3 py-2.5 text-sm transition-colors ${priestViewMode === "card" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+              >⊞</button>
+              <button
+                onClick={() => setPriestViewMode("table")}
+                title="Table view"
+                className={`px-3 py-2.5 text-sm transition-colors ${priestViewMode === "table" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+              >≡</button>
+            </div>
+          </div>
+          {priestViewMode === "table" ? (
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="text-[10px] text-gray-400 uppercase tracking-widest font-bold border-b border-gray-100">
+                    <th className="p-3">Type</th>
+                    <th className="p-3">Name / Subject</th>
+                    <th className="p-3">Preferred Date</th>
+                    <th className="p-3">Time</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentList.map((req) => {
+                    const typeColor = req.request_type === "Wedding" ? "bg-rose-50 text-rose-600" : req.request_type === "Baptism" ? "bg-blue-50 text-blue-600" : req.request_type === "Holy Communion" ? "bg-amber-50 text-amber-600" : req.request_type === "Confirmation" ? "bg-red-50 text-red-600" : "bg-[#F6F5ED] text-[#B59E74]";
+                    const isPending = req.status === "Pending" || !req.status;
+                    const timeVal = req.time_of_communion || req.time_of_confirmation || req.request_time || req.wedding_time || "—";
+                    return (
+                      <tr key={`${req.request_type}-${req.id}`} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                        <td className="p-3">
+                          <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md whitespace-nowrap ${typeColor}`}>{req.request_type}</span>
+                        </td>
+                        <td className="p-3">
+                          <p className="text-sm font-medium text-gray-800">{req.display_name}</p>
+                          <button onClick={() => setViewingDetails(req)} className="text-[10px] font-bold uppercase tracking-widest text-[#B59E74] hover:text-[#9c8760] transition-colors">Details →</button>
+                        </td>
+                        <td className="p-3 text-sm text-gray-600 whitespace-nowrap">{new Date(req.display_date).toLocaleDateString()}</td>
+                        <td className="p-3 text-sm text-gray-500 whitespace-nowrap">{timeVal}</td>
+                        <td className="p-3">
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${isPending ? "bg-yellow-100 text-yellow-700" : "bg-green-100 text-green-700"}`}>
+                            {req.status || "Pending"}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          {activeTab === "pending" && rejectingId === req.id ? (
+                            <div className="flex gap-1 min-w-[180px]">
+                              <button onClick={() => handleStatusUpdate(req.id, req.request_type, "Rejected")} disabled={processingId === req.id} className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">Confirm</button>
+                              <button onClick={() => { setRejectingId(null); setRejectReason(""); }} className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">Cancel</button>
+                            </div>
+                          ) : (
+                            <div className="flex gap-1">
+                              {activeTab === "pending" && (
+                                <>
+                                  <button onClick={() => handleStatusUpdate(req.id, req.request_type, "Approved")} disabled={processingId === req.id} className="px-2 py-1 bg-green-50 hover:bg-green-600 text-green-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✓</button>
+                                  <button onClick={() => setRejectingId(req.id)} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✕</button>
+                                </>
+                              )}
+                              <button onClick={() => setViewingDetails(req)} className="px-2 py-1 bg-gray-50 hover:bg-[#B59E74] text-gray-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">View</button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {currentList.map((req) => (
               <div
                 key={`${req.request_type}-${req.id}`}
@@ -366,6 +464,8 @@ function PriestDashboard() {
                 )}
               </div>
             ))}
+          </div>
+          )}
           </div>
         )}
       </main>

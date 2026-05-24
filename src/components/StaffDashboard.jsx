@@ -222,8 +222,11 @@ function StaffDashboard() {
   const [requests, setRequests] = useState({});
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [activeServiceTab, setActiveServiceTab] = useState("All Services");
+  const [staffSortBy, setStaffSortBy] = useState("submitted_asc");
 
   // Approval/Rejection Modals
+  const [staffViewMode, setStaffViewMode] = useState("card"); // "card" | "table"
+
   const [acceptingRequest, setAcceptingRequest] = useState(null);
   const [assignedPriest, setAssignedPriest] = useState("");
   const [acceptSubmitting, setAcceptSubmitting] = useState(false);
@@ -242,6 +245,23 @@ function StaffDashboard() {
     fetchApprovedItems();
     fetchPriests();
   }, []);
+
+  // Re-fetch pending requests when a new staff notification arrives (e.g. new form submission)
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel("staff-dashboard-new-requests")
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${user.id}`,
+      }, () => {
+        fetchPendingRequests();
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [user?.id]);
 
   // ✨ NEW: Handle notification click → switch tab → scroll → highlight → open modal
   useEffect(() => {
@@ -400,7 +420,7 @@ function StaffDashboard() {
     const { error: updateErr } = await restUpdate(
       reqConfig.table,
       { id: acceptingRequest.id },
-      { status: "Staff Approved" }
+      { status: "Staff Approved", preferred_priest: assignedPriest || null }
     );
 
     if (updateErr) {
@@ -621,7 +641,13 @@ function StaffDashboard() {
   const pendingData = (activeServiceTab === "All Services"
     ? TAB_NAMES.flatMap(t => (requests[t] || []).map(r => ({ ...r, _tab: t, _config: TAB_CONFIG[t] })))
     : (requests[activeServiceTab] || []).map(r => ({ ...r, _tab: activeServiceTab, _config: TAB_CONFIG[activeServiceTab] }))
-  ).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  ).sort((a, b) => {
+    if (staffSortBy === "submitted_asc")   return new Date(a.created_at) - new Date(b.created_at);
+    if (staffSortBy === "submitted_desc")  return new Date(b.created_at) - new Date(a.created_at);
+    if (staffSortBy === "date_desc")       return new Date(b.display_date || b.created_at) - new Date(a.display_date || a.created_at);
+    if (staffSortBy === "date_asc")        return new Date(a.display_date || a.created_at) - new Date(b.display_date || b.created_at);
+    return 0;
+  });
 
   // Generates dynamic fields for the View Details Modal
   const getViewingEntries = () => {
@@ -669,6 +695,7 @@ function StaffDashboard() {
             <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 sm:p-8 animate-fade-in-up">
               <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 border-b border-gray-100 pb-6">
                 <h2 className="text-xl font-serif text-gray-800 font-medium uppercase tracking-widest">Awaiting Approval</h2>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                 <select
                   value={activeServiceTab}
                   onChange={(e) => setActiveServiceTab(e.target.value)}
@@ -679,16 +706,88 @@ function StaffDashboard() {
                     <option key={tab} value={tab}>{tab} ({(requests[tab] || []).length})</option>
                   ))}
                 </select>
+                <select
+                  value={staffSortBy}
+                  onChange={e => setStaffSortBy(e.target.value)}
+                  className="w-full sm:w-auto p-3 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74] cursor-pointer"
+                >
+                  <option value="submitted_asc">Submitted — Oldest</option>
+                  <option value="submitted_desc">Submitted — Newest</option>
+                  <option value="date_asc">Preferred Date — Oldest</option>
+                  <option value="date_desc">Preferred Date — Newest</option>
+                </select>
+                <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white shrink-0">
+                  <button
+                    onClick={() => setStaffViewMode("card")}
+                    title="Card view"
+                    className={`px-3 py-2.5 text-sm transition-colors ${staffViewMode === "card" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+                  >⊞</button>
+                  <button
+                    onClick={() => setStaffViewMode("table")}
+                    title="Table view"
+                    className={`px-3 py-2.5 text-sm transition-colors ${staffViewMode === "table" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+                  >≡</button>
+                </div>
+                </div>
               </div>
 
               {requestsLoading ? (
                 <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div></div>
               ) : pendingData.length === 0 ? (
                 <div className="text-center py-16 text-gray-400 italic font-serif">No pending requests for {activeServiceTab}.</div>
+              ) : staffViewMode === "table" ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="text-[10px] text-gray-400 uppercase tracking-widest font-bold border-b border-gray-100">
+                        <th className="p-3">Type</th>
+                        <th className="p-3">Name / Subject</th>
+                        <th className="p-3">Key Info</th>
+                        <th className="p-3">Submitted</th>
+                        <th className="p-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingData.map((req) => (
+                        <tr
+                          id={`request-card-${req.id}`}
+                          key={`${req._tab}-${req.id}`}
+                          className={`border-b border-gray-50 transition-all duration-500 ${highlightId === req.id ? "bg-[#B59E74]/10" : "hover:bg-gray-50"}`}
+                        >
+                          <td className="p-3">
+                            <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-[#B59E74]/10 text-[#B59E74] whitespace-nowrap">{req._tab}</span>
+                          </td>
+                          <td className="p-3">
+                            <p className="text-sm font-medium text-gray-800">{req._config.title(req)}</p>
+                            <button
+                              onClick={() => setViewingDetails({ ...req, request_type: req._tab, display_name: req._config.title(req) })}
+                              className="text-[10px] font-bold uppercase tracking-widest text-[#B59E74] hover:text-[#9c8760] transition-colors mt-0.5"
+                            >Details →</button>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex flex-col gap-0.5">
+                              {req._config.columns.map(col => (
+                                <span key={col.label} className="text-xs text-gray-500">
+                                  <span className="font-bold text-gray-400">{col.label}:</span> {col.value(req) || "—"}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="p-3 text-xs text-gray-400 whitespace-nowrap">{new Date(req.created_at).toLocaleDateString()}</td>
+                          <td className="p-3">
+                            <div className="flex gap-1">
+                              <button onClick={() => setAcceptingRequest(req)} className="px-2 py-1 bg-green-50 hover:bg-green-600 text-green-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✓</button>
+                              <button onClick={() => setRejectingRequest(req)} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✕</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {pendingData.map((req) => (
-                    // ✨ NEW: id for DOM targeting, dynamic highlight classes
                     <div
                       id={`request-card-${req.id}`}
                       key={`${req._tab}-${req.id}`}
@@ -737,44 +836,110 @@ function StaffDashboard() {
           {activeTab !== "requests" && (
             itemsLoading ? (
               <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div></div>
-            ) : getVisibleItems().length === 0 ? (
-              <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center"><div className="text-4xl mb-4">📭</div><h3 className="text-xl font-serif text-gray-800">No active records found.</h3></div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 animate-fade-in-up">
-                {getVisibleItems().map((item) => (
-                  <div key={`${item.request_type}-${item.id}`} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col h-full relative overflow-hidden group hover:shadow-md transition-shadow">
-                    <div className={`absolute top-0 left-0 w-1.5 h-full ${item.request_type === "Wedding" ? "bg-rose-400" : item.request_type === "Baptism" ? "bg-blue-400" : "bg-[#B59E74]"}`}></div>
-                    <div className="flex justify-between items-start mb-3">
-                      <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-100 text-gray-600">{item.request_type}</span>
-                    </div>
-                    <h3 className="text-xl font-serif text-gray-800 font-medium leading-tight mb-2 pr-4">{item.display_name}</h3>
-                    <div className="text-sm text-gray-500 flex flex-col gap-1 mb-6 flex-grow">
-                      <div className="flex items-center gap-2"><span>🗓️</span> {new Date(item.display_date).toLocaleDateString()}</div>
-                      <div className="flex items-center gap-2"><span>⏰</span> {item.preferred_time || item.wedding_time || "TBD"}</div>
-                      {item.location && <div className="flex items-center gap-2"><span>📍</span> {item.location}</div>}
-                    </div>
-                    <div className="mt-auto border-t border-gray-100 pt-4 flex gap-2">
-                      {activeTab === "events" && <button onClick={() => setViewingDetails(item)} className="flex-1 bg-gray-50 text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors">View Details</button>}
-                      {activeTab === "certificates" && (
-                        <button onClick={() => generateCertificate(item)} className="flex-1 bg-white border-2 border-[#B59E74] text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2">
-                          📜 Download
-                        </button>
-                      )}
-                      {activeTab === "qr-generator" && (
-                        <button onClick={() => setActiveQR(item)} className="flex-1 bg-gray-800 hover:bg-black text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2">
-                          <span>🔳</span> Show QR
-                        </button>
-                      )}
-                      <button
-                        onClick={() => { setCancellingItem(item); setCancelItemReason(""); }}
-                        className="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors flex items-center justify-center"
-                        title="Revoke / Cancel"
-                      >
-                        ✕ Revoke
-                      </button>
-                    </div>
+              <div className="animate-fade-in-up">
+                {/* Toolbar */}
+                <div className="flex justify-end mb-4">
+                  <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white">
+                    <button
+                      onClick={() => setStaffViewMode("card")}
+                      title="Card view"
+                      className={`px-3 py-2.5 text-sm transition-colors ${staffViewMode === "card" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+                    >⊞</button>
+                    <button
+                      onClick={() => setStaffViewMode("table")}
+                      title="Table view"
+                      className={`px-3 py-2.5 text-sm transition-colors ${staffViewMode === "table" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+                    >≡</button>
                   </div>
-                ))}
+                </div>
+
+                {getVisibleItems().length === 0 ? (
+                  <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center"><div className="text-4xl mb-4">📭</div><h3 className="text-xl font-serif text-gray-800">No active records found.</h3></div>
+                ) : staffViewMode === "table" ? (
+                  <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="text-[10px] text-gray-400 uppercase tracking-widest font-bold border-b border-gray-100">
+                          <th className="p-3">Type</th>
+                          <th className="p-3">Name / Subject</th>
+                          <th className="p-3">Date</th>
+                          <th className="p-3">Time</th>
+                          {activeTab === "events" && <th className="p-3">Location</th>}
+                          <th className="p-3">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {getVisibleItems().map((item) => (
+                          <tr key={`${item.request_type}-${item.id}`} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                            <td className="p-3">
+                              <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 whitespace-nowrap">{item.request_type}</span>
+                            </td>
+                            <td className="p-3 text-sm font-medium text-gray-800">{item.display_name}</td>
+                            <td className="p-3 text-sm text-gray-600 whitespace-nowrap">{new Date(item.display_date).toLocaleDateString()}</td>
+                            <td className="p-3 text-sm text-gray-500 whitespace-nowrap">{item.preferred_time || item.wedding_time || "—"}</td>
+                            {activeTab === "events" && <td className="p-3 text-sm text-gray-500 max-w-[160px] truncate">{item.location || "—"}</td>}
+                            <td className="p-3">
+                              <div className="flex gap-1">
+                                {activeTab === "events" && (
+                                  <button onClick={() => setViewingDetails(item)} className="px-2 py-1 bg-gray-50 hover:bg-[#B59E74] text-gray-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">View</button>
+                                )}
+                                {activeTab === "certificates" && (
+                                  <button onClick={() => generateCertificate(item)} className="px-2 py-1 bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">📜 Download</button>
+                                )}
+                                {activeTab === "qr-generator" && (
+                                  <button onClick={() => setActiveQR(item)} className="px-2 py-1 bg-gray-800 hover:bg-black text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">🔳 QR</button>
+                                )}
+                                <button
+                                  onClick={() => { setCancellingItem(item); setCancelItemReason(""); }}
+                                  className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors"
+                                  title="Revoke"
+                                >✕</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                    {getVisibleItems().map((item) => (
+                      <div key={`${item.request_type}-${item.id}`} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col h-full relative overflow-hidden group hover:shadow-md transition-shadow">
+                        <div className={`absolute top-0 left-0 w-1.5 h-full ${item.request_type === "Wedding" ? "bg-rose-400" : item.request_type === "Baptism" ? "bg-blue-400" : "bg-[#B59E74]"}`}></div>
+                        <div className="flex justify-between items-start mb-3">
+                          <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-100 text-gray-600">{item.request_type}</span>
+                        </div>
+                        <h3 className="text-xl font-serif text-gray-800 font-medium leading-tight mb-2 pr-4">{item.display_name}</h3>
+                        <div className="text-sm text-gray-500 flex flex-col gap-1 mb-6 flex-grow">
+                          <div className="flex items-center gap-2"><span>🗓️</span> {new Date(item.display_date).toLocaleDateString()}</div>
+                          <div className="flex items-center gap-2"><span>⏰</span> {item.preferred_time || item.wedding_time || "TBD"}</div>
+                          {item.location && <div className="flex items-center gap-2"><span>📍</span> {item.location}</div>}
+                        </div>
+                        <div className="mt-auto border-t border-gray-100 pt-4 flex gap-2">
+                          {activeTab === "events" && <button onClick={() => setViewingDetails(item)} className="flex-1 bg-gray-50 text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors">View Details</button>}
+                          {activeTab === "certificates" && (
+                            <button onClick={() => generateCertificate(item)} className="flex-1 bg-white border-2 border-[#B59E74] text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2">
+                              📜 Download
+                            </button>
+                          )}
+                          {activeTab === "qr-generator" && (
+                            <button onClick={() => setActiveQR(item)} className="flex-1 bg-gray-800 hover:bg-black text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2">
+                              <span>🔳</span> Show QR
+                            </button>
+                          )}
+                          <button
+                            onClick={() => { setCancellingItem(item); setCancelItemReason(""); }}
+                            className="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors flex items-center justify-center"
+                            title="Revoke / Cancel"
+                          >
+                            ✕ Revoke
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )
           )}
@@ -794,12 +959,19 @@ function StaffDashboard() {
             <div className="p-8 space-y-6">
               {resolveConfigFor(acceptingRequest).isSacrament && (
                 <div className="flex flex-col gap-2">
+                  {acceptingRequest.preferred_priest && (
+                    <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700">
+                      <span className="font-bold uppercase tracking-widest">Parishioner's Preferred Priest:</span>{" "}
+                      {acceptingRequest.preferred_priest}
+                      <span className="block mt-0.5 text-blue-500 italic font-normal">This is only a preference — your selection below is final.</span>
+                    </div>
+                  )}
                   <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Assign Priest *</label>
                   <select value={assignedPriest} onChange={(e) => setAssignedPriest(e.target.value)} className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white">
                     <option value="" disabled>Select a priest…</option>
                     {priestNames.map((p) => (<option key={p} value={p}>{p}</option>))}
                   </select>
-                  <p className="text-xs text-gray-400 italic mt-1">The selected priest will host this on the parish events calendar.</p>
+                  <p className="text-xs text-gray-400 italic mt-1">The assigned priest will host this on the parish events calendar.</p>
                 </div>
               )}
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700 font-serif">

@@ -29,7 +29,7 @@ function CheckInPage() {
 
       const { data, error } = await supabase
         .from("events")
-        .select("title, location, latitude, longitude, event_date")
+        .select("title, location, latitude, longitude, event_date, event_time, is_inside")
         .eq("id", eventId)
         .single();
 
@@ -94,37 +94,51 @@ function CheckInPage() {
 
     setStatus("locating");
     try {
-      // Guard: block check-in if the event day has already passed
-      const todayStr = new Date().toISOString().split("T")[0];
+      const _t1 = new Date();
+      const todayStr = `${_t1.getFullYear()}-${String(_t1.getMonth()+1).padStart(2,'0')}-${String(_t1.getDate()).padStart(2,'0')}`;
+      const currentTimeStr = `${String(_t1.getHours()).padStart(2,'0')}:${String(_t1.getMinutes()).padStart(2,'0')}`;
+
       if (event.event_date && event.event_date < todayStr) {
         setModalType("event_ended");
         setStatus("error");
         return;
       }
-
-      if (!event.latitude || !event.longitude) {
-        setModalType("error");
-        setErrorMsg("Event location is not configured. Please contact the parish admin.");
+      if (event.event_date && event.event_date > todayStr) {
+        setModalType("not_started");
+        setStatus("error");
+        return;
+      }
+      if (event.event_time && currentTimeStr < event.event_time.slice(0, 5)) {
+        setModalType("not_started");
         setStatus("error");
         return;
       }
 
-      // Phase 1: fast wifi/cell position
-      let loc = await getLocationFast();
-      let distance = getDistanceInMeters(loc.lat, loc.lng, event.latitude, event.longitude);
+      if (!event.is_inside) {
+        if (!event.latitude || !event.longitude) {
+          setModalType("error");
+          setErrorMsg("Event location is not configured. Please contact the parish admin.");
+          setStatus("error");
+          return;
+        }
 
-      // Phase 2: GPS retry only when wifi location is too inaccurate to trust
-      // (accuracy > 100m means the wifi fix could be off by enough to falsely fail the 150m check)
-      if (distance > 150 && loc.accuracy > 100) {
-        setStatus("improving");
-        loc = await getLocationGPS();
-        distance = getDistanceInMeters(loc.lat, loc.lng, event.latitude, event.longitude);
-      }
+        // Phase 1: fast wifi/cell position
+        let loc = await getLocationFast();
+        let distance = getDistanceInMeters(loc.lat, loc.lng, event.latitude, event.longitude);
 
-      if (distance > 150) {
-        setModalType("too_far");
-        setStatus("error");
-        return;
+        // Phase 2: GPS retry only when wifi location is too inaccurate to trust
+        // (accuracy > 100m means the wifi fix could be off by enough to falsely fail the 200m check)
+        if (distance > 200 && loc.accuracy > 100) {
+          setStatus("improving");
+          loc = await getLocationGPS();
+          distance = getDistanceInMeters(loc.lat, loc.lng, event.latitude, event.longitude);
+        }
+
+        if (distance > 200) {
+          setModalType("too_far");
+          setStatus("error");
+          return;
+        }
       }
 
       setStatus("checking_in");
@@ -303,8 +317,12 @@ function CheckInPage() {
     );
   }
 
-  // ── EVENT ALREADY ENDED ────────────────────────────────────────────────────
-  const today = new Date().toISOString().split("T")[0];
+  // ── DATE / TIME GATE ──────────────────────────────────────────────────────
+  const _t2 = new Date();
+  const today = `${_t2.getFullYear()}-${String(_t2.getMonth()+1).padStart(2,'0')}-${String(_t2.getDate()).padStart(2,'0')}`;
+  const nowTime = `${String(_t2.getHours()).padStart(2,'0')}:${String(_t2.getMinutes()).padStart(2,'0')}`;
+  const eventTimeShort = event.event_time?.slice(0, 5);
+
   if (event.event_date && event.event_date < today) {
     return (
       <div className="min-h-screen bg-[#F6F5ED] flex items-center justify-center p-6">
@@ -315,6 +333,43 @@ function CheckInPage() {
             <span className="font-semibold text-gray-700">{event.title}</span> has already concluded.
           </p>
           <p className="text-gray-400 text-sm mb-8">Check-in is no longer available for past events.</p>
+          <Link to="/" className="text-[#B59E74] font-bold uppercase text-sm tracking-widest">Return Home</Link>
+        </div>
+      </div>
+    );
+  }
+
+  const notStartedYet = (event.event_date && event.event_date > today) ||
+    (eventTimeShort && nowTime < eventTimeShort);
+
+  if (notStartedYet) {
+    const eventDateFormatted = event.event_date
+      ? new Date(event.event_date + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+      : null;
+    const isToday = event.event_date === today;
+    return (
+      <div className="min-h-screen bg-[#F6F5ED] flex items-center justify-center p-6">
+        <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl text-center max-w-sm border border-gray-100">
+          <div className="text-6xl mb-6">⏳</div>
+          <h2 className="text-2xl font-serif text-[#B59E74] uppercase tracking-widest mb-3">Not Started Yet</h2>
+          <p className="text-gray-500 italic mb-2 leading-relaxed">
+            <span className="font-semibold text-gray-700">{event.title}</span> has not started yet.
+          </p>
+          <p className="text-gray-500 text-sm mb-1">
+            {isToday
+              ? "Check-in opens today at"
+              : `Check-in opens on ${eventDateFormatted} at`}
+          </p>
+          {eventTimeShort && (
+            <p className="text-2xl font-serif font-medium text-[#B59E74] mb-8">
+              {(() => {
+                const [h, m] = eventTimeShort.split(":").map(Number);
+                const suffix = h >= 12 ? "PM" : "AM";
+                const h12 = h % 12 || 12;
+                return `${h12}:${String(m).padStart(2,'0')} ${suffix}`;
+              })()}
+            </p>
+          )}
           <Link to="/" className="text-[#B59E74] font-bold uppercase text-sm tracking-widest">Return Home</Link>
         </div>
       </div>
@@ -354,7 +409,7 @@ function CheckInPage() {
           )}
 
           <button
-            onClick={() => setShowLocationPrompt(true)}
+            onClick={() => event?.is_inside ? handleCheckIn() : setShowLocationPrompt(true)}
             disabled={status === "locating" || status === "improving" || status === "checking_in"}
             className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-6 rounded-3xl text-xl uppercase tracking-[0.2em] transition-all shadow-xl active:scale-95 disabled:opacity-50"
           >
@@ -437,7 +492,7 @@ function CheckInPage() {
               Not in Location
             </h2>
             <p className="text-gray-500 italic mb-2 leading-relaxed">
-              You must be within <span className="font-bold text-gray-700">150 meters</span> of the event venue to check in.
+              You must be within <span className="font-bold text-gray-700">200 meters</span> of the event venue to check in.
             </p>
             <p className="text-gray-400 text-sm mb-8">
               Please move closer to the event location and try again.
@@ -511,6 +566,30 @@ function CheckInPage() {
               className="w-full py-3 rounded-2xl border border-gray-200 text-gray-400 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all"
             >
               Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── NOT STARTED YET MODAL ── */}
+      {modalType === "not_started" && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl text-center p-10 border border-gray-100">
+            <div className="text-7xl mb-6">⏳</div>
+            <h2 className="text-2xl font-serif text-[#B59E74] uppercase tracking-widest mb-3">
+              Not Started Yet
+            </h2>
+            <p className="text-gray-500 italic mb-2 leading-relaxed">
+              <span className="font-semibold text-gray-700">{event?.title}</span> has not started yet.
+            </p>
+            <p className="text-gray-400 text-sm mb-8">
+              Check-in opens when the event begins{event?.event_time ? ` at ${(() => { const [h,m] = event.event_time.slice(0,5).split(":").map(Number); return `${h%12||12}:${String(m).padStart(2,"0")} ${h>=12?"PM":"AM"}`; })()}` : ""}.
+            </p>
+            <button
+              onClick={closeModal}
+              className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm"
+            >
+              OK
             </button>
           </div>
         </div>
