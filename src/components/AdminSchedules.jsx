@@ -94,6 +94,7 @@ function AdminSchedules() {
   const searchDebounceRef = useRef(null);
 
   const [activeMinistries, setActiveMinistries] = useState([]);
+  const [viewMode, setViewMode] = useState("card"); // "card" | "table"
 
   const [formData, setFormData] = useState({
     title: "",
@@ -441,12 +442,30 @@ function AdminSchedules() {
             <p className="text-gray-500 font-serif italic mt-1">Manage parish events, review ministry proposals, and assign priests.</p>
           </div>
           
-          <button 
-            onClick={handleOpenEventModal} 
-            className="bg-[#B59E74] border-2 border-[#B59E74] hover:bg-[#9c8760] hover:border-[#9c8760] text-white px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-sm shadow-md transition-colors flex items-center gap-2 h-fit"
-          >
-            <span className="text-lg leading-none">+</span> Add Event
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-xl border border-gray-200 overflow-hidden shadow-sm bg-white">
+              <button
+                onClick={() => setViewMode("card")}
+                title="Card view"
+                className={`px-3 py-2.5 text-sm transition-colors ${viewMode === "card" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+              >
+                ⊞
+              </button>
+              <button
+                onClick={() => setViewMode("table")}
+                title="Table view"
+                className={`px-3 py-2.5 text-sm transition-colors ${viewMode === "table" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+              >
+                ≡
+              </button>
+            </div>
+            <button
+              onClick={handleOpenEventModal}
+              className="bg-[#B59E74] border-2 border-[#B59E74] hover:bg-[#9c8760] hover:border-[#9c8760] text-white px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-sm shadow-md transition-colors flex items-center gap-2 h-fit"
+            >
+              <span className="text-lg leading-none">+</span> Add Event
+            </button>
+          </div>
         </div>
 
         {/* Search bar */}
@@ -502,6 +521,68 @@ function AdminSchedules() {
                   : "No schedules found."}
               </h3>
               {!eventSearch && <p className="text-sm mt-1">Click "Add Event" to create a new schedule.</p>}
+            </div>
+          ) : viewMode === "table" ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="text-[10px] text-gray-400 uppercase tracking-widest font-bold border-b border-gray-100">
+                    <th className="p-3">Event</th>
+                    <th className="p-3">Type</th>
+                    <th className="p-3">Host</th>
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Time</th>
+                    <th className="p-3">Location</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleEvents.map((ev) => {
+                    const isPending = ev.status === "Pending";
+                    const isCancelledOrRejected = ev.status === "Cancelled" || ev.status === "Rejected";
+                    const accentColor = isPending ? "bg-yellow-400" : isCancelledOrRejected ? "bg-red-400" : ev.event_class === "Mass" ? "bg-[#B59E74]" : "bg-gray-800";
+                    return (
+                      <tr key={ev.id} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${isCancelledOrRejected ? "opacity-70" : ""}`}>
+                        <td className="p-3">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-1 h-8 rounded-full shrink-0 ${accentColor}`} />
+                            <span className={`text-sm font-medium ${isCancelledOrRejected ? "line-through text-gray-400" : "text-gray-800"}`}>{ev.title}</span>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">{ev.event_class}</span>
+                        </td>
+                        <td className="p-3 text-sm text-gray-600">{ev.priest_name || ev.ministry || "—"}</td>
+                        <td className="p-3 text-sm text-gray-600 whitespace-nowrap">{new Date(ev.event_date).toLocaleDateString()}</td>
+                        <td className="p-3 text-sm text-gray-600 whitespace-nowrap">{ev.event_time || "—"}</td>
+                        <td className="p-3 text-sm text-gray-500 max-w-[160px] truncate">{ev.location || "—"}</td>
+                        <td className="p-3">
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${isPending ? "bg-yellow-100 text-yellow-700" : isCancelledOrRejected ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
+                            {ev.status || "Active"}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex gap-1">
+                            {isPending && (
+                              <>
+                                <button onClick={() => handleApprove(ev)} className="px-2 py-1 bg-green-50 hover:bg-green-600 text-green-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✓</button>
+                                <button onClick={() => { setRejectingEvent(ev); setRejectionReason(""); }} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✕</button>
+                              </>
+                            )}
+                            {(ev.status === "Active" || !ev.status) && (
+                              <button onClick={() => { setCancellingEvent(ev); setCancelReason(""); }} className="px-2 py-1 bg-orange-50 hover:bg-orange-600 text-orange-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">Cancel</button>
+                            )}
+                            {isCancelledOrRejected && (
+                              <button onClick={() => setDeletingEvent(ev)} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">Delete</button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

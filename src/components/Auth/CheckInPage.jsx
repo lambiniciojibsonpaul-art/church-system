@@ -18,7 +18,7 @@ function CheckInPage() {
   const [guestForm, setGuestForm]       = useState({ firstName: "", lastName: "", contactNumber: "" });
 
   // Modal state
-  const [modalType, setModalType]       = useState(null); // null | "success" | "too_far" | "duplicate" | "error" | "location_denied"
+  const [modalType, setModalType]       = useState(null); // null | "success" | "too_far" | "duplicate" | "error" | "location_denied" | "event_ended"
   const [errorMsg, setErrorMsg]         = useState("");
   const [showLocationPrompt, setShowLocationPrompt] = useState(false);
 
@@ -29,7 +29,7 @@ function CheckInPage() {
 
       const { data, error } = await supabase
         .from("events")
-        .select("title, location, latitude, longitude")
+        .select("title, location, latitude, longitude, event_date")
         .eq("id", eventId)
         .single();
 
@@ -94,6 +94,14 @@ function CheckInPage() {
 
     setStatus("locating");
     try {
+      // Guard: block check-in if the event day has already passed
+      const todayStr = new Date().toISOString().split("T")[0];
+      if (event.event_date && event.event_date < todayStr) {
+        setModalType("event_ended");
+        setStatus("error");
+        return;
+      }
+
       if (!event.latitude || !event.longitude) {
         setModalType("error");
         setErrorMsg("Event location is not configured. Please contact the parish admin.");
@@ -295,6 +303,24 @@ function CheckInPage() {
     );
   }
 
+  // ── EVENT ALREADY ENDED ────────────────────────────────────────────────────
+  const today = new Date().toISOString().split("T")[0];
+  if (event.event_date && event.event_date < today) {
+    return (
+      <div className="min-h-screen bg-[#F6F5ED] flex items-center justify-center p-6">
+        <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl text-center max-w-sm border border-gray-100">
+          <div className="text-6xl mb-6">📅</div>
+          <h2 className="text-2xl font-serif text-gray-700 uppercase tracking-widest mb-3">Event Has Ended</h2>
+          <p className="text-gray-500 italic mb-2 leading-relaxed">
+            <span className="font-semibold text-gray-700">{event.title}</span> has already concluded.
+          </p>
+          <p className="text-gray-400 text-sm mb-8">Check-in is no longer available for past events.</p>
+          <Link to="/" className="text-[#B59E74] font-bold uppercase text-sm tracking-widest">Return Home</Link>
+        </div>
+      </div>
+    );
+  }
+
   // ── CHECK-IN SCREEN ────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen w-full flex flex-col font-sans bg-[#F6F5ED]">
@@ -486,6 +512,28 @@ function CheckInPage() {
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── EVENT ENDED MODAL ── */}
+      {modalType === "event_ended" && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl text-center p-10 border border-gray-100">
+            <div className="text-7xl mb-6">📅</div>
+            <h2 className="text-2xl font-serif text-gray-700 uppercase tracking-widest mb-3">
+              Event Has Ended
+            </h2>
+            <p className="text-gray-500 italic mb-2 leading-relaxed">
+              <span className="font-semibold text-gray-700">{event?.title}</span> has already concluded.
+            </p>
+            <p className="text-gray-400 text-sm mb-8">Check-in is no longer available for past events.</p>
+            <Link
+              to="/"
+              className="block w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-2xl uppercase tracking-widest shadow-md transition-all text-sm"
+            >
+              Return Home
+            </Link>
           </div>
         </div>
       )}

@@ -1,12 +1,187 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/useAuth";
+
+function EventSearchSelect({ events, value, onChange, placeholder = "-- Select an Event --" }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const selected = events.find(ev => ev.id === value?.id);
+  const filtered = events.filter(ev =>
+    ev.title.toLowerCase().includes(search.toLowerCase())
+  );
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 50);
+    else setSearch("");
+  }, [open]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between p-3 rounded-xl border border-gray-200 bg-gray-50 font-medium text-sm transition-all text-left focus:outline-none focus:ring-2 focus:ring-[#B59E74]"
+      >
+        <span className={selected ? "text-gray-800" : "text-gray-400"}>
+          {selected
+            ? `${selected.title}${selected.event_date ? ` (${new Date(selected.event_date).toLocaleDateString()})` : ""}`
+            : placeholder}
+        </span>
+        <span className="text-gray-400 ml-2 text-xs">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+          <div className="p-2 border-b border-gray-100">
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-[#B59E74]">
+              <span className="text-gray-400 text-sm">🔍</span>
+              <input
+                ref={inputRef}
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search event..."
+                className="flex-1 outline-none text-sm text-gray-700 bg-transparent"
+              />
+              {search && (
+                <button type="button" onClick={() => setSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+              )}
+            </div>
+          </div>
+          <ul className="max-h-56 overflow-y-auto">
+            <li
+              className="px-4 py-2.5 text-sm text-gray-400 italic cursor-pointer hover:bg-gray-50"
+              onClick={() => { onChange(null); setOpen(false); }}
+            >
+              {placeholder}
+            </li>
+            {filtered.length === 0 ? (
+              <li className="px-4 py-3 text-sm text-gray-400 italic text-center">No events found</li>
+            ) : (
+              filtered.map(ev => (
+                <li
+                  key={ev.id}
+                  onClick={() => { onChange(ev); setOpen(false); }}
+                  className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-[#B59E74]/10 hover:text-[#B59E74] transition-colors ${value?.id === ev.id ? "bg-[#B59E74]/10 text-[#B59E74] font-medium" : "text-gray-700"}`}
+                >
+                  <span className="font-medium">{ev.title}</span>
+                  {ev.event_date && (
+                    <span className="text-xs text-gray-400 ml-2">{new Date(ev.event_date).toLocaleDateString()}</span>
+                  )}
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Config for every service type — drives the dropdown, fetch, and table render
+const SERVICE_CONFIGS = {
+  baptisms: {
+    label: "Baptisms",
+    getName: r => `${r.child_first_name || ""} ${r.child_last_name || ""}`.trim() || "—",
+    getDate: r => r.preferred_date,
+    dateLabel: "Preferred Date",
+  },
+  confirmations: {
+    label: "Confirmations",
+    getName: r => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() || "—",
+    getDate: r => r.date_of_confirmation,
+    dateLabel: "Date of Confirmation",
+  },
+  holy_communions: {
+    label: "Holy Communions",
+    getName: r => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() || "—",
+    getDate: r => r.date_of_communion,
+    dateLabel: "Date of Communion",
+  },
+  weddings: {
+    label: "Weddings",
+    getName: r => {
+      const groom = `${r.groom_first_name || ""} ${r.groom_last_name || ""}`.trim();
+      const bride = `${r.bride_first_name || ""} ${r.bride_last_name || ""}`.trim();
+      return [groom, bride].filter(Boolean).join(" & ") || "—";
+    },
+    getDate: r => r.preferred_date,
+    dateLabel: "Wedding Date",
+  },
+  mass_intentions: {
+    label: "Mass Intentions",
+    getName: r => r.intention_type
+      ? `${r.intention_type}${r.names_in_intention ? ` — ${r.names_in_intention}` : r.full_name ? ` (${r.full_name})` : ""}`
+      : r.full_name || "—",
+    getDate: r => r.preferred_date,
+    dateLabel: "Preferred Date",
+  },
+  facilities_bookings: {
+    label: "Facilities Bookings",
+    getName: r => r.event_purpose || r.purpose || r.event_name || "—",
+    getDate: r => r.start_date,
+    dateLabel: "Start Date",
+  },
+  certifications: {
+    label: "Certification Requests",
+    getName: r => {
+      const cert = r.certificate_type || "—";
+      const requestor = `${r.requestor_first_name || ""} ${r.requestor_surname || ""}`.trim();
+      return requestor ? `${cert} (${requestor})` : cert;
+    },
+    getDate: r => r.record_date,
+    dateLabel: "Date of Sacrament",
+  },
+  sacraments_liturgical: {
+    label: "Sacraments & Liturgical",
+    getName: r => r.request_type || "—",
+    getDate: r => r.request_date,
+    dateLabel: "Request Date",
+  },
+};
+
+const STATUS_COLOR = (s) => {
+  switch ((s || "").toLowerCase()) {
+    case "approved":  return "bg-green-100 text-green-700";
+    case "pending":   return "bg-yellow-100 text-yellow-700";
+    case "rejected":  return "bg-red-100 text-red-700";
+    default:          return "bg-gray-100 text-gray-600";
+  }
+};
 
 function AdminReports() {
   const { refreshRole, user } = useAuth();
   const [activeTab, setActiveTab] = useState("services");
   const [loading, setLoading] = useState(true);
+
+  // Services tab state
+  const [selectedService, setSelectedService] = useState("baptisms");
+  const [sortBy, setSortBy] = useState("newest");
+  const [serviceData, setServiceData] = useState([]);
+  const [serviceLoading, setServiceLoading] = useState(false);
+
+  // Schedules tab state
+  const [scheduleSortBy, setScheduleSortBy] = useState("newest");
+  const [scheduleFilter, setScheduleFilter] = useState("all");
+
+  // Attendance tab state
+  const [attendanceEvents, setAttendanceEvents] = useState([]);
+  const [selectedAttendanceEvent, setSelectedAttendanceEvent] = useState(null);
+  const [attendanceSearch, setAttendanceSearch] = useState("");
+  const [attendanceData, setAttendanceData] = useState([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
 
   const [metrics, setMetrics] = useState({
     totalReservations: 0,
@@ -16,8 +191,6 @@ function AdminReports() {
   });
 
   const [reportData, setReportData] = useState({
-    services: { baptisms: [], weddings: [], intentions: [], confirmations: [] },
-    attendance: [],
     schedules: [],
     ministries: [],
   });
@@ -62,52 +235,28 @@ function AdminReports() {
         totalMinistries: ministriesCount.data?.length || 0,
       });
 
-      // Detail queries for each report tab
-      const [bData, wData, iData, cData, sData, mData, aData] = await Promise.all([
-        supabase
-          .from("baptisms")
-          .select("child_first_name, child_last_name, preferred_date, status")
-          .order("preferred_date", { ascending: true }),
-        supabase
-          .from("weddings")
-          .select("groom_name, bride_name, wedding_date, status")
-          .order("wedding_date", { ascending: true }),
-        supabase
-          .from("mass_intentions")
-          .select("intention_detail, intention_date, status")
-          .order("intention_date", { ascending: true }),
-        supabase
-          .from("confirmations")
-          .select("candidate_name, confirmation_date, status")
-          .order("confirmation_date", { ascending: true }),
+      // Detail queries for schedules and ministries tabs
+      const [sData, mData, evData] = await Promise.all([
         supabase
           .from("events")
-          .select("title, priest_name, event_date, location, status")
+          .select("title, event_class, priest_name, ministry, event_date, location, status")
           .order("event_date", { ascending: true }),
-        // Fix: query the actual `ministries` table, not `events`
         supabase
           .from("ministries")
           .select("name, description, is_archived")
           .eq("is_archived", false)
           .order("name", { ascending: true }),
-        // Fix: use attendance_details VIEW for joined name + event data
         supabase
-          .from("attendance_details")
-          .select("*")
-          .order("check_in_time", { ascending: false }),
+          .from("events")
+          .select("id, title, event_date, priest_name, ministry")
+          .order("event_date", { ascending: false }),
       ]);
 
       setReportData({
-        services: {
-          baptisms: bData.data || [],
-          weddings: wData.data || [],
-          intentions: iData.data || [],
-          confirmations: cData.data || [],
-        },
-        attendance: aData.data || [],
         schedules: sData.data || [],
         ministries: mData.data || [],
       });
+      setAttendanceEvents(evData.data || []);
     } catch (error) {
       console.error("Error fetching reports:", error);
     } finally {
@@ -115,47 +264,55 @@ function AdminReports() {
     }
   };
 
+  const fetchServiceData = async (serviceKey) => {
+    setServiceLoading(true);
+    try {
+      const { data } = await supabase.from(serviceKey).select("*");
+      setServiceData(data || []);
+    } catch (err) {
+      console.error("fetchServiceData error:", err);
+      setServiceData([]);
+    } finally {
+      setServiceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "services") {
+      fetchServiceData(selectedService);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedService, activeTab]);
+
+  const fetchAttendanceData = async (eventId) => {
+    setAttendanceLoading(true);
+    try {
+      const { data } = await supabase
+        .from("attendance_details")
+        .select("*")
+        .eq("event_id", eventId)
+        .order("check_in_time", { ascending: false });
+      setAttendanceData(data || []);
+    } catch (err) {
+      console.error("fetchAttendanceData error:", err);
+      setAttendanceData([]);
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedAttendanceEvent) {
+      fetchAttendanceData(selectedAttendanceEvent.id);
+      setAttendanceSearch("");
+    } else {
+      setAttendanceData([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAttendanceEvent]);
+
   const handlePrint = () => window.print();
 
-  // Reusable bordered table block for the Services tab
-  const renderServiceTable = (title, data, columns, rowRender) => {
-    if (!data || data.length === 0) return null;
-    return (
-      <div className="mb-10 print:mb-8">
-        <div className="flex items-center gap-4 mb-3">
-          <h4 className="text-sm font-bold text-[#B59E74] print:text-black uppercase tracking-widest whitespace-nowrap">
-            {title}
-          </h4>
-          <div className="h-px w-full bg-gray-100 print:bg-black"></div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse border border-gray-200 print:border-black">
-            <thead>
-              <tr className="bg-gray-50 print:bg-transparent text-[10px] text-gray-500 print:text-black uppercase tracking-widest font-bold">
-                {columns.map((col, i) => (
-                  <th
-                    key={i}
-                    className="p-3 border-b border-gray-200 print:border-black border-r print:border-r-black last:border-r-0"
-                  >
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>{data.map((item, idx) => rowRender(item, idx))}</tbody>
-          </table>
-        </div>
-      </div>
-    );
-  };
-
-  // Resolve display name from attendance_details VIEW columns
-  const resolveAttendanceName = (row) => {
-    if (row.full_name) return row.full_name;
-    if (row.first_name || row.last_name)
-      return `${row.first_name || ""} ${row.last_name || ""}`.trim();
-    return row.email?.split("@")[0] || "Unknown";
-  };
 
   if (loading) {
     return (
@@ -267,175 +424,332 @@ function AdminReports() {
           <div className="p-8 print:p-0">
 
             {/* ── SERVICE RESERVATIONS TAB ── */}
-            {activeTab === "services" && (
-              <div className="space-y-12">
-                {renderServiceTable(
-                  "Baptisms",
-                  reportData.services.baptisms,
-                  ["Child Name", "Preferred Date", "Status"],
-                  (item, idx) => (
-                    <tr key={idx} className="border-b border-gray-100 print:border-black hover:bg-gray-50 transition-colors">
-                      <td className="p-4 text-sm font-medium text-gray-800 print:text-black">
-                        {item.child_first_name} {item.child_last_name}
-                      </td>
-                      <td className="p-4 text-sm text-gray-600 print:text-black">
-                        {item.preferred_date ? new Date(item.preferred_date).toLocaleDateString() : "—"}
-                      </td>
-                      <td className="p-4 text-sm font-bold print:font-normal uppercase tracking-tighter text-blue-700 print:text-black">
-                        {item.status}
-                      </td>
-                    </tr>
-                  )
-                )}
-                {renderServiceTable(
-                  "Weddings",
-                  reportData.services.weddings,
-                  ["Couple", "Wedding Date", "Status"],
-                  (item, idx) => (
-                    <tr key={idx} className="border-b border-gray-100 print:border-black hover:bg-gray-50 transition-colors">
-                      <td className="p-4 text-sm font-medium text-gray-800 print:text-black">
-                        {item.groom_name} &amp; {item.bride_name}
-                      </td>
-                      <td className="p-4 text-sm text-gray-600 print:text-black">
-                        {item.wedding_date ? new Date(item.wedding_date).toLocaleDateString() : "—"}
-                      </td>
-                      <td className="p-4 text-sm font-bold print:font-normal uppercase tracking-tighter text-pink-700 print:text-black">
-                        {item.status}
-                      </td>
-                    </tr>
-                  )
-                )}
-                {renderServiceTable(
-                  "Mass Intentions",
-                  reportData.services.intentions,
-                  ["Intention", "Date", "Status"],
-                  (item, idx) => (
-                    <tr key={idx} className="border-b border-gray-100 print:border-black hover:bg-gray-50 transition-colors">
-                      <td className="p-4 text-sm font-medium text-gray-800 print:text-black">
-                        {item.intention_detail}
-                      </td>
-                      <td className="p-4 text-sm text-gray-600 print:text-black">
-                        {item.intention_date ? new Date(item.intention_date).toLocaleDateString() : "—"}
-                      </td>
-                      <td className="p-4 text-sm font-bold print:font-normal uppercase tracking-tighter text-amber-700 print:text-black">
-                        {item.status}
-                      </td>
-                    </tr>
-                  )
-                )}
-                {renderServiceTable(
-                  "Confirmations",
-                  reportData.services.confirmations,
-                  ["Candidate Name", "Confirmation Date", "Status"],
-                  (item, idx) => (
-                    <tr key={idx} className="border-b border-gray-100 print:border-black hover:bg-gray-50 transition-colors">
-                      <td className="p-4 text-sm font-medium text-gray-800 print:text-black">
-                        {item.candidate_name}
-                      </td>
-                      <td className="p-4 text-sm text-gray-600 print:text-black">
-                        {item.confirmation_date
-                          ? new Date(item.confirmation_date).toLocaleDateString()
-                          : "—"}
-                      </td>
-                      <td className="p-4 text-sm font-bold print:font-normal uppercase tracking-tighter text-purple-700 print:text-black">
-                        {item.status}
-                      </td>
-                    </tr>
-                  )
-                )}
-                {reportData.services.baptisms.length === 0 &&
-                  reportData.services.weddings.length === 0 &&
-                  reportData.services.intentions.length === 0 &&
-                  reportData.services.confirmations.length === 0 && (
+            {activeTab === "services" && (() => {
+              const cfg = SERVICE_CONFIGS[selectedService];
+              const sorted = [...serviceData].sort((a, b) => {
+                if (sortBy === "newest") return (cfg.getDate(b) || "").localeCompare(cfg.getDate(a) || "");
+                if (sortBy === "oldest") return (cfg.getDate(a) || "").localeCompare(cfg.getDate(b) || "");
+                if (sortBy === "alpha")  return (cfg.getName(a) || "").localeCompare(cfg.getName(b) || "");
+                if (sortBy === "status") return (a.status || "").localeCompare(b.status || "");
+                return 0;
+              });
+
+              return (
+                <div>
+                  {/* Controls */}
+                  <div className="flex flex-col sm:flex-row gap-3 mb-8 print:hidden">
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Service Type</label>
+                      <select
+                        value={selectedService}
+                        onChange={e => setSelectedService(e.target.value)}
+                        className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74]"
+                      >
+                        {Object.entries(SERVICE_CONFIGS).map(([key, c]) => (
+                          <option key={key} value={key}>{c.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="sm:w-52">
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Sort By</label>
+                      <select
+                        value={sortBy}
+                        onChange={e => setSortBy(e.target.value)}
+                        className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74]"
+                      >
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                        <option value="alpha">Alphabetical</option>
+                        <option value="status">By Status</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Section heading */}
+                  <div className="flex items-center gap-4 mb-4">
+                    <h4 className="text-sm font-bold text-[#B59E74] print:text-black uppercase tracking-widest whitespace-nowrap">
+                      {cfg.label}
+                    </h4>
+                    <div className="h-px w-full bg-gray-100 print:bg-black"></div>
+                    <span className="text-xs text-gray-400 whitespace-nowrap">{sorted.length} record{sorted.length !== 1 ? "s" : ""}</span>
+                  </div>
+
+                  {/* Table */}
+                  {serviceLoading ? (
+                    <div className="flex justify-center py-20">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B59E74]"></div>
+                    </div>
+                  ) : sorted.length === 0 ? (
                     <p className="text-center text-gray-400 italic font-serif py-20">
-                      No service reservations on record.
+                      No {cfg.label.toLowerCase()} requests on record.
                     </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse border border-gray-200 print:border-black">
+                        <thead>
+                          <tr className="bg-gray-50 print:bg-transparent text-[10px] text-gray-500 print:text-black uppercase tracking-widest font-bold">
+                            <th className="p-3 border-b border-gray-200 print:border-black border-r border-r-gray-100 print:border-r-black">#</th>
+                            <th className="p-3 border-b border-gray-200 print:border-black border-r border-r-gray-100 print:border-r-black">{cfg.label}</th>
+                            <th className="p-3 border-b border-gray-200 print:border-black border-r border-r-gray-100 print:border-r-black">{cfg.dateLabel}</th>
+                            <th className="p-3 border-b border-gray-200 print:border-black">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sorted.map((item, idx) => {
+                            const dateVal = cfg.getDate(item);
+                            return (
+                              <tr key={idx} className="border-b border-gray-100 print:border-black hover:bg-gray-50 transition-colors">
+                                <td className="p-3 text-xs text-gray-400 border-r border-r-gray-100 print:border-r-black">{idx + 1}</td>
+                                <td className="p-3 text-sm font-medium text-gray-800 print:text-black border-r border-r-gray-100 print:border-r-black">
+                                  {cfg.getName(item)}
+                                </td>
+                                <td className="p-3 text-sm text-gray-600 print:text-black border-r border-r-gray-100 print:border-r-black">
+                                  {dateVal ? new Date(dateVal).toLocaleDateString() : "—"}
+                                </td>
+                                <td className="p-3">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase print:bg-transparent print:text-black ${STATUS_COLOR(item.status)}`}>
+                                    {item.status || "—"}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
-              </div>
-            )}
+                </div>
+              );
+            })()}
 
             {/* ── ATTENDANCE TAB ── */}
-            {activeTab === "attendance" && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse border border-gray-200 print:border-black">
-                  <thead>
-                    <tr className="bg-gray-50 print:bg-transparent text-gray-500 print:text-black text-[10px] uppercase tracking-widest font-bold">
-                      <th className="p-4 border-b border-gray-200 print:border-black">Name</th>
-                      <th className="p-4 border-b border-gray-200 print:border-black">Email</th>
-                      <th className="p-4 border-b border-gray-200 print:border-black">Role</th>
-                      <th className="p-4 border-b border-gray-200 print:border-black">Check-In Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reportData.attendance.length === 0 ? (
-                      <tr>
-                        <td colSpan="4" className="p-20 text-center text-gray-400 italic font-serif">
-                          No attendance records.
-                        </td>
-                      </tr>
-                    ) : (
-                      reportData.attendance.map((item, idx) => (
-                        <tr key={idx} className="border-b border-gray-50 print:border-black hover:bg-gray-50 transition-colors">
-                          <td className="p-4 text-sm font-medium text-gray-800 print:text-black capitalize">
-                            {item.full_name
-                              ? item.full_name
-                              : (item.first_name || item.last_name)
-                                ? `${item.first_name || ""} ${item.last_name || ""}`.trim()
-                                : item.email?.split("@")[0] || "Unknown"}
-                          </td>
-                          <td className="p-4 text-sm text-gray-500 print:text-black lowercase">
-                            {item.email || "—"}
-                          </td>
-                          <td className="p-4 text-sm print:text-black">
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase print:bg-transparent ${
-                              item.role === "admin"
-                                ? "bg-red-50 text-red-600"
-                                : "bg-gray-100 text-gray-600"
-                            }`}>
-                              {item.role || "Parishioner"}
-                            </span>
-                          </td>
-                          <td className="p-4 text-sm text-gray-500 print:text-black">
-                            {item.check_in_time
-                              ? new Date(item.check_in_time).toLocaleString()
-                              : "—"}
-                          </td>
-                        </tr>
-                      ))
+            {activeTab === "attendance" && (() => {
+              const q = attendanceSearch.toLowerCase();
+              const filtered = attendanceData.filter(item => {
+                if (!q) return true;
+                const name = item.full_name
+                  ? item.full_name
+                  : `${item.first_name || ""} ${item.last_name || ""}`.trim();
+                return (
+                  name.toLowerCase().includes(q) ||
+                  (item.email || "").toLowerCase().includes(q)
+                );
+              });
+
+              return (
+                <div>
+                  {/* Controls */}
+                  <div className="flex flex-col sm:flex-row gap-3 mb-6 print:hidden">
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Select Event</label>
+                      <EventSearchSelect
+                        events={attendanceEvents}
+                        value={selectedAttendanceEvent}
+                        onChange={setSelectedAttendanceEvent}
+                      />
+                    </div>
+                    {selectedAttendanceEvent && (
+                      <div className="sm:w-64">
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Search Attendee</label>
+                        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-[#B59E74]">
+                          <span className="text-gray-400 text-sm">🔍</span>
+                          <input
+                            type="text"
+                            value={attendanceSearch}
+                            onChange={e => setAttendanceSearch(e.target.value)}
+                            placeholder="Name or email..."
+                            className="flex-1 outline-none text-sm text-gray-700 bg-transparent"
+                          />
+                          {attendanceSearch && (
+                            <button type="button" onClick={() => setAttendanceSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+                          )}
+                        </div>
+                      </div>
                     )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  </div>
+
+                  {/* No event selected */}
+                  {!selectedAttendanceEvent ? (
+                    <div className="text-center py-20 border-2 border-dashed border-gray-100 rounded-2xl">
+                      <div className="text-3xl mb-3">👥</div>
+                      <p className="text-gray-400 italic font-serif">Select an event above to view attendance records.</p>
+                    </div>
+                  ) : attendanceLoading ? (
+                    <div className="flex justify-center py-20">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B59E74]"></div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-3 mb-1">
+                        <h4 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest whitespace-nowrap print:text-black">
+                          {selectedAttendanceEvent.title}
+                        </h4>
+                        <div className="h-px w-full bg-gray-100 print:bg-black"></div>
+                        <span className="text-xs text-gray-400 whitespace-nowrap print:text-black">{filtered.length} attendee{filtered.length !== 1 ? "s" : ""}</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mb-4 print:text-black">
+                        <span className="uppercase tracking-widest font-bold">Hosted by</span>{" "}
+                        <span className="text-[#B59E74] font-semibold print:text-black">
+                          {selectedAttendanceEvent.priest_name || selectedAttendanceEvent.ministry || "—"}
+                        </span>
+                        {selectedAttendanceEvent.event_date && (
+                          <span className="ml-3 text-gray-300 print:text-black">
+                            {new Date(selectedAttendanceEvent.event_date).toLocaleDateString()}
+                          </span>
+                        )}
+                      </p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse border border-gray-200 print:border-black">
+                          <thead>
+                            <tr className="bg-gray-50 print:bg-transparent text-gray-500 print:text-black text-[10px] uppercase tracking-widest font-bold">
+                              <th className="p-4 border-b border-gray-200 print:border-black">#</th>
+                              <th className="p-4 border-b border-gray-200 print:border-black">Name</th>
+                              <th className="p-4 border-b border-gray-200 print:border-black">Email</th>
+                              <th className="p-4 border-b border-gray-200 print:border-black">Contact</th>
+                              <th className="p-4 border-b border-gray-200 print:border-black">Role</th>
+                              <th className="p-4 border-b border-gray-200 print:border-black">Check-In Time</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filtered.length === 0 ? (
+                              <tr>
+                                <td colSpan="6" className="p-20 text-center text-gray-400 italic font-serif">
+                                  {attendanceSearch ? "No attendees match your search." : "No attendance records for this event."}
+                                </td>
+                              </tr>
+                            ) : (
+                              filtered.map((item, idx) => {
+                                const isGuest = item.is_guest === true;
+                                const displayName = isGuest && item.guest_name
+                                  ? item.guest_name
+                                  : item.full_name
+                                    ? item.full_name
+                                    : (item.first_name || item.last_name)
+                                      ? `${item.first_name || ""} ${item.last_name || ""}`.trim()
+                                      : item.email?.split("@")[0] || null;
+                                const role = isGuest ? "guest" : (item.role || "parishioner");
+                                const roleColor = {
+                                  admin:       "bg-emerald-100 text-emerald-700",
+                                  superadmin:  "bg-emerald-100 text-emerald-700",
+                                  priest:      "bg-amber-100 text-amber-700",
+                                  staff:       "bg-sky-100 text-sky-700",
+                                  ministry:    "bg-purple-100 text-purple-700",
+                                  parishioner: "bg-rose-100 text-rose-600",
+                                  guest:       "bg-gray-100 text-gray-500",
+                                }[role] || "bg-gray-100 text-gray-500";
+
+                                return (
+                                <tr key={idx} className="border-b border-gray-50 print:border-black hover:bg-gray-50 transition-colors">
+                                  <td className="p-4 text-xs text-gray-400">{idx + 1}</td>
+                                  <td className="p-4 text-sm font-medium text-gray-800 print:text-black capitalize">
+                                    {displayName || <span className="text-gray-400 italic">—</span>}
+                                  </td>
+                                  <td className="p-4 text-sm text-gray-500 print:text-black lowercase">
+                                    {isGuest ? "—" : (item.email || "—")}
+                                  </td>
+                                  <td className="p-4 text-sm text-gray-500 print:text-black">
+                                    {isGuest ? (item.guest_contact || "—") : (item.contact_number || "—")}
+                                  </td>
+                                  <td className="p-4">
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase print:bg-transparent print:text-black ${roleColor}`}>
+                                      {role}
+                                    </span>
+                                  </td>
+                                  <td className="p-4 text-sm text-gray-500 print:text-black">
+                                    {item.check_in_time ? new Date(item.check_in_time).toLocaleString() : "—"}
+                                  </td>
+                                </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* ── SCHEDULES TAB ── */}
-            {activeTab === "schedules" && (
-              <div className="overflow-x-auto">
+            {activeTab === "schedules" && (() => {
+              const filtered = reportData.schedules.filter(item =>
+                scheduleFilter === "all" ? true : item.event_class === scheduleFilter
+              );
+
+              const sorted = [...filtered].sort((a, b) => {
+                if (scheduleSortBy === "newest") return (b.event_date || "").localeCompare(a.event_date || "");
+                if (scheduleSortBy === "oldest") return (a.event_date || "").localeCompare(b.event_date || "");
+                if (scheduleSortBy === "alpha")  return (a.title || "").localeCompare(b.title || "");
+                if (scheduleSortBy === "status") return (a.status || "").localeCompare(b.status || "");
+                return 0;
+              });
+
+              return (
+              <div>
+                <div className="flex flex-col sm:flex-row gap-3 mb-5 print:hidden">
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Filter by Event Type</label>
+                    <select
+                      value={scheduleFilter}
+                      onChange={e => setScheduleFilter(e.target.value)}
+                      className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74]"
+                    >
+                      <option value="all">All Types</option>
+                      <option value="Mass">Mass</option>
+                      <option value="Parish Event">Parish Event</option>
+                      <option value="Liturgical">Liturgical</option>
+                      <option value="Meeting">Meeting</option>
+                      <option value="Seminar / Formation">Seminar / Formation</option>
+                      <option value="General Event">General Event</option>
+                    </select>
+                  </div>
+                  <div className="sm:w-52">
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Sort By</label>
+                    <select
+                      value={scheduleSortBy}
+                      onChange={e => setScheduleSortBy(e.target.value)}
+                      className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74]"
+                    >
+                      <option value="newest">Newest First</option>
+                      <option value="oldest">Oldest First</option>
+                      <option value="alpha">Alphabetical</option>
+                      <option value="status">By Status</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse border border-gray-200 print:border-black">
                   <thead>
                     <tr className="bg-gray-50 print:bg-transparent text-gray-500 print:text-black text-[10px] uppercase tracking-widest font-bold">
                       <th className="p-4 border-b border-gray-200 print:border-black">Event</th>
-                      <th className="p-4 border-b border-gray-200 print:border-black">Priest</th>
+                      <th className="p-4 border-b border-gray-200 print:border-black">Type</th>
+                      <th className="p-4 border-b border-gray-200 print:border-black">Host</th>
                       <th className="p-4 border-b border-gray-200 print:border-black">Date</th>
                       <th className="p-4 border-b border-gray-200 print:border-black">Location</th>
                       <th className="p-4 border-b border-gray-200 print:border-black">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {reportData.schedules.length === 0 ? (
+                    {sorted.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="p-20 text-center text-gray-400 italic font-serif">
-                          No scheduled events.
+                        <td colSpan="6" className="p-20 text-center text-gray-400 italic font-serif">
+                          No events found for the selected filter.
                         </td>
                       </tr>
                     ) : (
-                      reportData.schedules.map((item, idx) => (
+                      sorted.map((item, idx) => (
                         <tr key={idx} className="border-b border-gray-50 print:border-black hover:bg-gray-50 transition-colors">
                           <td className="p-4 text-sm font-medium text-gray-800 print:text-black">
                             {item.title}
                           </td>
+                          <td className="p-4">
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-gray-100 text-gray-600 print:bg-transparent print:text-black">
+                              {item.event_class || "—"}
+                            </span>
+                          </td>
                           <td className="p-4 text-sm text-gray-600 print:text-black">
-                            {item.priest_name || "—"}
+                            {item.priest_name || item.ministry || "—"}
                           </td>
                           <td className="p-4 text-sm text-gray-600 print:text-black">
                             {item.event_date ? new Date(item.event_date).toLocaleDateString() : "—"}
@@ -457,8 +771,10 @@ function AdminReports() {
                     )}
                   </tbody>
                 </table>
+                </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* ── MINISTRIES TAB ── */}
             {activeTab === "ministries" && (

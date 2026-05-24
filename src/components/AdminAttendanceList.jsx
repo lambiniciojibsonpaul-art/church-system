@@ -182,6 +182,7 @@ function AdminAttendanceList() {
                     <tr className="text-[10px] text-gray-400 uppercase tracking-widest font-bold border-b border-gray-100">
                       <th className="p-4">Name</th>
                       <th className="p-4">Email</th>
+                      <th className="p-4">Contact</th>
                       <th className="p-4">Role</th>
                       <th className="p-4 text-right">Check-in Time</th>
                     </tr>
@@ -189,7 +190,7 @@ function AdminAttendanceList() {
                   <tbody>
                     {attendance.length === 0 ? (
                       <tr>
-                        <td colSpan="4" className="p-10 text-center text-gray-400 italic font-serif">
+                        <td colSpan="5" className="p-10 text-center text-gray-400 italic font-serif">
                           No one has checked in yet.
                         </td>
                       </tr>
@@ -204,23 +205,27 @@ function AdminAttendanceList() {
                               ? `${row.first_name || ''} ${row.last_name || ''}`.trim()
                               : row.email?.split('@')[0] || "Unknown";
 
-                        const roleLabel = isGuest ? "Guest" : (row.role || "Parishioner");
-                        const roleBadgeClass = isGuest
-                          ? "bg-amber-50 text-amber-600"
-                          : row.role === "admin"
-                            ? "bg-red-50 text-red-600"
-                            : "bg-gray-100 text-gray-600";
+                        const roleLabel = isGuest ? "guest" : (row.role || "parishioner");
+                        const roleBadgeClass = {
+                          admin:       "bg-emerald-100 text-emerald-700",
+                          superadmin:  "bg-emerald-100 text-emerald-700",
+                          priest:      "bg-amber-100 text-amber-700",
+                          staff:       "bg-sky-100 text-sky-700",
+                          ministry:    "bg-purple-100 text-purple-700",
+                          parishioner: "bg-rose-100 text-rose-600",
+                          guest:       "bg-gray-100 text-gray-500",
+                        }[roleLabel] || "bg-gray-100 text-gray-500";
 
                         return (
                           <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                             <td className="p-4 font-medium text-gray-800 capitalize">
-                              <div className="flex items-center gap-2">
-                                {isGuest && <span className="text-amber-500 text-sm">👤</span>}
-                                {displayName}
-                              </div>
+                              {displayName}
                             </td>
                             <td className="p-4 text-sm text-gray-500 lowercase">
                               {isGuest ? <span className="text-gray-300 italic">—</span> : row.email}
+                            </td>
+                            <td className="p-4 text-sm text-gray-500">
+                              {isGuest ? (row.guest_contact || "—") : (row.contact_number || "—")}
                             </td>
                             <td className="p-4">
                               <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${roleBadgeClass}`}>

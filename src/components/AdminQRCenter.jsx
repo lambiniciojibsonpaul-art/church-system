@@ -97,10 +97,13 @@ function AdminQRCenter() {
   }, []);
 
   const fetchEvents = async () => {
+    const today = new Date().toISOString().split("T")[0];
     const { data } = await supabase
       .from("events")
       .select("id, title, event_date")
-      .order("title", { ascending: true });
+      .gte("event_date", today)
+      .not("status", "in", '("Cancelled","Rejected")')
+      .order("event_date", { ascending: true });
 
     setEvents(data || []);
     setLoading(false);
