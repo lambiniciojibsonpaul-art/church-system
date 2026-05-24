@@ -1,7 +1,7 @@
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect } from 'react'; // ✨ NEW: Needed for the listener
-import { Toaster, toast } from 'react-hot-toast'; // ✨ NEW: The UI pop-ups
-import { supabase } from './supabaseClient'; // ✨ NEW: Supabase client for realtime
+import { useEffect } from 'react';
+import { Toaster, toast } from 'react-hot-toast';
+import { supabase } from './supabaseClient';
 
 import Layout from './components/Layout';
 import RequireAdmin from './components/RequireAdmin';
@@ -23,6 +23,7 @@ import PriestDashboard from './components/PriestDashboard';
 import StaffDashboard from "./components/StaffDashboard";
 import ManageUsers from './components/ManageUsers';
 import UserProfile from './components/UserProfile';
+import AnnouncementsPage from './components/AnnouncementsPage';
 
 // --- Auth Folder Imports ---
 import CheckInPage from './components/Auth/CheckInPage';
@@ -129,6 +130,7 @@ function App() {
             <Route path="/admin/reports" element={<RequireAdmin><AdminReports /></RequireAdmin>} />
             <Route path="/admin/attendance-list" element={<RequireAdmin><AdminAttendanceList /></RequireAdmin>} />
             <Route path="/admin/qr-generator" element={<RequireAdmin><AdminQRCenter /></RequireAdmin>} />
+            <Route path="/admin/announcements" element={<RequireAdmin><AnnouncementsPage /></RequireAdmin>} />
             
             {/* Manage Users */}
             <Route path="/admin/manage-users" element={<RequireAdmin><ManageUsers /></RequireAdmin>} />
