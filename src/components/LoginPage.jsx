@@ -16,6 +16,7 @@ const ROLE_DESTINATIONS = {
   priest:      "/priest-dashboard",
   staff:       "/staff-dashboard",
   ministry:    "/events",
+  minister:    "/events",
   parishioner: "/",
 };
 
