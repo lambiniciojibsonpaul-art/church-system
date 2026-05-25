@@ -27,15 +27,15 @@ function FlyToLocation({ lat, lng }) {
   return null;
 }
 
-function MapPicker({ lat, lng, flyTarget, onChange }) {
-  const hasPin = lat !== "" && lng !== "";
+function MapPicker({ lat, lng, flyTarget, onChange, readOnly }) {
+  const hasPin = lat !== "" && lat != null && lng !== "" && lng != null;
   return (
     <MapContainer center={[14.6380885, 121.0129013]} zoom={17} style={{ height: 260, width: "100%" }}>
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
-      <ClickToPin onPin={onChange} />
+      {!readOnly && <ClickToPin onPin={onChange} />}
       {flyTarget && <FlyToLocation lat={flyTarget.lat} lng={flyTarget.lng} />}
       {hasPin && <Marker position={[parseFloat(lat), parseFloat(lng)]} icon={PIN_ICON} />}
     </MapContainer>
@@ -52,6 +52,8 @@ const EVENT_CLASSES = [
 ];
 
 const CHURCH_ADDRESS = "69 San Pedro Bautista, San Francisco del Monte, Quezon City, 1104 Metro Manila";
+const PARISH_LAT = 14.637814;
+const PARISH_LNG = 121.012436;
 
 const INDOOR_FACILITIES = [
   "St. Francis of Assisi Hall (2nd Floor)",
@@ -358,8 +360,8 @@ function AdminSchedules() {
         setting:      formData.setting,
         status:       "Active",
         is_public:    formData.isPublic,
-        latitude:     (!formData.isInside && formData.latitude !== "") ? parseFloat(formData.latitude) : null,
-        longitude:    (!formData.isInside && formData.longitude !== "") ? parseFloat(formData.longitude) : null,
+        latitude:     formData.isInside ? PARISH_LAT : (formData.latitude !== "" ? parseFloat(formData.latitude) : null),
+        longitude:    formData.isInside ? PARISH_LNG : (formData.longitude !== "" ? parseFloat(formData.longitude) : null),
       };
 
       let { error } = await restInsert("events", [basePayload]);
@@ -885,7 +887,7 @@ function AdminSchedules() {
                   <label className="text-xs font-bold text-gray-600 uppercase">Setting Type</label>
                   <div className="flex items-center gap-4 mt-2">
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input type="radio" checked={formData.isInside === true} onChange={() => setFormData({ ...formData, isInside: true, setting: "", latitude: "", longitude: "", location: CHURCH_ADDRESS })} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" />
+                      <input type="radio" checked={formData.isInside === true} onChange={() => setFormData({ ...formData, isInside: true, setting: "", latitude: PARISH_LAT, longitude: PARISH_LNG, location: CHURCH_ADDRESS })} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" />
                       Indoor
                     </label>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -919,100 +921,122 @@ function AdminSchedules() {
                 />
               </div>
 
-              {/* ── Outdoor map pin ── */}
-              {!formData.isInside && (
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-2">
-                    📍 Pin Location on Map
-                    <span className="text-[10px] font-normal normal-case text-gray-400 italic">— for QR check-in geolocation</span>
-                  </label>
+              {/* ── Map pin — shown for both indoor (read-only) and outdoor ── */}
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-2">
+                  📍 {formData.isInside ? "Check-in Location (Fixed)" : "Pin Location on Map"}
+                  <span className="text-[10px] font-normal normal-case text-gray-400 italic">— for QR check-in geolocation (200m radius)</span>
+                </label>
 
-                  {/* Search bar */}
-                  <div className="relative">
-                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-gray-300 focus-within:ring-2 focus-within:ring-[#B59E74] bg-white">
-                      <span className="text-gray-400 text-sm shrink-0">🔍</span>
-                      <input
-                        type="text"
-                        value={mapSearch}
-                        onChange={e => handleMapSearch(e.target.value)}
-                        placeholder="Search a location (e.g. Liloan Cebu)..."
-                        className="flex-1 outline-none text-sm text-gray-700 bg-transparent min-w-0"
-                      />
-                      {searchLoading && (
-                        <div className="w-4 h-4 border-2 border-[#B59E74] border-t-transparent rounded-full animate-spin shrink-0" />
-                      )}
-                      {mapSearch && !searchLoading && (
-                        <button
-                          type="button"
-                          onClick={() => { setMapSearch(""); setSearchResults([]); }}
-                          className="text-gray-400 hover:text-gray-600 text-xs shrink-0"
-                        >✕</button>
-                      )}
-                    </div>
+                {/* Indoor info banner */}
+                {formData.isInside && (
+                  <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700 text-xs">
+                    <span>🏛️</span>
+                    <span>Check-in is pinned to <strong>San Pedro Bautista Parish</strong>. Parishioners must be within 200m to check in.</span>
+                  </div>
+                )}
 
-                    {/* Results dropdown */}
-                    {searchResults.length > 0 && (
-                      <div className="absolute z-[1000] top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden">
-                        {searchResults.map((r, i) => (
+                {/* Outdoor-only: search bar */}
+                {!formData.isInside && (
+                  <>
+                    <div className="relative">
+                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-gray-300 focus-within:ring-2 focus-within:ring-[#B59E74] bg-white">
+                        <span className="text-gray-400 text-sm shrink-0">🔍</span>
+                        <input
+                          type="text"
+                          value={mapSearch}
+                          onChange={e => handleMapSearch(e.target.value)}
+                          placeholder="Search a location (e.g. Liloan Cebu)..."
+                          className="flex-1 outline-none text-sm text-gray-700 bg-transparent min-w-0"
+                        />
+                        {searchLoading && (
+                          <div className="w-4 h-4 border-2 border-[#B59E74] border-t-transparent rounded-full animate-spin shrink-0" />
+                        )}
+                        {mapSearch && !searchLoading && (
                           <button
-                            key={i}
                             type="button"
-                            onMouseDown={() => handleSelectResult(r)}
-                            className="w-full text-left px-4 py-3 text-sm hover:bg-[#F6F5ED] border-b border-gray-50 last:border-0 flex flex-col gap-0.5 transition-colors"
-                          >
-                            <span className="font-medium text-gray-800 truncate">{r.display_name.split(",")[0]}</span>
-                            <span className="text-[11px] text-gray-400 truncate">{r.display_name}</span>
-                          </button>
-                        ))}
+                            onClick={() => { setMapSearch(""); setSearchResults([]); }}
+                            className="text-gray-400 hover:text-gray-600 text-xs shrink-0"
+                          >✕</button>
+                        )}
                       </div>
-                    )}
-                  </div>
 
-                  <p className="text-[11px] text-gray-400 italic -mt-1">
-                    Search to find a location, or click directly on the map to drop a pin.
-                  </p>
-
-                  {/* Map */}
-                  <div className="rounded-xl overflow-hidden border border-gray-300 shadow-sm">
-                    <MapPicker
-                      lat={formData.latitude}
-                      lng={formData.longitude}
-                      flyTarget={flyTarget}
-                      onChange={handleMapClick}
-                    />
-                  </div>
-
-                  {/* Coordinates */}
-                  {formData.latitude !== "" ? (
-                    <div className="flex gap-3 mt-1">
-                      <div className="flex-1 flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Latitude</label>
-                        <input readOnly value={parseFloat(formData.latitude).toFixed(6)} className="p-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-600 font-mono" />
-                      </div>
-                      <div className="flex-1 flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Longitude</label>
-                        <input readOnly value={parseFloat(formData.longitude).toFixed(6)} className="p-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-600 font-mono" />
-                      </div>
-                      <div className="flex items-end pb-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormData(prev => ({ ...prev, latitude: "", longitude: "" }));
-                            setMapSearch("");
-                            setFlyTarget(null);
-                          }}
-                          className="text-xs text-red-400 hover:text-red-600 px-2 py-2 rounded-lg hover:bg-red-50 transition-colors"
-                        >✕ Clear</button>
-                      </div>
+                      {/* Results dropdown */}
+                      {searchResults.length > 0 && (
+                        <div className="absolute z-[1000] top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden">
+                          {searchResults.map((r, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onMouseDown={() => handleSelectResult(r)}
+                              className="w-full text-left px-4 py-3 text-sm hover:bg-[#F6F5ED] border-b border-gray-50 last:border-0 flex flex-col gap-0.5 transition-colors"
+                            >
+                              <span className="font-medium text-gray-800 truncate">{r.display_name.split(",")[0]}</span>
+                              <span className="text-[11px] text-gray-400 truncate">{r.display_name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-xs">
-                      <span>📍</span>
-                      <span>No pin set yet — search or click the map to mark the check-in location.</span>
-                    </div>
-                  )}
+
+                    <p className="text-[11px] text-gray-400 italic -mt-1">
+                      Search to find a location, or click directly on the map to drop a pin.
+                    </p>
+                  </>
+                )}
+
+                {/* Map — always shown; read-only for indoor */}
+                <div className="rounded-xl overflow-hidden border border-gray-300 shadow-sm">
+                  <MapPicker
+                    lat={formData.isInside ? PARISH_LAT : formData.latitude}
+                    lng={formData.isInside ? PARISH_LNG : formData.longitude}
+                    flyTarget={formData.isInside ? null : flyTarget}
+                    onChange={formData.isInside ? () => {} : handleMapClick}
+                    readOnly={formData.isInside}
+                  />
                 </div>
-              )}
+
+                {/* Coordinates display */}
+                {formData.isInside ? (
+                  <div className="flex gap-3 mt-1">
+                    <div className="flex-1 flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Latitude</label>
+                      <input readOnly value={PARISH_LAT.toFixed(6)} className="p-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-600 font-mono" />
+                    </div>
+                    <div className="flex-1 flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Longitude</label>
+                      <input readOnly value={PARISH_LNG.toFixed(6)} className="p-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-600 font-mono" />
+                    </div>
+                  </div>
+                ) : formData.latitude !== "" ? (
+                  <div className="flex gap-3 mt-1">
+                    <div className="flex-1 flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Latitude</label>
+                      <input readOnly value={parseFloat(formData.latitude).toFixed(6)} className="p-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-600 font-mono" />
+                    </div>
+                    <div className="flex-1 flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Longitude</label>
+                      <input readOnly value={parseFloat(formData.longitude).toFixed(6)} className="p-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-600 font-mono" />
+                    </div>
+                    <div className="flex items-end pb-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => ({ ...prev, latitude: "", longitude: "" }));
+                          setMapSearch("");
+                          setFlyTarget(null);
+                        }}
+                        className="text-xs text-red-400 hover:text-red-600 px-2 py-2 rounded-lg hover:bg-red-50 transition-colors"
+                      >✕ Clear</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-xs">
+                    <span>📍</span>
+                    <span>No pin set yet — search or click the map to mark the check-in location.</span>
+                  </div>
+                )}
+              </div>
 
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-gray-600 uppercase">Description (Optional)</label>
