@@ -176,6 +176,7 @@ function AdminReports() {
   // Schedules tab state
   const [scheduleSortBy, setScheduleSortBy] = useState("newest");
   const [scheduleFilter, setScheduleFilter] = useState("all");
+  const [scheduleStatusFilter, setScheduleStatusFilter] = useState("All");
 
   // Attendance tab state
   const [attendanceEvents, setAttendanceEvents] = useState([]);
@@ -702,9 +703,9 @@ function AdminReports() {
 
             {/* ── SCHEDULES TAB ── */}
             {activeTab === "schedules" && (() => {
-              const filtered = reportData.schedules.filter(item =>
-                scheduleFilter === "all" ? true : item.event_class === scheduleFilter
-              );
+              const filtered = reportData.schedules
+                .filter(item => scheduleFilter === "all" ? true : item.event_class === scheduleFilter)
+                .filter(item => scheduleStatusFilter === "All" ? true : (item.status || "Active") === scheduleStatusFilter);
 
               const sorted = [...filtered].sort((a, b) => {
                 if (scheduleSortBy === "newest")       return (b.event_date || "").localeCompare(a.event_date || "");
@@ -735,7 +736,23 @@ function AdminReports() {
                       <option value="General Event">General Event</option>
                     </select>
                   </div>
-                  <div className="sm:w-52">
+                  <div className="sm:w-48">
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Filter by Status</label>
+                    <select
+                      value={scheduleStatusFilter}
+                      onChange={e => setScheduleStatusFilter(e.target.value)}
+                      className={`w-full p-3 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#B59E74] ${
+                        scheduleStatusFilter === "All"
+                          ? "border-gray-200 bg-gray-50 text-gray-700"
+                          : "border-[#B59E74]/40 bg-[#B59E74]/5 text-[#9c8760]"
+                      }`}
+                    >
+                      <option value="All">All Statuses</option>
+                      <option value="Active">Active</option>
+                      <option value="Cancelled">Cancelled</option>
+                    </select>
+                  </div>
+                  <div className="sm:w-48">
                     <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Sort By</label>
                     <select
                       value={scheduleSortBy}
@@ -750,6 +767,14 @@ function AdminReports() {
                       <option value="status">By Status</option>
                     </select>
                   </div>
+                </div>
+                {/* Section heading */}
+                <div className="flex items-center gap-4 mb-4">
+                  <h4 className="text-sm font-bold text-[#B59E74] print:text-black uppercase tracking-widest whitespace-nowrap">
+                    Schedules{scheduleStatusFilter !== "All" && <span className="ml-2 text-[10px] bg-[#B59E74]/10 text-[#9c8760] px-2 py-0.5 rounded-full normal-case tracking-normal font-bold">{scheduleStatusFilter}</span>}
+                  </h4>
+                  <div className="h-px w-full bg-gray-100 print:bg-black"></div>
+                  <span className="text-xs text-gray-400 whitespace-nowrap">{sorted.length} record{sorted.length !== 1 ? "s" : ""}</span>
                 </div>
                 <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse border border-gray-200 print:border-black">
