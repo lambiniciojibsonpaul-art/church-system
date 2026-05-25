@@ -183,6 +183,9 @@ function ManageUsers() {
   const [deletingUser, setDeletingUser] = useState(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
+  // Right panel tab: "all" users or "pending" ministry approvals
+  const [usersTab, setUsersTab] = useState("all");
+
   useEffect(() => {
     fetchUsers();
     fetchActiveMinistries();
@@ -213,6 +216,7 @@ function ManageUsers() {
           ...profile,
           role: assignedRole,
           ministries: profile.ministries || [],
+          approval_status: userRoleRow?.approval_status || "approved",
         };
       });
 
@@ -502,6 +506,20 @@ function ManageUsers() {
     }
   };
 
+  // --- MINISTRY APPROVAL ---
+  const handleApproveMinistry = async (userId) => {
+    try {
+      const { error } = await supabase
+        .from("user_roles")
+        .update({ approval_status: "approved" })
+        .eq("user_id", userId);
+      if (error) throw error;
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, approval_status: "approved" } : u));
+    } catch (err) {
+      alert("Failed to approve account: " + err.message);
+    }
+  };
+
   // --- FILTERING LOGIC ---
   const filteredUsers = users.filter(u => {
     const searchStr = searchQuery.toLowerCase();
@@ -537,7 +555,7 @@ function ManageUsers() {
           {/* Mobile tab switcher — hidden at md+ where side-by-side kicks in */}
           <div className="md:hidden flex gap-1 bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm mb-4">
             <button
-              onClick={() => setMobileTab("users")}
+              onClick={() => { setMobileTab("users"); setUsersTab("all"); }}
               className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
                 mobileTab === "users"
                   ? "bg-[#B59E74] text-white shadow-sm"
@@ -545,6 +563,21 @@ function ManageUsers() {
               }`}
             >
               👥 Users
+            </button>
+            <button
+              onClick={() => { setMobileTab("pending"); setUsersTab("pending"); }}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all relative ${
+                mobileTab === "pending"
+                  ? "bg-amber-500 text-white shadow-sm"
+                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              ⏳ Pending
+              {users.filter(u => u.role === "ministry" && u.approval_status === "pending").length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
+                  {users.filter(u => u.role === "ministry" && u.approval_status === "pending").length}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setMobileTab("create")}
@@ -637,8 +670,35 @@ function ManageUsers() {
           </div>
 
           {/* RIGHT SIDE: DATABASE TABLE */}
-          <div className={`${mobileTab === "users" ? "flex" : "hidden"} md:flex flex-col flex-1 bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden h-[calc(100svh-200px)] md:h-full`}>
+          <div className={`${(mobileTab === "users" || mobileTab === "pending") ? "flex" : "hidden"} md:flex flex-col flex-1 bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden h-[calc(100svh-200px)] md:h-full`}>
 
+            {/* Desktop tab bar */}
+            <div className="shrink-0 hidden md:flex gap-1 p-3 border-b border-gray-100 bg-gray-50/50">
+              <button
+                onClick={() => setUsersTab("all")}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
+                  usersTab === "all" ? "bg-[#B59E74] text-white shadow-sm" : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                All Users
+              </button>
+              <button
+                onClick={() => setUsersTab("pending")}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all relative ${
+                  usersTab === "pending" ? "bg-amber-500 text-white shadow-sm" : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                Pending Ministry
+                {users.filter(u => u.role === "ministry" && u.approval_status === "pending").length > 0 && (
+                  <span className={`ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${usersTab === "pending" ? "bg-white/30 text-white" : "bg-amber-100 text-amber-700"}`}>
+                    {users.filter(u => u.role === "ministry" && u.approval_status === "pending").length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* ALL USERS — header with search/filter */}
+            {usersTab === "all" && (
             <div className="shrink-0 p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row justify-between items-start gap-4">
               <div className="flex items-center gap-3 w-full sm:w-auto">
                 <span className="text-xl">🗄️</span>
@@ -664,6 +724,7 @@ function ManageUsers() {
                     <option value="staff">Staff</option>
                     <option value="minister">Minister</option>
                     <option value="priest">Priest</option>
+                    <option value="ministry">Ministry (Self-Reg)</option>
                     <option value="parishioner">Parishioner</option>
                   </select>
                 </div>
@@ -677,13 +738,74 @@ function ManageUsers() {
                 )}
               </div>
             </div>
+            )}
 
             <div className="flex-1 overflow-y-auto scrollbar-thin">
-              {loading ? (
+
+              {/* PENDING MINISTRY APPROVALS */}
+              {usersTab === "pending" && (() => {
+                const pendingUsers = users.filter(u => u.role === "ministry" && u.approval_status === "pending");
+                if (loading) return <div className="flex h-full items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-amber-400"></div></div>;
+                if (pendingUsers.length === 0) return (
+                  <div className="p-16 text-center">
+                    <div className="text-4xl mb-4">✅</div>
+                    <p className="text-gray-400 font-serif italic">No pending ministry registrations.</p>
+                  </div>
+                );
+                return (
+                  <div className="divide-y divide-gray-100">
+                    {pendingUsers.map(u => (
+                      <div key={u.id} className="p-5 flex flex-col gap-3 hover:bg-amber-50/40 transition-colors">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-serif text-gray-800 font-medium text-base leading-tight">
+                              {u.first_name || u.last_name ? `${u.first_name || ""} ${u.last_name || ""}` : "Unknown Name"}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">{u.email}</p>
+                            {u.contact_number && <p className="text-[11px] text-gray-400 mt-0.5">{u.contact_number}</p>}
+                            <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">
+                              Registered {new Date(u.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
+                            Pending
+                          </span>
+                        </div>
+                        {Array.isArray(u.ministries) && u.ministries.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {u.ministries.map((m, i) => (
+                              <span key={i} className="bg-[#B59E74]/10 border border-[#B59E74]/20 text-[#9c8760] text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full">
+                                {m}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            onClick={() => handleApproveMinistry(u.id)}
+                            className="flex-1 py-2.5 rounded-xl bg-green-50 border border-green-200 text-green-700 font-bold text-xs uppercase tracking-widest hover:bg-green-600 hover:text-white hover:border-green-600 transition-all"
+                          >
+                            ✓ Approve
+                          </button>
+                          <button
+                            onClick={() => setDeletingUser(u)}
+                            className="flex-1 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-600 font-bold text-xs uppercase tracking-widest hover:bg-red-600 hover:text-white hover:border-red-600 transition-all"
+                          >
+                            ✕ Reject
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* ALL USERS TABLE */}
+              {usersTab === "all" && loading ? (
                 <div className="flex h-full items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#B59E74]"></div></div>
-              ) : filteredUsers.length === 0 ? (
+              ) : usersTab === "all" && filteredUsers.length === 0 ? (
                 <div className="p-12 text-center text-gray-400 font-serif italic">No accounts found matching your filters.</div>
-              ) : (
+              ) : usersTab === "all" && (
                 <>
                   {/* ── MOBILE CARD LIST (hidden md+) ── */}
                   <div className="md:hidden divide-y divide-gray-100">

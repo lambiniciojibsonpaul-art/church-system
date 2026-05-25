@@ -10,7 +10,6 @@ import { ministryNames } from "../data/ministries";
 const ADMIN_CACHE_KEY = (email) => `adminCache:${email.toLowerCase()}`;
 const ADMIN_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-// Where each role lands after a successful login
 const ROLE_DESTINATIONS = {
   admin:       "/admin",
   superadmin:  "/admin",
@@ -93,6 +92,8 @@ function LoginPage() {
     showSuccessOverlay: false,
     overlayPhase: "verifying",
   });
+  // Set to true when a ministry login attempt is blocked due to pending approval
+  const [pendingMinistry, setPendingMinistry] = useState(false);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -151,8 +152,9 @@ function LoginPage() {
     }
 
     // --- STEP 2: Try the long-term cache for a fast redirect ---
+    // Skip cache for ministry accounts — always do a fresh DB check to verify approval_status.
     const cachedRole = readLongTermAdminCache(currentUser.email);
-    if (cachedRole) {
+    if (cachedRole && cachedRole !== "ministry") {
       // Refresh cache in background (don't await)
       restSelect("user_roles", {
         match: { user_id: currentUser.id },
@@ -168,7 +170,7 @@ function LoginPage() {
       return;
     }
 
-    // --- STEP 3: No cache — query user_roles with retry ---
+    // --- STEP 3: No cache (or ministry) — query user_roles with retry ---
     let roleData     = null;
     let lastErrorMsg = null;
 
@@ -187,6 +189,13 @@ function LoginPage() {
     }
 
     if (roleData) {
+      // Block ministry accounts that haven't been approved by admin yet
+      if (roleData.role === "ministry" && roleData.approval_status === "pending") {
+        await supabase.auth.signOut();
+        const pendingErr = new Error("PENDING_MINISTRY_APPROVAL");
+        pendingErr.isPendingApproval = true;
+        throw pendingErr;
+      }
       writeLongTermAdminCache(currentUser.email, roleData.role);
       console.log("[Login] Role from DB:", roleData.role);
     } else {
@@ -207,7 +216,7 @@ function LoginPage() {
           console.warn("[Login] Role recovery failed (non-fatal):", recoveryErr.message);
         }
       } else {
-        console.warn("[Login] No user_roles row found — defaulting to parishioner");
+        console.warn("[Login] No user_roles row found — defaulting to parishioner. Last error:", lastErrorMsg);
       }
     }
 
@@ -218,6 +227,7 @@ function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setPendingMinistry(false);
     setUiState({
       loading: true,
       error: null,
@@ -228,20 +238,25 @@ function LoginPage() {
     try {
       await handleSignIn();
     } catch (err) {
-      setUiState({
-        loading: false,
-        error: err.message,
-        successMsg: null,
-        showSuccessOverlay: false,
-        overlayPhase: "verifying",
-      });
+      if (err.isPendingApproval) {
+        setPendingMinistry(true);
+        setUiState({ loading: false, error: null, successMsg: null, showSuccessOverlay: false, overlayPhase: "verifying" });
+      } else {
+        setUiState({
+          loading: false,
+          error: err.message,
+          successMsg: null,
+          showSuccessOverlay: false,
+          overlayPhase: "verifying",
+        });
+      }
     }
   };
 
   // ----- REGISTER STATE ------------------------------------------------------
   const [registerData, setRegisterData] = useState({
     accountType: "parishioner",
-    ministryGroup: "",
+    ministryGroups: [],
     firstName: "",
     lastName: "",
     email: "",
@@ -250,31 +265,42 @@ function LoginPage() {
     contactNumber: "",
   });
 
-  const [showPassword,      setShowPassword]      = useState(false);
-  const [registerLoading,   setRegisterLoading]   = useState(false);
-  const [registerError,     setRegisterError]     = useState(null);
-  const [registeredEmail,   setRegisteredEmail]   = useState(null);
+  const [showPassword,         setShowPassword]         = useState(false);
+  const [registerLoading,      setRegisterLoading]      = useState(false);
+  const [registerError,        setRegisterError]        = useState(null);
+  const [registeredEmail,      setRegisteredEmail]      = useState(null);
+  const [registeredAsMinistry, setRegisteredAsMinistry] = useState(false);
+  const [ministrySearch,       setMinistrySearch]       = useState("");
 
   const passwordCheck = validatePassword(registerData.password);
 
   const handleRegisterChange = (e) => {
     const { name, value, type, checked } = e.target;
     if (name === "accountType" && value === "parishioner") {
-      setRegisterData((prev) => ({ ...prev, accountType: value, ministryGroup: "" }));
+      setRegisterData((prev) => ({ ...prev, accountType: value, ministryGroups: [] }));
     } else {
       setRegisterData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
     }
   };
 
-  const switchToLogin    = () => { setMode("login");    setRegisterError(null); setRegisteredEmail(null); };
+  const toggleMinistryGroup = (name) => {
+    setRegisterData(prev => ({
+      ...prev,
+      ministryGroups: prev.ministryGroups.includes(name)
+        ? prev.ministryGroups.filter(m => m !== name)
+        : [...prev.ministryGroups, name],
+    }));
+  };
+
+  const switchToLogin    = () => { setMode("login");    setRegisterError(null); setRegisteredEmail(null); setPendingMinistry(false); };
   const switchToRegister = () => { setMode("register"); setUiState((prev) => ({ ...prev, error: null })); };
 
   const handleSignUp = async (e) => {
     e?.preventDefault?.();
     setRegisterError(null);
 
-    if (registerData.accountType === "ministry" && !registerData.ministryGroup) {
-      setRegisterError("Please select the Ministry you represent.");
+    if (registerData.accountType === "ministry" && registerData.ministryGroups.length === 0) {
+      setRegisterError("Please select at least one Ministry you represent.");
       return;
     }
     if (!registerData.firstName.trim() || !registerData.lastName.trim()) {
@@ -308,11 +334,11 @@ function LoginPage() {
         password: registerData.password,
         options: {
           data: {
-            first_name:     registerData.firstName.trim(),
-            last_name:      registerData.lastName.trim(),
-            contact_number: contact,
-            account_type:   registerData.accountType,
-            ministry_group: registerData.accountType === "ministry" ? registerData.ministryGroup : null,
+            first_name:      registerData.firstName.trim(),
+            last_name:       registerData.lastName.trim(),
+            contact_number:  contact,
+            account_type:    registerData.accountType,
+            ministry_groups: registerData.accountType === "ministry" ? registerData.ministryGroups : null,
           },
         },
       });
@@ -324,12 +350,20 @@ function LoginPage() {
         throw signupError;
       }
 
+      // Supabase anti-enumeration: duplicate email returns a fake user with empty identities[]
+      if (!signupData?.user?.identities || signupData.user.identities.length === 0) {
+        throw new Error("This email address is already registered. Please sign in instead.");
+      }
+
       const createdUser = signupData?.user;
       if (createdUser?.id) {
         const userRole = registerData.accountType === "ministry" ? "ministry" : "parishioner";
+        const rolePayload = { user_id: createdUser.id, role: userRole };
+        if (userRole === "ministry") rolePayload.approval_status = "pending";
+
         const { error: roleError } = await supabase
           .from("user_roles")
-          .upsert({ user_id: createdUser.id, role: userRole }, { onConflict: "user_id" });
+          .upsert(rolePayload, { onConflict: "user_id" });
 
         if (roleError) {
           // Non-fatal: Supabase returns a sanitized/fake user ID for duplicate email
@@ -347,6 +381,7 @@ function LoginPage() {
         return;
       }
 
+      if (registerData.accountType === "ministry") setRegisteredAsMinistry(true);
       setRegisteredEmail(registerData.email);
     } catch (err) {
       setRegisterError(err.message || "An unexpected error occurred. Please try again.");
@@ -381,6 +416,10 @@ function LoginPage() {
       <span>{ok ? "✓" : "•"}</span>
       {label}
     </li>
+  );
+
+  const filteredMinistryNames = ministryNames.filter(name =>
+    name.toLowerCase().includes(ministrySearch.toLowerCase())
   );
 
   return (
@@ -421,8 +460,8 @@ function LoginPage() {
             </p>
           </div>
 
-          {/* LOGIN FORM */}
-          {mode === "login" && (
+          {/* LOGIN FORM — normal */}
+          {mode === "login" && !pendingMinistry && (
             <>
               <form onSubmit={handleSubmit} className="p-8 space-y-5">
                 {uiState.error && (
@@ -466,8 +505,29 @@ function LoginPage() {
             </>
           )}
 
-          {/* REGISTER — SUCCESS SCREEN */}
-          {mode === "register" && registeredEmail && (
+          {/* LOGIN — AWAITING MINISTRY APPROVAL */}
+          {mode === "login" && pendingMinistry && (
+            <div className="p-8 space-y-5 text-center">
+              <div className="w-20 h-20 mx-auto rounded-full bg-amber-50 flex items-center justify-center text-3xl border-2 border-amber-300">⏳</div>
+              <h3 className="text-lg font-serif text-amber-700 uppercase tracking-widest">Awaiting Admin Approval</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Your Ministry account has been verified, but it is still{" "}
+                <span className="font-bold text-gray-800">waiting for admin approval</span>{" "}
+                before you can access the system.
+              </p>
+              <p className="text-xs text-gray-400 italic leading-relaxed">
+                The parish office will review your registration and approve it shortly.
+                You will be able to sign in once your account has been approved.
+              </p>
+              <button type="button" onClick={() => setPendingMinistry(false)}
+                className="w-full text-xs text-gray-500 hover:text-[#B59E74] uppercase tracking-widest font-bold py-4">
+                ← Back to Sign In
+              </button>
+            </div>
+          )}
+
+          {/* REGISTER — SUCCESS (parishioner) */}
+          {mode === "register" && registeredEmail && !registeredAsMinistry && (
             <div className="p-8 space-y-5 text-center">
               <div className="w-20 h-20 mx-auto rounded-full bg-[#F6F5ED] flex items-center justify-center text-3xl border-2 border-[#B59E74]">📧</div>
               <h3 className="text-lg font-serif text-[#B59E74] uppercase tracking-widest">Check Your Inbox</h3>
@@ -484,6 +544,44 @@ function LoginPage() {
               )}
               <button type="button" onClick={handleResendConfirmation} disabled={registerLoading}
                 className="w-full bg-white hover:bg-gray-50 border-2 border-[#B59E74] text-[#B59E74] font-bold text-sm py-3 rounded-xl uppercase tracking-widest transition-all disabled:opacity-50">
+                {registerLoading ? "Sending..." : "Resend Confirmation Email"}
+              </button>
+              <button type="button" onClick={switchToLogin}
+                className="w-full text-xs text-gray-500 hover:text-[#B59E74] uppercase tracking-widest font-bold py-2">
+                ← Back to Login
+              </button>
+            </div>
+          )}
+
+          {/* REGISTER — SUCCESS (ministry — 2-step: verify email + await admin approval) */}
+          {mode === "register" && registeredEmail && registeredAsMinistry && (
+            <div className="p-8 space-y-5 text-center">
+              <div className="w-20 h-20 mx-auto rounded-full bg-amber-50 flex items-center justify-center text-3xl border-2 border-amber-300">⛪</div>
+              <h3 className="text-lg font-serif text-amber-700 uppercase tracking-widest">Almost There!</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                A confirmation link has been sent to{" "}
+                <span className="font-bold text-gray-800 break-all">{registeredEmail}</span>.
+              </p>
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left space-y-1.5">
+                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">What happens next:</p>
+                <div className="flex gap-3 text-xs text-amber-800 leading-relaxed">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-amber-200 text-amber-700 flex items-center justify-center font-bold text-[10px]">1</span>
+                  <span>Click the verification link in your email to confirm your address.</span>
+                </div>
+                <div className="flex gap-3 text-xs text-amber-800 leading-relaxed">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-amber-200 text-amber-700 flex items-center justify-center font-bold text-[10px]">2</span>
+                  <span>The parish office will review and approve your Ministry account.</span>
+                </div>
+                <div className="flex gap-3 text-xs text-amber-800 leading-relaxed">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-amber-200 text-amber-700 flex items-center justify-center font-bold text-[10px]">3</span>
+                  <span>Once approved, you can sign in and manage your ministry events.</span>
+                </div>
+              </div>
+              {registerError && (
+                <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200 text-left">{registerError}</div>
+              )}
+              <button type="button" onClick={handleResendConfirmation} disabled={registerLoading}
+                className="w-full bg-white hover:bg-gray-50 border-2 border-amber-400 text-amber-700 font-bold text-sm py-3 rounded-xl uppercase tracking-widest transition-all disabled:opacity-50">
                 {registerLoading ? "Sending..." : "Resend Confirmation Email"}
               </button>
               <button type="button" onClick={switchToLogin}
@@ -517,14 +615,58 @@ function LoginPage() {
                     Ministry Account
                   </label>
                 </div>
+
                 {registerData.accountType === "ministry" && (
                   <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in-up">
-                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider block mb-2">Select Your Ministry *</label>
-                    <select name="ministryGroup" required value={registerData.ministryGroup} onChange={handleRegisterChange}
-                      className="w-full p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74] bg-gray-50 text-sm">
-                      <option value="" disabled>Choose an organization...</option>
-                      {ministryNames.map(name => <option key={name} value={name}>{name}</option>)}
-                    </select>
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider block mb-2">
+                      Select Your Ministries *
+                      {registerData.ministryGroups.length > 0 && (
+                        <span className="ml-2 bg-[#B59E74]/10 text-[#9c8760] px-2 py-0.5 rounded-full text-[9px] font-bold">
+                          {registerData.ministryGroups.length} selected
+                        </span>
+                      )}
+                    </label>
+                    <div className="flex flex-col gap-1.5">
+                      <div className="relative">
+                        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.85-5.4a7.25 7.25 0 11-14.5 0 7.25 7.25 0 0114.5 0z" />
+                        </svg>
+                        <input
+                          type="text"
+                          placeholder="Search ministries..."
+                          value={ministrySearch}
+                          onChange={e => setMinistrySearch(e.target.value)}
+                          className="w-full pl-7 pr-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-[#B59E74] text-xs bg-white"
+                        />
+                      </div>
+                      <div className="max-h-44 overflow-y-auto border border-gray-200 rounded-xl bg-gray-50 p-2 space-y-1">
+                        {filteredMinistryNames.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic text-center py-4">No results for &ldquo;{ministrySearch}&rdquo;</p>
+                        ) : (
+                          filteredMinistryNames.map(name => (
+                            <label
+                              key={name}
+                              className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                                registerData.ministryGroups.includes(name)
+                                  ? "bg-[#B59E74]/10 border border-[#B59E74]/30 text-[#9c8760]"
+                                  : "hover:bg-white border border-transparent text-gray-700"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={registerData.ministryGroups.includes(name)}
+                                onChange={() => toggleMinistryGroup(name)}
+                                className="w-4 h-4 accent-[#B59E74] shrink-0"
+                              />
+                              <span className="text-xs font-medium leading-tight">{name}</span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-amber-600 mt-2 italic">
+                      Ministry accounts require admin approval before access is granted.
+                    </p>
                   </div>
                 )}
               </div>
