@@ -594,7 +594,7 @@ function AdminReports() {
                       <p className="text-xs text-gray-400 mb-4 print:text-black">
                         <span className="uppercase tracking-widest font-bold">Hosted by</span>{" "}
                         <span className="text-[#B59E74] font-semibold print:text-black">
-                          {selectedAttendanceEvent.priest_name || selectedAttendanceEvent.ministry || "—"}
+                          {selectedAttendanceEvent.ministry || (selectedAttendanceEvent.priest_name ? `Fr. ${selectedAttendanceEvent.priest_name}` : "—")}
                         </span>
                         {selectedAttendanceEvent.event_date && (
                           <span className="ml-3 text-gray-300 print:text-black">
@@ -757,7 +757,7 @@ function AdminReports() {
                             </span>
                           </td>
                           <td className="p-4 text-sm text-gray-600 print:text-black">
-                            {item.priest_name || item.ministry || "—"}
+                            {item.ministry || (item.priest_name ? `Fr. ${item.priest_name}` : "—")}
                           </td>
                           <td className="p-4 text-sm text-gray-600 print:text-black">
                             {item.event_date ? new Date(item.event_date).toLocaleDateString() : "—"}

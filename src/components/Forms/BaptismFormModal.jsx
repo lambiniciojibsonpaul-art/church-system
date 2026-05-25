@@ -326,7 +326,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700">
                     <option value="">No Preference / Any Available</option>
                     {priests.map((priest) => (
-                      <option key={priest.id} value={priest.name}>{priest.name}</option>
+                      <option key={priest.id} value={priest.name}>Fr. {priest.name}</option>
                     ))}
                   </select>
                 </div>

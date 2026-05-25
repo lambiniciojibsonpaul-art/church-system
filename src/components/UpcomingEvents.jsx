@@ -2,9 +2,12 @@ import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import church2 from "../assets/Images/church2.jpg";
 
+const UP_PER_PAGE = 3;
+
 function UpcomingEvents() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
 
   // --- FETCH DATA ON LOAD ---
   useEffect(() => {
@@ -15,15 +18,14 @@ function UpcomingEvents() {
         .select("*")
         .gte("event_date", today)
         .order("event_date", { ascending: true })
-        .limit(8); // Fetch a few extra so client-side cancellation filter still leaves enough.
+        .limit(30);
 
       if (error) {
         console.warn("UpcomingEvents fetch failed:", error.message);
       }
       // Hide cancelled and private events from the public homepage list.
       const visible = (data || [])
-        .filter((e) => (e.status || "Active") !== "Cancelled" && e.is_public !== false)
-        .slice(0, 4);
+        .filter((e) => (e.status || "Active") !== "Cancelled" && e.is_public !== false);
       setEvents(visible);
       setLoading(false);
     };
@@ -134,26 +136,47 @@ function UpcomingEvents() {
               No upcoming events scheduled at this time.
             </div>
           ) : (
-            events.map((ev) => {
-              const dateObj = new Date(ev.event_date);
-              const day = dateObj.toLocaleDateString("en-US", {
-                day: "2-digit",
-              });
-              const month = dateObj
-                .toLocaleDateString("en-US", { month: "short" })
-                .toUpperCase();
+            <>
+              {events.slice(page * UP_PER_PAGE, (page + 1) * UP_PER_PAGE).map((ev) => {
+                const dateObj = new Date(ev.event_date);
+                const day = dateObj.toLocaleDateString("en-US", { day: "2-digit" });
+                const month = dateObj.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
 
-              return (
-                <EventCard
-                  key={ev.id}
-                  day={day}
-                  month={month}
-                  title={ev.title}
-                  time={formatTime(ev.event_time)}
-                  location={ev.location}
-                />
-              );
-            })
+                return (
+                  <EventCard
+                    key={ev.id}
+                    day={day}
+                    month={month}
+                    title={ev.title}
+                    time={formatTime(ev.event_time)}
+                    location={ev.location}
+                  />
+                );
+              })}
+              {Math.ceil(events.length / UP_PER_PAGE) > 1 && (
+                <div className="flex items-center justify-between mt-6 px-1">
+                  <button
+                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-white/15 text-white hover:bg-white/25 border border-white/30 backdrop-blur-sm"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+                    Previous
+                  </button>
+                  <span className="text-white/70 text-xs font-medium tracking-widest">
+                    {page + 1} / {Math.ceil(events.length / UP_PER_PAGE)}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => Math.min(Math.ceil(events.length / UP_PER_PAGE) - 1, p + 1))}
+                    disabled={page >= Math.ceil(events.length / UP_PER_PAGE) - 1}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-white/15 text-white hover:bg-white/25 border border-white/30 backdrop-blur-sm"
+                  >
+                    Next
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

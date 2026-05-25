@@ -222,10 +222,12 @@ function StaffDashboard() {
   const [requests, setRequests] = useState({});
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [activeServiceTab, setActiveServiceTab] = useState("All Services");
-  const [staffSortBy, setStaffSortBy] = useState("submitted_asc");
+  const [staffSortBy, setStaffSortBy] = useState("submitted_desc");
 
   // Approval/Rejection Modals
   const [staffViewMode, setStaffViewMode] = useState("card"); // "card" | "table"
+  const [staffSearch, setStaffSearch] = useState("");
+  const [itemsSortBy, setItemsSortBy] = useState("submitted_desc");
 
   const [acceptingRequest, setAcceptingRequest] = useState(null);
   const [assignedPriest, setAssignedPriest] = useState("");
@@ -630,10 +632,24 @@ function StaffDashboard() {
 
   // --- RENDER HELPERS ---
   const getVisibleItems = () => {
-    if (activeTab === "certificates") {
-      return items.filter(i => i.request_type === "Baptism" || i.request_type === "Wedding");
+    let result = activeTab === "certificates"
+      ? items.filter(i => i.request_type === "Baptism" || i.request_type === "Wedding")
+      : items;
+    if (staffSearch) {
+      const q = staffSearch.toLowerCase();
+      result = result.filter(i =>
+        (i.display_name || "").toLowerCase().includes(q) ||
+        (i.request_type || "").toLowerCase().includes(q) ||
+        (i.location || "").toLowerCase().includes(q)
+      );
     }
-    return items;
+    return [...result].sort((a, b) => {
+      if (itemsSortBy === "date_asc")       return new Date(a.display_date) - new Date(b.display_date);
+      if (itemsSortBy === "date_desc")      return new Date(b.display_date) - new Date(a.display_date);
+      if (itemsSortBy === "submitted_desc") return new Date(b.created_at)   - new Date(a.created_at);
+      if (itemsSortBy === "submitted_asc")  return new Date(a.created_at)   - new Date(b.created_at);
+      return 0;
+    });
   };
 
   const totalPending = TAB_NAMES.reduce((sum, t) => sum + (requests[t]?.length || 0), 0);
@@ -641,7 +657,11 @@ function StaffDashboard() {
   const pendingData = (activeServiceTab === "All Services"
     ? TAB_NAMES.flatMap(t => (requests[t] || []).map(r => ({ ...r, _tab: t, _config: TAB_CONFIG[t] })))
     : (requests[activeServiceTab] || []).map(r => ({ ...r, _tab: activeServiceTab, _config: TAB_CONFIG[activeServiceTab] }))
-  ).sort((a, b) => {
+  ).filter(req => {
+    if (!staffSearch) return true;
+    const q = staffSearch.toLowerCase();
+    return req._config.title(req).toLowerCase().includes(q) || req._tab.toLowerCase().includes(q);
+  }).sort((a, b) => {
     if (staffSortBy === "submitted_asc")   return new Date(a.created_at) - new Date(b.created_at);
     if (staffSortBy === "submitted_desc")  return new Date(b.created_at) - new Date(a.created_at);
     if (staffSortBy === "date_desc")       return new Date(b.display_date || b.created_at) - new Date(a.display_date || a.created_at);
@@ -680,19 +700,48 @@ function StaffDashboard() {
             )}
           </div>
 
-          <div className="flex flex-wrap gap-2 sm:gap-4 mb-8">
-            <button onClick={() => setActiveTab("requests")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all relative ${activeTab === "requests" ? "bg-[#B59E74] text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>
-              🔔 Pending Requests
-              {totalPending > 0 && <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white shadow-sm">{totalPending}</span>}
-            </button>
-            <button onClick={() => setActiveTab("events")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all ${activeTab === "events" ? "bg-[#B59E74] text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>📅 Approved Events</button>
-            <button onClick={() => setActiveTab("certificates")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all ${activeTab === "certificates" ? "bg-[#B59E74] text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>📜 Certificates</button>
-            <button onClick={() => setActiveTab("qr-generator")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all ${activeTab === "qr-generator" ? "bg-gray-800 text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>🔳 Generate QR</button>
+          {/* Search bar */}
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-[#B59E74] mb-4 max-w-md shadow-sm">
+            <span className="text-gray-400 text-sm">🔍</span>
+            <input
+              type="text"
+              value={staffSearch}
+              onChange={e => setStaffSearch(e.target.value)}
+              placeholder="Search by name, type, or location..."
+              className="flex-1 outline-none text-sm text-gray-700 bg-transparent"
+            />
+            {staffSearch && (
+              <button type="button" onClick={() => setStaffSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+            )}
           </div>
+
+          {/* Pill tabs */}
+          <div className="flex gap-2 sm:gap-3 mb-6 p-2 bg-[#F6F5ED] rounded-full w-fit border border-gray-100 overflow-x-auto">
+            {[
+              { key: "requests",    label: "🔔 Pending",        badge: totalPending, badgeColor: "bg-red-500" },
+              { key: "events",      label: "📅 Approved Events", badge: null },
+              { key: "certificates",label: "📜 Certificates",   badge: null },
+              { key: "qr-generator",label: "🔳 Generate QR",    badge: null },
+            ].map(({ key, label, badge, badgeColor }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`px-4 sm:px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all relative whitespace-nowrap ${activeTab === key ? "bg-[#B59E74] text-white shadow-md" : "text-gray-500 hover:text-gray-700"}`}
+              >
+                {label}
+                {badge > 0 && (
+                  <span className={`absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full ${badgeColor} text-[9px] text-white`}>{badge}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Unified white card */}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 sm:p-8">
 
           {/* --- PENDING REQUESTS VIEW --- */}
           {activeTab === "requests" && (
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 sm:p-8 animate-fade-in-up">
+            <div className="animate-fade-in-up">
               <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 border-b border-gray-100 pb-6">
                 <h2 className="text-xl font-serif text-gray-800 font-medium uppercase tracking-widest">Awaiting Approval</h2>
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -734,7 +783,9 @@ function StaffDashboard() {
               {requestsLoading ? (
                 <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div></div>
               ) : pendingData.length === 0 ? (
-                <div className="text-center py-16 text-gray-400 italic font-serif">No pending requests for {activeServiceTab}.</div>
+                <div className="text-center py-16 text-gray-400 italic font-serif">
+                  {staffSearch ? `No results matching "${staffSearch}".` : `No pending requests for ${activeServiceTab}.`}
+                </div>
               ) : staffViewMode === "table" ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
@@ -839,23 +890,41 @@ function StaffDashboard() {
             ) : (
               <div className="animate-fade-in-up">
                 {/* Toolbar */}
-                <div className="flex justify-end mb-4">
-                  <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white">
-                    <button
-                      onClick={() => setStaffViewMode("card")}
-                      title="Card view"
-                      className={`px-3 py-2.5 text-sm transition-colors ${staffViewMode === "card" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
-                    >⊞</button>
-                    <button
-                      onClick={() => setStaffViewMode("table")}
-                      title="Table view"
-                      className={`px-3 py-2.5 text-sm transition-colors ${staffViewMode === "table" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
-                    >≡</button>
+                <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 border-b border-gray-100 pb-6">
+                  <h2 className="text-xl font-serif text-gray-800 font-medium uppercase tracking-widest">
+                    {activeTab === "events" ? "Approved Events" : activeTab === "certificates" ? "Certificates" : "QR Generator"}
+                  </h2>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <select
+                      value={itemsSortBy}
+                      onChange={e => setItemsSortBy(e.target.value)}
+                      className="w-full sm:w-auto p-3 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74] cursor-pointer"
+                    >
+                      <option value="date_asc">Date — Oldest</option>
+                      <option value="date_desc">Date — Newest</option>
+                      <option value="submitted_desc">Submitted — Newest</option>
+                      <option value="submitted_asc">Submitted — Oldest</option>
+                    </select>
+                    <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white shrink-0">
+                      <button
+                        onClick={() => setStaffViewMode("card")}
+                        title="Card view"
+                        className={`px-3 py-2.5 text-sm transition-colors ${staffViewMode === "card" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+                      >⊞</button>
+                      <button
+                        onClick={() => setStaffViewMode("table")}
+                        title="Table view"
+                        className={`px-3 py-2.5 text-sm transition-colors ${staffViewMode === "table" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+                      >≡</button>
+                    </div>
                   </div>
                 </div>
 
                 {getVisibleItems().length === 0 ? (
-                  <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center"><div className="text-4xl mb-4">📭</div><h3 className="text-xl font-serif text-gray-800">No active records found.</h3></div>
+                  <div className="text-center py-16 text-gray-400 italic font-serif">
+                    <div className="text-4xl mb-4">📭</div>
+                    <p>{staffSearch ? `No results matching "${staffSearch}".` : "No active records found."}</p>
+                  </div>
                 ) : staffViewMode === "table" ? (
                   <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-x-auto">
                     <table className="w-full text-left border-collapse">
@@ -943,6 +1012,8 @@ function StaffDashboard() {
               </div>
             )
           )}
+
+          </div>{/* end unified white card */}
         </main>
       )}
 
@@ -962,14 +1033,14 @@ function StaffDashboard() {
                   {acceptingRequest.preferred_priest && (
                     <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700">
                       <span className="font-bold uppercase tracking-widest">Parishioner's Preferred Priest:</span>{" "}
-                      {acceptingRequest.preferred_priest}
+                      Fr. {acceptingRequest.preferred_priest}
                       <span className="block mt-0.5 text-blue-500 italic font-normal">This is only a preference — your selection below is final.</span>
                     </div>
                   )}
                   <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Assign Priest *</label>
                   <select value={assignedPriest} onChange={(e) => setAssignedPriest(e.target.value)} className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white">
                     <option value="" disabled>Select a priest…</option>
-                    {priestNames.map((p) => (<option key={p} value={p}>{p}</option>))}
+                    {priestNames.map((p) => (<option key={p} value={p}>Fr. {p}</option>))}
                   </select>
                   <p className="text-xs text-gray-400 italic mt-1">The assigned priest will host this on the parish events calendar.</p>
                 </div>

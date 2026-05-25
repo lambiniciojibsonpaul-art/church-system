@@ -57,6 +57,7 @@ function EventsPage() {
     new Date(today.getFullYear(), today.getMonth(), 1),
   );
   const [selectedDate, setSelectedDate] = useState(today);
+  const [eventsPage, setEventsPage] = useState(0);
 
   const cachedEvents = readEventsCache();
   const [events, setEvents] = useState(cachedEvents || []);
@@ -263,7 +264,10 @@ function EventsPage() {
   const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   const handleDayClick = (day) => {
-    if (day) setSelectedDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
+    if (day) {
+      setSelectedDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
+      setEventsPage(0);
+    }
   };
 
   // --- BULLET-PROOF CHRONOLOGICAL SORTING FOR CALENDAR PAGE ---
@@ -311,6 +315,9 @@ function EventsPage() {
   };
 
   const selectedEvents = getEventsForDate(selectedDate);
+  const EVENTS_PER_PAGE = 3;
+  const totalEventPages = Math.ceil(selectedEvents.length / EVENTS_PER_PAGE);
+  const pagedEvents = selectedEvents.slice(eventsPage * EVENTS_PER_PAGE, (eventsPage + 1) * EVENTS_PER_PAGE);
   
   const formatTime = (timeStr) => {
     if (!timeStr) return "";
@@ -435,7 +442,7 @@ function EventsPage() {
                   isStaffRole ? (
                     /* ── STAFF / ADMIN: compact list rows ── */
                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                      {selectedEvents.map((event, idx) => {
+                      {pagedEvents.map((event, idx) => {
                         const cancelled = (event.status || "Active") === "Cancelled";
                         return (
                           <div key={event.id} className={`flex items-start gap-4 px-5 py-4 hover:bg-gray-50/60 transition-colors ${idx !== 0 ? "border-t border-gray-50" : ""}`}>
@@ -444,7 +451,7 @@ function EventsPage() {
                               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5">
                                 {event.event_time  && <span className="text-[11px] text-gray-400">{formatTime(event.event_time)}</span>}
                                 {event.location    && <span className="text-[11px] text-gray-400">{event.location}</span>}
-                                {event.priest_name && <span className="text-[11px] text-gray-400 italic">Host: {event.priest_name}</span>}
+                                {(event.ministry || event.priest_name) && <span className="text-[11px] text-gray-400 italic">Host: {event.ministry || `Fr. ${event.priest_name}`}</span>}
                               </div>
                               {event.description && <p className="text-[11px] text-gray-400 mt-1 leading-relaxed line-clamp-2">{event.description}</p>}
                             </div>
@@ -459,7 +466,7 @@ function EventsPage() {
                     </div>
                   ) : (
                     /* ── PUBLIC: original decorative cards ── */
-                    selectedEvents.map((event) => {
+                    pagedEvents.map((event) => {
                       const cancelled = (event.status || "Active") === "Cancelled";
                       return (
                         <div key={event.id} className={`p-6 rounded-2xl shadow-sm flex flex-col gap-4 animate-fade-in-up relative overflow-hidden group ${cancelled ? "bg-orange-50/40 border border-orange-200" : "bg-white border border-gray-100"}`}>
@@ -474,10 +481,10 @@ function EventsPage() {
                             <div className="hidden sm:block w-1 h-1 bg-gray-300 rounded-full"></div>
                             <div className="flex items-center gap-2"><svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>{event.location || "Parish"}</div>
                           </div>
-                          {event.priest_name && (
+                          {(event.ministry || event.priest_name) && (
                             <div className="flex items-center gap-2 text-sm text-gray-700 font-medium border-t border-gray-100 pt-3">
                               <svg className="w-5 h-5 text-[#B59E74]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 0a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-                              <span className="text-gray-500 italic mr-1">Hosted by:</span>{event.priest_name}
+                              <span className="text-gray-500 italic mr-1">Hosted by:</span>{event.ministry || `Fr. ${event.priest_name}`}
                             </div>
                           )}
                           {event.description && <p className="text-gray-700 leading-relaxed mt-1 text-sm whitespace-pre-wrap">{event.description}</p>}
@@ -490,6 +497,29 @@ function EventsPage() {
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-12 h-12 text-[#B59E74]/50 mb-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
                     <h4 className="text-xl font-serif text-gray-500 mb-2">{isCancelledView ? "No Cancelled Events" : "No Scheduled Events"}</h4>
                     <p className="text-sm text-gray-400 italic">{isCancelledView ? "Nothing has been cancelled for this date." : "There are no activities currently planned for this date."}</p>
+                  </div>
+                )}
+                {totalEventPages > 1 && (
+                  <div className="flex items-center justify-between mt-1 px-1">
+                    <button
+                      onClick={() => setEventsPage((p) => Math.max(0, p - 1))}
+                      disabled={eventsPage === 0}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[#F6F5ED] text-[#B59E74] hover:bg-[#B59E74] hover:text-white border border-[#B59E74]/20"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+                      Prev
+                    </button>
+                    <span className="text-xs text-gray-400 font-medium">
+                      {eventsPage + 1} / {totalEventPages}
+                    </span>
+                    <button
+                      onClick={() => setEventsPage((p) => Math.min(totalEventPages - 1, p + 1))}
+                      disabled={eventsPage >= totalEventPages - 1}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[#F6F5ED] text-[#B59E74] hover:bg-[#B59E74] hover:text-white border border-[#B59E74]/20"
+                    >
+                      Next
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                    </button>
                   </div>
                 )}
               </div>

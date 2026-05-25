@@ -16,7 +16,7 @@ const TAB_CONFIG = {
       { label: "Child's Name", value: (r) => `${r.child_first_name || ""} ${r.child_last_name || ""}`.trim() },
       { label: "Type", value: (r) => r.baptism_type },
       { label: "Pref. Date", value: (r) => formatDate(r.preferred_date) },
-      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || r.submitter_name || "—") },
+      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.father_name || r.submitter_name || "—") },
     ],
     eventBuilder: (r, priest, userId) => ({
       creator_id: userId,
@@ -38,7 +38,7 @@ const TAB_CONFIG = {
       { label: "Candidate", value: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() },
       { label: "Pref. Date", value: (r) => formatDate(r.date_of_communion) },
       { label: "Contact", value: (r) => r.contact_number_1 || "—" },
-      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || "—") },
+      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.father_name || "—") },
     ],
     eventBuilder: (r, priest, userId) => ({
       creator_id: userId,
@@ -60,7 +60,7 @@ const TAB_CONFIG = {
       { label: "Candidate", value: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() },
       { label: "Pref. Date", value: (r) => formatDate(r.date_of_confirmation) },
       { label: "Contact", value: (r) => r.contact_number || "—" },
-      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || "—") },
+      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.father_name || "—") },
     ],
     eventBuilder: (r, priest, userId) => ({
       creator_id: userId,
@@ -82,7 +82,7 @@ const TAB_CONFIG = {
       { label: "Couple", value: (r) => `${r.groom_first_name || ""} ${r.groom_surname || ""} & ${r.bride_first_name || ""} ${r.bride_surname || ""}`.trim() },
       { label: "Pref. Date", value: (r) => formatDate(r.wedding_date) },
       { label: "Contact", value: (r) => r.groom_contact || r.bride_contact || "—" },
-      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || "—") },
+      { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (`${r.groom_first_name || ""} ${r.groom_surname || ""}`.trim() || "—") },
     ],
     eventBuilder: (r, priest, userId) => ({
       creator_id: userId,
@@ -179,9 +179,11 @@ function extractRecordDate(r) {
 
 function extractRecordSubmitter(r) {
   const name = (
-    r.guest_name || r.submitter_signature || r.submitter_name ||
+    r.guest_name || r.submitter_name ||
     r.full_name || r.requested_by ||
-    [r.requestor_first_name, r.requestor_surname].filter(Boolean).join(" ") || "—"
+    [r.requestor_first_name, r.requestor_surname].filter(Boolean).join(" ") ||
+    r.father_name ||
+    [r.groom_first_name, r.groom_surname].filter(Boolean).join(" ") || "—"
   );
   return r.is_guest ? `${name} (Guest)` : name;
 }
@@ -225,7 +227,7 @@ function AdminDashboard() {
   const [activeSubTab, setActiveSubTab] = useState("All");
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState("date_desc");
+  const [sortBy, setSortBy] = useState("submitted_desc");
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -247,7 +249,7 @@ function AdminDashboard() {
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [eventsSearchQuery, setEventsSearchQuery] = useState("");
-  const [eventsSortBy, setEventsSortBy] = useState("date_desc");
+  const [eventsSortBy, setEventsSortBy] = useState("created_desc");
   const [eventsFilter, setEventsFilter] = useState("All");
   const [eventsPageSize, setEventsPageSize] = useState(10);
   const [eventsCurrentPage, setEventsCurrentPage] = useState(1);
@@ -1048,7 +1050,7 @@ function AdminDashboard() {
                         <td className="p-4 text-sm text-gray-600">{formatDate(ev.event_date)}</td>
                         <td className="p-4 text-sm text-gray-600">{ev.event_time || "—"}</td>
                         <td className="p-4 text-sm text-gray-600">{ev.event_class || "—"}</td>
-                        <td className="p-4 text-sm text-gray-600">{ev.priest_name || "—"}</td>
+                        <td className="p-4 text-sm text-gray-600">{ev.ministry || (ev.priest_name ? `Fr. ${ev.priest_name}` : "—")}</td>
                         <td className="p-4 text-sm text-gray-600">{ev.location || "—"}</td>
                         <td className="p-4"><StatusBadge status={ev.status || "Active"} /></td>
                         <td className="p-4 text-right">
@@ -1077,7 +1079,7 @@ function AdminDashboard() {
                       <div className="min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Date</p><p className="text-sm text-gray-700 break-words">{formatDate(ev.event_date) || "—"}</p></div>
                       <div className="min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Time</p><p className="text-sm text-gray-700 break-words">{ev.event_time || "—"}</p></div>
                       <div className="min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Class</p><p className="text-sm text-gray-700 break-words">{ev.event_class || "—"}</p></div>
-                      <div className="min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Hosted By</p><p className="text-sm text-gray-700 break-words">{ev.priest_name || "—"}</p></div>
+                      <div className="min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Hosted By</p><p className="text-sm text-gray-700 break-words">{ev.ministry || (ev.priest_name ? `Fr. ${ev.priest_name}` : "—")}</p></div>
                       <div className="col-span-2 min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Location</p><p className="text-sm text-gray-700 break-words">{ev.location || "—"}</p></div>
                     </div>
                     <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-50">
@@ -1132,7 +1134,7 @@ function AdminDashboard() {
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Assigned Priest</label>
                   <div className="p-4 rounded-2xl border border-gray-200 bg-gray-50 text-sm text-gray-700 font-medium">
-                    {acceptingRequest.preferred_priest || <span className="text-gray-400 italic">No priest assigned by staff yet</span>}
+                    {acceptingRequest.preferred_priest ? `Fr. ${acceptingRequest.preferred_priest}` : <span className="text-gray-400 italic">No priest assigned by staff yet</span>}
                   </div>
                   <p className="text-xs text-gray-400 italic">Assigned by staff — this priest will host the event on the parish calendar.</p>
                 </div>

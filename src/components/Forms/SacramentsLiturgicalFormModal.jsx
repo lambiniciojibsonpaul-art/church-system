@@ -247,7 +247,7 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
                     <option value="">No Preference / Any Available</option>
                     {priests.map((priest) => (
                       <option key={priest.id} value={priest.name}>
-                        {priest.name}
+                        Fr. {priest.name}
                       </option>
                     ))}
                   </select>

@@ -555,7 +555,7 @@ function AdminSchedules() {
                         <td className="p-3">
                           <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">{ev.event_class}</span>
                         </td>
-                        <td className="p-3 text-sm text-gray-600">{ev.priest_name || ev.ministry || "—"}</td>
+                        <td className="p-3 text-sm text-gray-600">{ev.ministry || (ev.priest_name ? `Fr. ${ev.priest_name}` : "—")}</td>
                         <td className="p-3 text-sm text-gray-600 whitespace-nowrap">{new Date(ev.event_date).toLocaleDateString()}</td>
                         <td className="p-3 text-sm text-gray-600 whitespace-nowrap">{ev.event_time || "—"}</td>
                         <td className="p-3 text-sm text-gray-500 max-w-[160px] truncate">{ev.location || "—"}</td>
@@ -613,7 +613,7 @@ function AdminSchedules() {
                   
                   <p className="text-sm text-gray-500 font-serif italic mb-4">
                     {isPending ? "Proposed by: " : "Hosted by: "} 
-                    <span className="font-semibold">{ev.priest_name}</span>
+                    <span className="font-semibold">{ev.ministry || (ev.priest_name ? `Fr. ${ev.priest_name}` : "")}</span>
                   </p>
 
                   <div className="space-y-2 text-sm text-gray-600 border-t border-gray-50 pt-4 flex-1">
@@ -809,7 +809,7 @@ function AdminSchedules() {
                           className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                         >
                           <option value="">Select priest…</option>
-                          {priestNames.map(name => <option key={name} value={name}>{name}</option>)}
+                          {priestNames.map(name => <option key={name} value={name}>Fr. {name}</option>)}
                         </select>
                       </div>
 

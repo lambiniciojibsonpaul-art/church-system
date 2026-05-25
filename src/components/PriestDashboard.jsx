@@ -171,7 +171,7 @@ function PriestDashboard() {
     }
   };
 
-  const [priestSortBy, setPriestSortBy] = useState("date_asc");
+  const [priestSortBy, setPriestSortBy] = useState("submitted_desc");
   const [priestViewMode, setPriestViewMode] = useState("card"); // "card" | "table"
 
   const pendingRequests  = requests.filter((r) => r.status === "Pending" || !r.status);
@@ -197,7 +197,7 @@ function PriestDashboard() {
               Priest Dashboard
             </h1>
             <p className="text-gray-500 font-serif italic mt-2 text-lg">
-              {priestName ? `Welcome, ${priestName}. Review your assigned requests and schedule.` : "Loading profile..."}
+              {priestName ? `Welcome, Fr. ${priestName}. Review your assigned requests and schedule.` : "Loading profile..."}
             </p>
           </div>
         </div>
