@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/useAuth";
 
-// Custom searchable dropdown for the ministry sort filter in the database panel
+// Custom searchable dropdown for the ministry sort filter in the users panel
 function MinistryFilterDropdown({ value, onChange, options = [] }) {
   const [open, setOpen]     = useState(false);
   const [search, setSearch] = useState("");
@@ -144,8 +144,8 @@ function ManageUsers() {
   const [roleFilter, setRoleFilter] = useState("All");
   const [ministryFilter, setMinistryFilter] = useState("All");
 
-  // Mobile tab: "database" | "create"
-  const [mobileTab, setMobileTab] = useState("database");
+  // Mobile tab: "users" | "create"
+  const [mobileTab, setMobileTab] = useState("users");
 
   // Active ministries from DB (for checkboxes + filter dropdown)
   const [activeMinistries, setActiveMinistries] = useState([]);
@@ -537,14 +537,14 @@ function ManageUsers() {
           {/* Mobile tab switcher — hidden at md+ where side-by-side kicks in */}
           <div className="md:hidden flex gap-1 bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm mb-4">
             <button
-              onClick={() => setMobileTab("database")}
+              onClick={() => setMobileTab("users")}
               className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
-                mobileTab === "database"
+                mobileTab === "users"
                   ? "bg-[#B59E74] text-white shadow-sm"
                   : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
               }`}
             >
-              🗄️ Database
+              👥 Users
             </button>
             <button
               onClick={() => setMobileTab("create")}
@@ -637,13 +637,13 @@ function ManageUsers() {
           </div>
 
           {/* RIGHT SIDE: DATABASE TABLE */}
-          <div className={`${mobileTab === "database" ? "flex" : "hidden"} md:flex flex-col flex-1 bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden h-[calc(100svh-200px)] md:h-full`}>
+          <div className={`${mobileTab === "users" ? "flex" : "hidden"} md:flex flex-col flex-1 bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden h-[calc(100svh-200px)] md:h-full`}>
 
             <div className="shrink-0 p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row justify-between items-start gap-4">
               <div className="flex items-center gap-3 w-full sm:w-auto">
                 <span className="text-xl">🗄️</span>
                 <div>
-                  <h2 className="text-lg font-serif text-gray-800 font-medium uppercase tracking-widest leading-none">Database</h2>
+                  <h2 className="text-lg font-serif text-gray-800 font-medium uppercase tracking-widest leading-none">Users</h2>
                   <p className="text-[11px] text-gray-500 italic mt-0.5">Total Accounts: {filteredUsers.length}</p>
                 </div>
               </div>
