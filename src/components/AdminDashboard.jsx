@@ -233,6 +233,7 @@ function AdminDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
 
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState(null);
 
   const [rejectingRequest, setRejectingRequest] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -254,7 +255,6 @@ function AdminDashboard() {
   const [eventsFilter, setEventsFilter] = useState("All");
   const [eventsPageSize, setEventsPageSize] = useState(10);
   const [eventsCurrentPage, setEventsCurrentPage] = useState(1);
-  const [selectedEvent, setSelectedEvent] = useState(null);
   const [cancellingEvent, setCancellingEvent] = useState(null);
   const [eventCancelReason, setEventCancelReason] = useState("");
   const [cancelEventSubmitting, setCancelEventSubmitting] = useState(false);
@@ -1056,7 +1056,7 @@ function AdminDashboard() {
                         <td className="p-4"><StatusBadge status={ev.status || "Active"} /></td>
                         <td className="p-4 text-right">
                           <div className="flex justify-end gap-2">
-                            <button onClick={() => setSelectedEvent(ev)} className="text-[#B59E74] hover:text-white hover:bg-[#B59E74] text-xs font-bold uppercase tracking-widest px-3 py-2 rounded-lg bg-[#B59E74]/10 transition-colors">View / QR / Attendance</button>
+                            <button onClick={() => setSelectedEvent(ev)} className="text-[#B59E74] hover:text-[#9c8760] text-xs font-bold uppercase tracking-widest px-3 py-2 rounded hover:bg-[#B59E74]/10 transition-colors">View</button>
                             {(ev.status || "Active") !== "Cancelled" && <button onClick={() => openCancelEventModal(ev)} className="text-orange-600 hover:text-white hover:bg-orange-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-orange-50 transition-colors">Cancel</button>}
                             {(ev.status || "Active") === "Cancelled" && <button onClick={() => setDeletingEvent(ev)} className="text-red-600 hover:text-white hover:bg-red-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-red-50 transition-colors">Delete</button>}
                           </div>
@@ -1084,7 +1084,7 @@ function AdminDashboard() {
                       <div className="col-span-2 min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Location</p><p className="text-sm text-gray-700 break-words">{ev.location || "—"}</p></div>
                     </div>
                     <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-50">
-                      <button onClick={() => setSelectedEvent(ev)} className="flex-1 min-w-[120px] py-2.5 rounded-lg bg-[#B59E74]/10 border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74] hover:text-white text-xs font-bold uppercase tracking-widest transition-all">View / QR / Attendance</button>
+                      <button onClick={() => setSelectedEvent(ev)} className="flex-1 min-w-[100px] py-2.5 rounded-lg border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74]/10 text-xs font-bold uppercase tracking-widest transition-all">View</button>
                       {(ev.status || "Active") !== "Cancelled" && <button onClick={() => openCancelEventModal(ev)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">Cancel</button>}
                       {(ev.status || "Active") === "Cancelled" && <button onClick={() => setDeletingEvent(ev)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">Delete</button>}
                     </div>
@@ -1232,8 +1232,7 @@ function AdminDashboard() {
       {/* VIEW DETAILS */}
       {selectedRequest && <DetailsModal request={selectedRequest} tabName={selectedRequest._tab || activeTab} onClose={() => setSelectedRequest(null)} />}
 
-      {/* EVENT DETAILS */}
-      {selectedEvent && <EventDetailsModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
+      {selectedEvent && <EventViewModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
 
       {/* CANCEL EVENT */}
       {cancellingEvent && (
@@ -1332,150 +1331,43 @@ function formatValue(key, val) {
   return String(val);
 }
 
-function EventDetailsModal({ event, onClose }) {
-  const [activePanel, setActivePanel] = useState("details");
-  const [attendance, setAttendance] = useState([]);
-  const [attendanceLoading, setAttendanceLoading] = useState(false);
-  const qrRef = useRef(null);
-
-  const baseUrl = window.location.href.split("#")[0].replace(/\/$/, "");
-  const checkInUrl = `${baseUrl}/#/check-in/${event.id}`;
-
+function EventViewModal({ event, onClose }) {
   const formatTime = (t) => {
-    if (!t) return "";
+    if (!t) return "—";
     const [h, m] = t.split(":");
     const hr = parseInt(h, 10);
     return `${hr % 12 || 12}:${m} ${hr >= 12 ? "PM" : "AM"}`;
   };
-
-  useEffect(() => {
-    if (activePanel !== "attendance") return;
-    setAttendanceLoading(true);
-    supabase
-      .from("attendance_details")
-      .select("*")
-      .eq("event_id", event.id)
-      .order("check_in_time", { ascending: false })
-      .then(({ data }) => {
-        setAttendance(data || []);
-        setAttendanceLoading(false);
-      });
-  }, [activePanel, event.id]);
-
-  const handlePrint = () => window.print();
-
-  const panels = [
-    { key: "details",    label: "📋 Details" },
-    { key: "qr",         label: "🔳 QR Code" },
-    { key: "attendance", label: "👥 Attendance" },
-  ];
-
+  const fields = [
+    { label: "Title",       value: event.title },
+    { label: "Type",        value: event.event_class },
+    { label: "Status",      value: event.status || "Active" },
+    { label: "Date",        value: event.event_date ? new Date(event.event_date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : null },
+    { label: "Time",        value: formatTime(event.event_time) },
+    { label: "Hosted By",   value: event.ministry || (event.priest_name ? `Fr. ${event.priest_name}` : null) },
+    { label: "Facility",    value: event.setting },
+    { label: "Location",    value: event.location },
+    { label: "Description", value: event.description, wide: true },
+  ].filter(f => f.value);
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
       <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">
-
-        {/* Header */}
-        <div className="sticky top-0 bg-white px-6 sm:px-8 py-5 z-10 flex justify-between items-start border-b border-gray-100">
-          <div className="min-w-0 pr-4">
-            <p className="text-[10px] font-bold text-[#B59E74] uppercase tracking-widest mb-0.5">{event.event_class || "Parish Event"}</p>
-            <h2 className="text-xl font-serif text-gray-800 font-medium leading-tight break-words">{event.title}</h2>
-            <p className="text-xs text-gray-400 mt-1">{event.event_date ? new Date(event.event_date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : ""}{event.event_time ? ` · ${formatTime(event.event_time)}` : ""}</p>
+        <div className="sticky top-0 bg-white px-8 py-6 z-10 flex justify-between items-center border-b border-gray-100">
+          <div>
+            <h2 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest">Parish Event Details</h2>
+            <h1 className="text-2xl font-serif text-gray-800 mt-1">{event.title}</h1>
           </div>
-          <button onClick={onClose} className="shrink-0 w-9 h-9 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500 text-sm">✕</button>
+          <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-600">✕</button>
         </div>
-
-        {/* Panel tabs */}
-        <div className="px-6 sm:px-8 pt-4 pb-0">
-          <div className="flex gap-1 p-1.5 bg-[#F6F5ED] rounded-full w-fit border border-gray-100">
-            {panels.map(({ key, label }) => (
-              <button key={key} onClick={() => setActivePanel(key)}
-                className={`px-4 py-2 rounded-full text-[11px] font-bold uppercase tracking-widest transition-all whitespace-nowrap ${activePanel === key ? "bg-[#B59E74] text-white shadow-md" : "text-gray-500 hover:text-gray-700"}`}>
-                {label}
-              </button>
+        <div className="p-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+            {fields.map(({ label, value, wide }) => (
+              <div key={label} className={wide ? "md:col-span-2" : ""}>
+                <p className="text-xs uppercase tracking-widest text-gray-400">{label}</p>
+                <p className="text-gray-800 font-medium mt-1 whitespace-pre-wrap break-words">{value}</p>
+              </div>
             ))}
           </div>
-        </div>
-
-        <div className="p-6 sm:p-8">
-
-          {/* ── Details panel ── */}
-          {activePanel === "details" && (
-            <div className="space-y-4 text-sm">
-              {[
-                { label: "Status",    value: event.status || "Active" },
-                { label: "Date",      value: event.event_date ? new Date(event.event_date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : "—" },
-                { label: "Time",      value: formatTime(event.event_time) || "—" },
-                { label: "Location",  value: event.location || "—" },
-                { label: "Facility",  value: event.setting || null },
-                { label: "Hosted By", value: event.ministry || (event.priest_name ? `Fr. ${event.priest_name}` : null) },
-              ].filter(({ value }) => value).map(({ label, value }) => (
-                <div key={label} className="flex gap-3">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 w-20 shrink-0 pt-0.5">{label}</span>
-                  <span className="text-gray-800 font-medium flex-1 break-words">{value}</span>
-                </div>
-              ))}
-              {event.description && (
-                <div className="flex gap-3">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 w-20 shrink-0 pt-0.5">Notes</span>
-                  <p className="text-gray-700 flex-1 whitespace-pre-wrap leading-relaxed">{event.description}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── QR Code panel ── */}
-          {activePanel === "qr" && (
-            <div className="flex flex-col items-center gap-5">
-              <p className="text-xs text-gray-400 italic text-center">Parishioners scan this QR code to check in to the event.</p>
-              <div ref={qrRef} className="flex flex-col items-center p-6 bg-white border-2 border-dashed border-gray-200 rounded-2xl print:border-none">
-                <h3 className="text-lg font-serif text-gray-800 uppercase tracking-wide text-center mb-4">{event.title}</h3>
-                <div className="p-3 bg-white shadow-sm border border-gray-100 rounded-xl">
-                  <QRCodeCanvas value={checkInUrl} size={220} level="H" includeMargin={true} />
-                </div>
-                <p className="mt-4 text-[10px] text-gray-400 uppercase tracking-widest text-center">Scan with phone camera to mark attendance</p>
-              </div>
-              <button onClick={handlePrint} className="print:hidden w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-3 rounded-xl uppercase tracking-widest transition-all shadow-md text-xs">
-                🖨️ Print QR Code
-              </button>
-            </div>
-          )}
-
-          {/* ── Attendance panel ── */}
-          {activePanel === "attendance" && (
-            <div>
-              {attendanceLoading ? (
-                <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B59E74]"></div></div>
-              ) : attendance.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-4xl mb-3">👥</p>
-                  <p className="text-gray-500 font-serif italic">No check-ins recorded for this event yet.</p>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">{attendance.length} attendee{attendance.length !== 1 ? "s" : ""}</span>
-                  </div>
-                  <div className="space-y-2">
-                    {attendance.map((a, i) => (
-                      <div key={a.id || i} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-xl border border-gray-100">
-                        <div>
-                          <p className="text-sm font-medium text-gray-800">
-                            {a.is_guest
-                              ? `${a.guest_name || "Guest"} (Guest)`
-                              : `${a.first_name || ""} ${a.last_name || ""}`.trim() || a.email || "Parishioner"}
-                          </p>
-                          {!a.is_guest && a.email && <p className="text-[11px] text-gray-400">{a.email}</p>}
-                        </div>
-                        <span className="text-[10px] text-gray-400 shrink-0 ml-3">
-                          {a.check_in_time ? new Date(a.check_in_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>

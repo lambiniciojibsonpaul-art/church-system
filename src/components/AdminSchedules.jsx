@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { QRCodeCanvas } from "qrcode.react";
 import { restSelect, restInsert, restUpdate, restDelete } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
 
@@ -68,6 +69,127 @@ const INDOOR_FACILITIES = [
   "Chamber Room"
 ];
 
+function EventDetailsModal({ event, onClose }) {
+  const [activePanel, setActivePanel] = useState("details");
+  const [attendance, setAttendance] = useState([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const qrRef = useRef(null);
+  const baseUrl = window.location.href.split("#")[0].replace(/\/$/, "");
+  const checkInUrl = `${baseUrl}/#/check-in/${event.id}`;
+
+  useEffect(() => {
+    if (activePanel !== "attendance") return;
+    setAttendanceLoading(true);
+    restSelect("attendance_details", {
+      match: { event_id: event.id },
+      order: "check_in_time.desc",
+      timeoutMs: 10000,
+    }).then(({ data }) => {
+      setAttendance(data || []);
+      setAttendanceLoading(false);
+    });
+  }, [activePanel, event.id]);
+
+  const handleDownloadQR = () => {
+    const canvas = qrRef.current?.querySelector("canvas");
+    if (!canvas) return;
+    const url = canvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `qr-${event.title?.replace(/\s+/g, "-") || event.id}.png`;
+    a.click();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative">
+        <div className="sticky top-0 bg-white px-8 py-5 border-b border-gray-100 flex justify-between items-center z-10">
+          <div>
+            <h2 className="text-lg font-serif text-[#B59E74] uppercase tracking-widest leading-tight">{event.title}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{event.event_class}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors">✕</button>
+        </div>
+
+        <div className="flex gap-1 px-8 pt-5">
+          {["details", "qr", "attendance"].map((p) => (
+            <button key={p} onClick={() => setActivePanel(p)}
+              className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${activePanel === p ? "bg-[#B59E74] text-white shadow" : "text-gray-400 hover:text-gray-600 bg-gray-100"}`}>
+              {p === "details" ? "Details" : p === "qr" ? "QR Code" : "Attendance"}
+            </button>
+          ))}
+        </div>
+
+        <div className="p-8">
+          {activePanel === "details" && (
+            <div className="space-y-4 text-sm text-gray-700">
+              <div><span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Date</span><p>{new Date(event.event_date).toLocaleDateString()}</p></div>
+              <div><span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Time</span><p>{event.event_time || "—"}</p></div>
+              <div><span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Host</span><p>{event.ministry || (event.priest_name ? `Fr. ${event.priest_name}` : "—")}</p></div>
+              <div><span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Setting</span><p>{event.setting || "—"}</p></div>
+              <div><span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Location</span><p>{event.location || "—"}</p></div>
+              {event.description && <div><span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Description</span><p className="whitespace-pre-wrap">{event.description}</p></div>}
+              <div><span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Status</span>
+                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${event.status === "Cancelled" || event.status === "Rejected" ? "bg-red-100 text-red-700" : event.status === "Pending" ? "bg-yellow-100 text-yellow-700" : "bg-green-100 text-green-700"}`}>{event.status || "Active"}</span>
+              </div>
+            </div>
+          )}
+
+          {activePanel === "qr" && (
+            <div className="flex flex-col items-center gap-6">
+              <div ref={qrRef} className="p-4 bg-white border border-gray-200 rounded-2xl shadow-sm">
+                <QRCodeCanvas value={checkInUrl} size={220} />
+              </div>
+              <p className="text-xs text-gray-400 text-center break-all max-w-xs">{checkInUrl}</p>
+              <div className="flex gap-3">
+                <button onClick={handleDownloadQR} className="px-5 py-2.5 bg-[#B59E74] text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[#9c8760] transition-colors">Download QR</button>
+                <button onClick={() => window.print()} className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-gray-200 transition-colors">Print</button>
+              </div>
+            </div>
+          )}
+
+          {activePanel === "attendance" && (
+            <div>
+              {attendanceLoading ? (
+                <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B59E74]" /></div>
+              ) : attendance.length === 0 ? (
+                <div className="text-center text-gray-400 py-8"><p>No attendees checked in yet.</p></div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <p className="text-xs text-gray-400 mb-3">{attendance.length} attendee{attendance.length !== 1 ? "s" : ""}</p>
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="text-[10px] text-gray-400 uppercase tracking-widest border-b border-gray-100">
+                        <th className="p-2">Name</th><th className="p-2">Check-in Time</th><th className="p-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {attendance.map((a) => (
+                        <tr key={a.id} className="border-b border-gray-50 hover:bg-gray-50">
+                          <td className="p-2">
+                            <p className="text-sm font-medium text-gray-800">
+                              {a.is_guest
+                                ? `${a.guest_name || "Guest"} (Guest)`
+                                : `${a.first_name || ""} ${a.last_name || ""}`.trim() || a.email || "Parishioner"}
+                            </p>
+                            {!a.is_guest && a.email && <p className="text-[11px] text-gray-400">{a.email}</p>}
+                          </td>
+                          <td className="p-2 text-gray-500 text-sm">{a.check_in_time ? new Date(a.check_in_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                          <td className="p-2"><span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold uppercase">{a.status || "Present"}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminSchedules() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -87,6 +209,7 @@ function AdminSchedules() {
   const [cancellingEvent, setCancellingEvent] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
   const [deletingEvent, setDeletingEvent] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState(null);
 
   // Map search state
   const [mapSearch, setMapSearch] = useState("");
@@ -567,7 +690,8 @@ function AdminSchedules() {
                           </span>
                         </td>
                         <td className="p-3">
-                          <div className="flex gap-1">
+                          <div className="flex gap-1 flex-wrap">
+                            <button onClick={() => setSelectedEvent(ev)} className="px-2 py-1 bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors whitespace-nowrap">View / QR / Attendance</button>
                             {isPending && (
                               <>
                                 <button onClick={() => handleApprove(ev)} className="px-2 py-1 bg-green-50 hover:bg-green-600 text-green-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✓</button>
@@ -638,19 +762,22 @@ function AdminSchedules() {
                     )}
                   </div>
 
-                  <div className="mt-4 border-t border-gray-100 pt-4 flex gap-2">
-                    {isPending && (
-                      <>
-                        <button onClick={() => handleApprove(ev)} className="flex-1 bg-green-50 hover:bg-green-600 text-green-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✓ Accept</button>
-                        <button onClick={() => { setRejectingEvent(ev); setRejectionReason(""); }} className="flex-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✕ Reject</button>
-                      </>
-                    )}
-                    {(ev.status === "Active" || !ev.status) && (
-                      <button onClick={() => { setCancellingEvent(ev); setCancelReason(""); }} className="w-full bg-orange-50 hover:bg-orange-600 text-orange-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">Cancel Event</button>
-                    )}
-                    {isCancelledOrRejected && (
-                      <button onClick={() => setDeletingEvent(ev)} className="w-full bg-red-50 hover:bg-red-600 text-red-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">Delete Permanently</button>
-                    )}
+                  <div className="mt-4 border-t border-gray-100 pt-4 flex flex-col gap-2">
+                    <button onClick={() => setSelectedEvent(ev)} className="w-full bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">View / QR / Attendance</button>
+                    <div className="flex gap-2">
+                      {isPending && (
+                        <>
+                          <button onClick={() => handleApprove(ev)} className="flex-1 bg-green-50 hover:bg-green-600 text-green-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✓ Accept</button>
+                          <button onClick={() => { setRejectingEvent(ev); setRejectionReason(""); }} className="flex-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✕ Reject</button>
+                        </>
+                      )}
+                      {(ev.status === "Active" || !ev.status) && (
+                        <button onClick={() => { setCancellingEvent(ev); setCancelReason(""); }} className="w-full bg-orange-50 hover:bg-orange-600 text-orange-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">Cancel Event</button>
+                      )}
+                      {isCancelledOrRejected && (
+                        <button onClick={() => setDeletingEvent(ev)} className="w-full bg-red-50 hover:bg-red-600 text-red-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">Delete Permanently</button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )})}
@@ -721,6 +848,9 @@ function AdminSchedules() {
           </div>
         </div>
       )}
+
+      {/* --- EVENT DETAILS / QR / ATTENDANCE MODAL --- */}
+      {selectedEvent && <EventDetailsModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
 
       {/* --- CREATE EVENT MODAL --- */}
       {isModalOpen && (
