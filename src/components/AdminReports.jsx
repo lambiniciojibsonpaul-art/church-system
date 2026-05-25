@@ -94,8 +94,7 @@ const getRequestedBy = r => {
   if (r.is_guest) return r.guest_name || "Guest";
   const first = r.profiles?.first_name || "";
   const last = r.profiles?.last_name || "";
-  const full = [first, last].filter(Boolean).join(" ");
-  return full || r.submitter_email || "—";
+  return [first, last].filter(Boolean).join(" ") || "—";
 };
 
 // Config for every service type — drives the dropdown, fetch, and table render
