@@ -29,7 +29,7 @@ function CheckInPage() {
 
       const { data, error } = await supabase
         .from("events")
-        .select("title, location, latitude, longitude, event_date, event_time, is_inside")
+        .select("title, location, latitude, longitude, event_date, event_time, status")
         .eq("id", eventId)
         .single();
 
@@ -114,20 +114,15 @@ function CheckInPage() {
         return;
       }
 
-      if (!event.is_inside) {
-        if (!event.latitude || !event.longitude) {
-          setModalType("error");
-          setErrorMsg("Event location is not configured. Please contact the parish admin.");
-          setStatus("error");
-          return;
-        }
+      // Indoor events have null lat/lng (set by AdminSchedules for indoor venues)
+      const isIndoor = !event.latitude && !event.longitude;
 
+      if (!isIndoor) {
         // Phase 1: fast wifi/cell position
         let loc = await getLocationFast();
         let distance = getDistanceInMeters(loc.lat, loc.lng, event.latitude, event.longitude);
 
         // Phase 2: GPS retry only when wifi location is too inaccurate to trust
-        // (accuracy > 100m means the wifi fix could be off by enough to falsely fail the 200m check)
         if (distance > 200 && loc.accuracy > 100) {
           setStatus("improving");
           loc = await getLocationGPS();
@@ -409,7 +404,7 @@ function CheckInPage() {
           )}
 
           <button
-            onClick={() => event?.is_inside ? handleCheckIn() : setShowLocationPrompt(true)}
+            onClick={() => (!event?.latitude && !event?.longitude) ? handleCheckIn() : setShowLocationPrompt(true)}
             disabled={status === "locating" || status === "improving" || status === "checking_in"}
             className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-6 rounded-3xl text-xl uppercase tracking-[0.2em] transition-all shadow-xl active:scale-95 disabled:opacity-50"
           >
