@@ -742,8 +742,7 @@ function ManageUsers() {
                     <option value="staff">Staff</option>
                     <option value="minister">Minister</option>
                     <option value="priest">Priest</option>
-                    <option value="ministry">Ministry (Self-Reg)</option>
-                    <option value="parishioner">Parishioner</option>
+<option value="parishioner">Parishioner</option>
                   </select>
                 </div>
 
