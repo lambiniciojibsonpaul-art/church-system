@@ -5,6 +5,24 @@ import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
 
+// Helper function to generate time slots between 8:30 AM and 5:30 PM
+function generateTimeSlots() {
+  const slots = [];
+  for (let hour = 8; hour <= 17; hour++) {
+    const mins = hour === 8 ? ["30"] : ["00", "30"];
+    for (let min of mins) {
+      const time24 = `${hour.toString().padStart(2, "0")}:${min}`;
+      const suffix = hour >= 12 ? "PM" : "AM";
+      const displayHour = hour > 12 ? hour - 12 : hour;
+      const displayTime = `${displayHour}:${min} ${suffix}`;
+      slots.push({ value: time24, label: displayTime });
+    }
+  }
+  return slots;
+}
+
+const TIME_SLOTS = generateTimeSlots();
+
 function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
   const { user } = useAuth();
 
@@ -12,13 +30,13 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
 
-  // NEW: State to hold the dynamic list of priests
+  // State to hold the dynamic list of priests
   const [priests, setPriests] = useState([]);
 
   const [formData, setFormData] = useState({
     date_of_communion: "",
     time_of_communion: "",
-    preferred_priest: "", // NEW field for the form state
+    preferred_priest: "",
     child_first_name: "",
     child_middle_name: "",
     child_surname: "",
@@ -40,7 +58,7 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
     declaration_consent: false,
   });
 
-  // NEW: Fetch priests when the modal opens
+  // Fetch priests when the modal opens
   useEffect(() => {
     const fetchPriests = async () => {
       try {
@@ -82,6 +100,14 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
+
+    // ✨ Enforce numbers-only for contact and age fields
+    if (name === "contact_number_1" || name === "contact_number_2" || name === "current_age") {
+      const numbersOnly = value.replace(/\D/g, "");
+      setFormData((prev) => ({ ...prev, [name]: numbersOnly }));
+      return;
+    }
+
     setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
   };
 
@@ -94,10 +120,6 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
     }
     setLoading(true);
     try {
-      // Build an explicit payload that matches the holy_communions DB schema.
-      // Spreading formData directly caused INSERT failures because form fields
-      // like contact_number_1/2, other_guardian_info, and other_requirements
-      // do not exist as columns in the DB table.
       const safePayload = {
         date_of_communion:  formData.date_of_communion,
         time_of_communion:  formData.time_of_communion,
@@ -179,10 +201,14 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-bold text-gray-600">Time:</label>
-                <input type="time" name="time_of_communion" value={formData.time_of_communion} onChange={handleChange} className={inputClass} />
+                <select name="time_of_communion" value={formData.time_of_communion} onChange={handleChange} required className={inputClass}>
+                  <option value="" disabled>Select Time</option>
+                  {TIME_SLOTS.map((slot) => (
+                    <option key={slot.value} value={slot.value}>{slot.label}</option>
+                  ))}
+                </select>
               </div>
               
-              {/* NEW: Preferred Priest Dropdown */}
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-bold text-gray-600">Preferred Priest (Optional):</label>
                 <select
@@ -242,6 +268,10 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
                         <input type="radio" name="gender" value="Female" checked={formData.gender === "Female"} onChange={handleChange} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74] rounded border-gray-300" /> Female <span className="text-gray-400">(Babae)</span>
                       </label>
                     </div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-gray-600">Current Age</label>
+                    <input type="text" name="current_age" value={formData.current_age} onChange={handleChange} className={inputClass} />
                   </div>
                 </div>
               </div>
@@ -303,58 +333,7 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
               </div>
             </div>
 
-            {/* --- STATIC LIST OF REQUIREMENTS & GOOGLE DRIVE UPLOAD --- */}
-            <div className="bg-[#B59E74]/10 p-6 sm:p-8 rounded-2xl border border-[#B59E74]/30 shadow-sm mt-8">
-              <h3 className="text-sm md:text-base font-bold text-[#B59E74] uppercase tracking-widest mb-2 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                Important Notice: Requirements
-              </h3>
-              <p className="text-sm text-gray-700 font-medium mb-4">
-                Please ensure you secure the following original documents prior to your schedule:
-              </p>
-              
-              <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mb-8">
-                <li className="flex items-start gap-2 text-sm text-gray-800 font-serif">
-                  <span className="text-[#B59E74] mt-1 text-[10px]">■</span>
-                  <span className="leading-snug">Baptismal Certificate (original, with annotation for 1st communion purposes)</span>
-                </li>
-                <li className="flex items-start gap-2 text-sm text-gray-800 font-serif">
-                  <span className="text-[#B59E74] mt-1 text-[10px]">■</span>
-                  <span className="leading-snug">Parents' Seminar Attendance (Mandatory)</span>
-                </li>
-                <li className="flex items-start gap-2 text-sm text-gray-800 font-serif">
-                  <span className="text-[#B59E74] mt-1 text-[10px]">■</span>
-                  <span className="leading-snug">Completed Practices</span>
-                </li>
-                <li className="flex items-start gap-2 text-sm text-gray-800 font-serif">
-                  <span className="text-[#B59E74] mt-1 text-[10px]">■</span>
-                  <span className="leading-snug">Completed Confession</span>
-                </li>
-              </ul>
-
-              {/* UPLOAD / GOOGLE DRIVE REDIRECT BOX */}
-              <div className="bg-white rounded-xl border-2 border-dashed border-[#B59E74]/50 p-6 flex flex-col items-center justify-center text-center">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-[#B59E74] mb-3">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
-                </svg>
-                <h4 className="text-sm font-bold text-gray-800 uppercase tracking-widest mb-1">Submit Your Documents</h4>
-                <p className="text-xs text-gray-500 mb-4 max-w-md">
-                  Please compile your scanned requirements and upload them to our secure Parish Google Drive folder.
-                </p>
-                <a
-                  href="https://drive.google.com/drive/folders/1ee-zAHaDaGURyaTWhI4jafn8smoMNPfG?usp=sharing" 
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-[#B59E74] hover:bg-[#9c8760] text-white px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-2"
-                >
-                  <span>📁</span> Open Upload Folder
-                </a>
-              </div>
-            </div>
-
-            {/* DECLARATION & SIGNATURE */}
+            {/* Declaration & Signature */}
             <DeclarationBlock
               declaration="I declare that the information provided above is true and correct, and I respectfully request the First Holy Communion for the candidate named above."
               consent={formData.declaration_consent}

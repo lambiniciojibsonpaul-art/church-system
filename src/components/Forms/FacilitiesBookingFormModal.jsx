@@ -1,9 +1,27 @@
 import { useState, useEffect } from "react";
-import { restInsert } from "../../supabaseRest";
+import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
+
+// Helper function to generate time slots between 8:30 AM and 5:30 PM
+function generateTimeSlots() {
+  const slots = [];
+  for (let hour = 8; hour <= 17; hour++) {
+    const mins = hour === 8 ? ["30"] : ["00", "30"];
+    for (let min of mins) {
+      const time24 = `${hour.toString().padStart(2, "0")}:${min}`;
+      const suffix = hour >= 12 ? "PM" : "AM";
+      const displayHour = hour > 12 ? hour - 12 : hour;
+      const displayTime = `${displayHour}:${min} ${suffix}`;
+      slots.push({ value: time24, label: displayTime });
+    }
+  }
+  return slots;
+}
+
+const TIME_SLOTS = generateTimeSlots();
 
 const FACILITIES = [
   "Parish Hall",
@@ -70,6 +88,14 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
+
+    // ✨ Enforce numbers-only for contact and attendees fields
+    if (name === "contact_number" || name === "expected_attendees") {
+      const numbersOnly = value.replace(/\D/g, "");
+      setFormData((prev) => ({ ...prev, [name]: numbersOnly }));
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -109,7 +135,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
     }
   };
 
-  const inputClass = "p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700";
+  const inputClass = "p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 h-screen w-screen">
@@ -168,11 +194,11 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* A. REQUESTOR INFORMATION */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                A. Requestor Information <span className="text-[11px] text-gray-400 normal-case">(Impormasyon ng Humihiling)</span>
+                A. Requestor Information
               </h3>
               <div className="grid grid-cols-1 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Full Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Buong Pangalan)</span></label>
+                  <label className="text-xs font-bold text-gray-600">Full Name</label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <input type="text" name="requestor_first_name" value={formData.requestor_first_name} onChange={handleChange} required className={inputClass} placeholder="First Name" />
                     <input type="text" name="requestor_middle_name" value={formData.requestor_middle_name} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
@@ -181,22 +207,22 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Organization / Ministry / Group <span className="text-[11px] text-gray-400 normal-case font-normal">(If applicable)</span></label>
+                  <label className="text-xs font-bold text-gray-600">Organization / Ministry / Group</label>
                   <input type="text" name="organization" value={formData.organization} onChange={handleChange} className={inputClass} placeholder="e.g., Youth Ministry" />
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Address <span className="text-[11px] text-gray-400 normal-case font-normal">(Tirahan)</span></label>
+                  <label className="text-xs font-bold text-gray-600">Address</label>
                   <textarea rows="2" name="address" value={formData.address} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Street, Barangay, City" />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Contact Number <span className="text-[11px] text-gray-400 normal-case font-normal">(Numero ng Telepono)</span></label>
+                    <label className="text-xs font-bold text-gray-600">Contact Number</label>
                     <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} required className={inputClass} placeholder="09XX XXX XXXX" />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Email Address <span className="text-[11px] text-gray-400 normal-case font-normal">(Optional)</span></label>
+                    <label className="text-xs font-bold text-gray-600">Email Address (Optional)</label>
                     <input type="email" name="email_address" value={formData.email_address} onChange={handleChange} className={inputClass} placeholder="email@example.com" />
                   </div>
                 </div>
@@ -206,7 +232,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* B. FACILITY DETAILS */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                B. Facility & Event Details <span className="text-[11px] text-gray-400 normal-case">(Detalye ng Pasilidad at Kaganapan)</span>
+                B. Facility & Event Details
               </h3>
               <div className="grid grid-cols-1 gap-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -227,12 +253,12 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
 
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Event Type</label>
-                  <input type="text" name="event_type" value={formData.event_type} onChange={handleChange} className={inputClass} placeholder="e.g., Family Reunion, Seminar, Recollection, Birthday" />
+                  <input type="text" name="event_type" value={formData.event_type} onChange={handleChange} className={inputClass} placeholder="e.g., Family Reunion, Seminar" />
                 </div>
 
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Event Purpose</label>
-                  <textarea rows="3" name="event_purpose" value={formData.event_purpose} onChange={handleChange} required className={`${inputClass} resize-none`} placeholder="Briefly describe the purpose and nature of the event." />
+                  <textarea rows="3" name="event_purpose" value={formData.event_purpose} onChange={handleChange} required className={`${inputClass} resize-none`} placeholder="Briefly describe the purpose..." />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -242,7 +268,10 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">Start Time</label>
-                    <input type="time" name="start_time" value={formData.start_time} onChange={handleChange} required className={inputClass} />
+                    <select name="start_time" value={formData.start_time} onChange={handleChange} required className={inputClass}>
+                      <option value="" disabled>Select Time</option>
+                      {TIME_SLOTS.map((slot) => <option key={slot.value} value={slot.value}>{slot.label}</option>)}
+                    </select>
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">End Date</label>
@@ -250,13 +279,16 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">End Time</label>
-                    <input type="time" name="end_time" value={formData.end_time} onChange={handleChange} required className={inputClass} />
+                    <select name="end_time" value={formData.end_time} onChange={handleChange} required className={inputClass}>
+                      <option value="" disabled>Select Time</option>
+                      {TIME_SLOTS.map((slot) => <option key={slot.value} value={slot.value}>{slot.label}</option>)}
+                    </select>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-1 md:w-1/3">
                   <label className="text-xs font-bold text-gray-600">Expected Number of Attendees</label>
-                  <input type="number" name="expected_attendees" value={formData.expected_attendees} onChange={handleChange} className={inputClass} placeholder="e.g., 50" min={1} />
+                  <input type="text" name="expected_attendees" value={formData.expected_attendees} onChange={handleChange} className={inputClass} placeholder="e.g., 50" />
                 </div>
               </div>
             </div>
@@ -264,16 +296,16 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* C. SETUP & EQUIPMENT */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                C. Setup & Equipment <span className="text-[11px] text-gray-400 normal-case">(Kagamitan at Set-up)</span>
+                C. Setup & Equipment
               </h3>
               <div className="grid grid-cols-1 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Setup Requirements</label>
-                  <textarea rows="2" name="setup_requirements" value={formData.setup_requirements} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Tables, chairs, layout preferences, etc." />
+                  <textarea rows="2" name="setup_requirements" value={formData.setup_requirements} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Tables, chairs, etc." />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Equipment Needed</label>
-                  <textarea rows="2" name="equipment_needed" value={formData.equipment_needed} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Microphone, projector, sound system, etc." />
+                  <textarea rows="2" name="equipment_needed" value={formData.equipment_needed} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Microphone, projector, etc." />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Additional Notes</label>
@@ -282,23 +314,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
               </div>
             </div>
 
-            {/* GUIDELINES */}
-            <div className="bg-[#B59E74]/10 p-6 rounded-xl border border-[#B59E74]/30 shadow-sm">
-              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-4 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Booking Guidelines
-              </h3>
-              <ul className="flex flex-col gap-2 text-sm text-gray-700 font-serif">
-                <li className="flex items-start gap-3"><span className="text-[#B59E74] mt-0.5">•</span>The facility must be returned in the same condition as received.</li>
-                <li className="flex items-start gap-3"><span className="text-[#B59E74] mt-0.5">•</span>Loud or disruptive activities are not allowed during scheduled Masses.</li>
-                <li className="flex items-start gap-3"><span className="text-[#B59E74] mt-0.5">•</span>Alcohol and gambling are strictly prohibited within parish grounds.</li>
-                <li className="flex items-start gap-3"><span className="text-[#B59E74] mt-0.5">•</span>Cancellations must be made at least 48 hours in advance.</li>
-              </ul>
-            </div>
-
-            {/* DECLARATION & SIGNATURE */}
+            {/* Declaration & Signature */}
             <DeclarationBlock
               declaration="I declare that the information provided above is true and correct, and I hereby request the use of the parish facility for the event described above. I agree to abide by the parish guidelines."
               consent={formData.declaration_consent}
@@ -306,7 +322,6 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
               onChange={handleChange}
             />
 
-            {/* SUBMIT */}
             <div className="pt-2 pb-4">
               <button type="submit" disabled={loading} className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-lg py-4 rounded-xl transition-colors shadow-md disabled:opacity-70 disabled:cursor-not-allowed">
                 {loading ? "Submitting..." : "Submit Booking Request"}

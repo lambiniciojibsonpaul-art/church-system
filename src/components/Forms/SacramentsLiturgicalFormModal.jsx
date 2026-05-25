@@ -5,6 +5,24 @@ import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
 
+// Helper function to generate time slots between 8:30 AM and 5:30 PM
+function generateTimeSlots() {
+  const slots = [];
+  for (let hour = 8; hour <= 17; hour++) {
+    const mins = hour === 8 ? ["30"] : ["00", "30"];
+    for (let min of mins) {
+      const time24 = `${hour.toString().padStart(2, "0")}:${min}`;
+      const suffix = hour >= 12 ? "PM" : "AM";
+      const displayHour = hour > 12 ? hour - 12 : hour;
+      const displayTime = `${displayHour}:${min} ${suffix}`;
+      slots.push({ value: time24, label: displayTime });
+    }
+  }
+  return slots;
+}
+
+const TIME_SLOTS = generateTimeSlots();
+
 const REQUEST_OPTIONS = [
   { value: "Mass for", label: "Mass for", needsSpecify: true },
   { value: "Sick Call", label: "Sick Call / Anointing of the Sick / Communion" },
@@ -61,9 +79,9 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
     if (!autofill || guestInfo) return;
     setFormData(prev => ({
       ...prev,
-      requested_by:        prev.requested_by        || autofill.fullName,
-      contact_number:      prev.contact_number      || autofill.contactNumber,
-      submitter_signature: prev.submitter_signature || autofill.fullName,
+      requested_by:         prev.requested_by         || autofill.fullName,
+      contact_number:       prev.contact_number       || autofill.contactNumber,
+      submitter_signature:  prev.submitter_signature  || autofill.fullName,
     }));
   }, [autofill, guestInfo]);
 
@@ -72,9 +90,9 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
     const fullName = `${guestInfo.firstName} ${guestInfo.lastName}`.trim();
     setFormData(prev => ({
       ...prev,
-      requested_by:        prev.requested_by        || fullName,
-      contact_number:      prev.contact_number      || guestInfo.contactNumber,
-      submitter_signature: prev.submitter_signature || fullName,
+      requested_by:         prev.requested_by         || fullName,
+      contact_number:       prev.contact_number       || guestInfo.contactNumber,
+      submitter_signature:  prev.submitter_signature  || fullName,
     }));
   }, [guestInfo]);
 
@@ -82,6 +100,14 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
+    
+    // ✨ Enforce numbers-only for contact field
+    if (name === "contact_number") {
+      const numbersOnly = value.replace(/\D/g, "");
+      setFormData({ ...formData, [name]: numbersOnly });
+      return;
+    }
+
     setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
   };
 
@@ -129,7 +155,7 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
     }
   };
 
-  const inputClass = "p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700";
+  const inputClass = "p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 h-screen w-screen">
@@ -215,7 +241,12 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Time:</label>
-                  <input type="time" name="request_time" value={formData.request_time} onChange={handleChange} className={inputClass} />
+                  <select name="request_time" value={formData.request_time} onChange={handleChange} required className={inputClass}>
+                    <option value="" disabled>Select Time</option>
+                    {TIME_SLOTS.map((slot) => (
+                      <option key={slot.value} value={slot.value}>{slot.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
                   <label className="text-xs font-bold text-gray-600">Requested by:</label>
@@ -234,8 +265,6 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
                 Additional Details
               </h3>
               <div className="grid grid-cols-1 gap-6">
-                
-                {/* CHANGED: Now a dynamic dropdown */}
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Preferred Minister / Priest (Optional):</label>
                   <select
@@ -274,14 +303,13 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
                 Depending on your requested service, please ensure you secure any necessary original documents (such as permits or death certificates) prior to your schedule.
               </p>
               
-              {/* UPLOAD / GOOGLE DRIVE REDIRECT BOX */}
               <div className="bg-white rounded-xl border-2 border-dashed border-[#B59E74]/50 p-6 flex flex-col items-center justify-center text-center mt-6">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-[#B59E74] mb-3">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
                 </svg>
                 <h4 className="text-sm font-bold text-gray-800 uppercase tracking-widest mb-1">Submit Your Documents</h4>
                 <p className="text-xs text-gray-500 mb-4 max-w-md">
-                  If your request requires documentation, please compile your scanned requirements and upload them to our secure Parish Google Drive folder.
+                  Please compile your scanned requirements and upload them to our secure Parish Google Drive folder.
                 </p>
                 <a
                   href="https://drive.google.com/drive/folders/1Vx6VT1vWZjkEcSRpMZ3e_Dq_CFPLnIls?usp=sharing" 
