@@ -225,7 +225,7 @@ function getEventDisplayStatus(ev) {
   const d = String(ev.event_date || "");
   const today = getTodayKey();
   if (!d) return s;
-  if (d === today) return "Active Today";
+  if (d === today) return "Active";
   if (d > today) return "Upcoming";
   return "Past";
 }
@@ -528,7 +528,7 @@ function AdminDashboard() {
       )
     : eventsTimeFiltered;
 
-  const EVENT_STATUS_ORDER = { "Active Today": 0, "Upcoming": 1, "Past": 2, "Pending": 3, "Cancelled": 4 };
+  const EVENT_STATUS_ORDER = { "Active": 0, "Upcoming": 1, "Past": 2, "Pending": 3, "Cancelled": 4 };
   const eventsSortedData = [...eventsSearchedData].sort((a, b) => {
     if (eventsSortBy === "title") return String(a.title||"").toLowerCase().localeCompare(String(b.title||"").toLowerCase());
     if (eventsSortBy === "class") {
@@ -764,8 +764,8 @@ function AdminDashboard() {
 
   const saveEventEdits = async (ev, updates) => {
     const displayStatus = getEventDisplayStatus(ev);
-    if (!(displayStatus === "Upcoming" || displayStatus === "Active Today")) {
-      alert("Only Upcoming or Active Today events can be edited.");
+    if (!(displayStatus === "Upcoming" || displayStatus === "Active")) {
+      alert("Only Upcoming or Active events can be edited.");
       return { ok: false };
     }
     setEventEditSubmitting(true);
@@ -1096,7 +1096,7 @@ function AdminDashboard() {
                   {[
                     { value: "All",          label: "All Events" },
                     { value: "Upcoming",     label: "Upcoming" },
-                    { value: "Active Today", label: "Active Today" },
+                    { value: "Active", label: "Active" },
                     { value: "Past",         label: "Past Events" },
                     { value: "Pending",      label: "Pending" },
                     { value: "Cancelled",    label: "Cancelled" },
@@ -1208,7 +1208,7 @@ function AdminDashboard() {
 
             {!eventsLoading && eventsTotal === 0 && (
               <div className="text-center py-16 md:py-20 text-gray-400 italic font-serif">
-                {eventsTrimmedQuery ? `No events match "${eventsSearchQuery.trim()}".` : eventsFilter === "Upcoming" ? "No upcoming events." : eventsFilter === "Active Today" ? "No active events today." : eventsFilter === "Past" ? "No past events." : eventsFilter === "Pending" ? "No pending events." : eventsFilter === "Cancelled" ? "No cancelled events." : "No events found."}
+                {eventsTrimmedQuery ? `No events match "${eventsSearchQuery.trim()}".` : eventsFilter === "Upcoming" ? "No upcoming events." : eventsFilter === "Active" ? "No active events today." : eventsFilter === "Past" ? "No past events." : eventsFilter === "Pending" ? "No pending events." : eventsFilter === "Cancelled" ? "No cancelled events." : "No events found."}
               </div>
             )}
 
@@ -1439,7 +1439,6 @@ function StatusBadge({ status }) {
     status === "Priest Rejected" ? "bg-orange-100 text-orange-700"  :
     status === "Approved"        ? "bg-green-100 text-green-700"    :
     status === "Active"          ? "bg-emerald-100 text-emerald-700":
-    status === "Active Today"    ? "bg-teal-100 text-teal-700"      :
     status === "Upcoming"        ? "bg-blue-100 text-blue-700"      :
     status === "Past"            ? "bg-gray-100 text-gray-500"      :
     status === "Cancelled"       ? "bg-orange-100 text-orange-700"  :
@@ -1492,7 +1491,7 @@ function EventViewModal({ event, onClose, onSave, saveSubmitting }) {
   }, [event]);
 
   const displayStatus = getEventDisplayStatus(event);
-  const canEdit = displayStatus === "Upcoming" || displayStatus === "Active Today";
+  const canEdit = displayStatus === "Upcoming" || displayStatus === "Active";
 
   const formatTime = (t) => {
     if (!t) return "—";
@@ -1554,7 +1553,7 @@ function EventViewModal({ event, onClose, onSave, saveSubmitting }) {
           )}
           <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end gap-2">
             {!isEditing && canEdit && <button onClick={() => setIsEditing(true)} className="px-4 py-2 rounded-lg border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74]/10 text-xs font-bold uppercase tracking-widest transition-all">Edit</button>}
-            {!isEditing && !canEdit && <span className="text-xs text-gray-500 italic">Editable only for Upcoming or Active Today events.</span>}
+            {!isEditing && !canEdit && <span className="text-xs text-gray-500 italic">Editable only for Upcoming or Active events.</span>}
             {isEditing && (
               <>
                 <button onClick={() => setIsEditing(false)} disabled={saveSubmitting} className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-bold uppercase tracking-widest transition-all">Cancel</button>
