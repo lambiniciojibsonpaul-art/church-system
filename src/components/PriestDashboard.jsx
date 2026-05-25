@@ -309,18 +309,6 @@ function PriestDashboard() {
               Your account is marked as a priest, but your official name has not been set up in the database yet. Please contact the administrator.
             </p>
           </div>
-        ) : currentList.length === 0 ? (
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-16 text-center animate-fade-in-up">
-            <div className="text-5xl mb-4">🕊️</div>
-            <h3 className="text-2xl font-serif text-[#B59E74] uppercase tracking-widest mb-2">
-              {activeTab === "pending" ? "All Caught Up!" : "No Scheduled Sacraments"}
-            </h3>
-            <p className="text-gray-500 font-serif italic">
-              {activeTab === "pending"
-                ? "There are no staff-approved requests assigned to you right now."
-                : "You do not have any approved sacraments scheduled yet."}
-            </p>
-          </div>
         ) : (
           <div className="animate-fade-in-up">
           <div className="flex justify-end mb-4 gap-2 flex-wrap items-center">
@@ -367,7 +355,21 @@ function PriestDashboard() {
               >≡</button>
             </div>
           </div>
-          {priestViewMode === "table" ? (
+          {currentList.length === 0 ? (
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-16 text-center mt-4">
+              <div className="text-5xl mb-4">🕊️</div>
+              <h3 className="text-2xl font-serif text-[#B59E74] uppercase tracking-widest mb-2">
+                {activeTab === "pending" ? "All Caught Up!" : scheduleFilter !== "All" ? `No ${scheduleFilter} Sacraments` : "No Scheduled Sacraments"}
+              </h3>
+              <p className="text-gray-500 font-serif italic">
+                {activeTab === "pending"
+                  ? "There are no staff-approved requests assigned to you right now."
+                  : scheduleFilter !== "All"
+                    ? `Nothing scheduled matches the "${scheduleFilter}" filter.`
+                    : "You do not have any approved sacraments scheduled yet."}
+              </p>
+            </div>
+          ) : priestViewMode === "table" ? (
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
