@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { restInsert } from "../../supabaseRest";
+import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
@@ -85,6 +85,14 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
+    
+    // ✨ Enforce numbers-only for contact and copies fields
+    if (name === "contact_number" || name === "number_of_copies") {
+      const numbersOnly = value.replace(/\D/g, "");
+      setFormData((prev) => ({ ...prev, [name]: numbersOnly }));
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -126,7 +134,7 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
     }
   };
 
-  const inputClass = "p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700";
+  const inputClass = "p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 h-screen w-screen">
@@ -305,7 +313,6 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                 </div>
 
-                {/* DYNAMIC EMAIL INPUT CONDITIONALLY RENDERED */}
                 {formData.delivery_method === "Email Scan" && (
                   <div className="flex flex-col gap-1 animate-fade-in-up">
                     <label className="text-xs font-bold text-gray-600">Email Address for Delivery</label>
@@ -328,21 +335,6 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
               </div>
             </div>
 
-            {/* REQUIREMENTS CHECKLIST */}
-            <div className="bg-[#B59E74]/10 p-6 rounded-xl border border-[#B59E74]/30 shadow-sm">
-              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest mb-4 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Pickup Requirements
-              </h3>
-              <ul className="flex flex-col gap-3 text-sm text-gray-700 font-serif">
-                <li className="flex items-start gap-3"><span className="text-[#B59E74] mt-0.5">•</span>Valid government-issued ID</li>
-                <li className="flex items-start gap-3"><span className="text-[#B59E74] mt-0.5">•</span>If requesting on behalf of another person — Authorization Letter + ID of both parties</li>
-                <li className="flex items-start gap-3"><span className="text-[#B59E74] mt-0.5">•</span>Documentary fee (paid at the parish office upon pickup)</li>
-              </ul>
-            </div>
-
             {/* DECLARATION & SIGNATURE */}
             <DeclarationBlock
               declaration="I declare that the information provided above is true and correct, and the certificate will be used only for the stated purpose."
@@ -353,7 +345,7 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
 
             {/* SUBMIT */}
             <div className="pt-2 pb-4">
-              <button type="submit" disabled={loading} className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-lg py-4 rounded-xl transition-colors shadow-md disabled:opacity-70 disabled:cursor-not-allowed">
+              <button type="submit" disabled={loading} className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-lg py-4 rounded-xl transition-colors shadow-md disabled:opacity-70 disabled:cursor-not-allowed uppercase tracking-widest">
                 {loading ? "Submitting..." : "Submit Certification Request"}
               </button>
             </div>

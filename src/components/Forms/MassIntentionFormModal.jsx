@@ -1,9 +1,27 @@
 import { useState, useEffect } from "react";
-import { restInsert } from "../../supabaseRest";
+import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
+
+// Helper function to generate time slots between 8:30 AM and 5:30 PM
+function generateTimeSlots() {
+  const slots = [];
+  for (let hour = 8; hour <= 17; hour++) {
+    const mins = hour === 8 ? ["30"] : ["00", "30"];
+    for (let min of mins) {
+      const time24 = `${hour.toString().padStart(2, "0")}:${min}`;
+      const suffix = hour >= 12 ? "PM" : "AM";
+      const displayHour = hour > 12 ? hour - 12 : hour;
+      const displayTime = `${displayHour}:${min} ${suffix}`;
+      slots.push({ value: time24, label: displayTime });
+    }
+  }
+  return slots;
+}
+
+const TIME_SLOTS = generateTimeSlots();
 
 function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
   const { user } = useAuth();
@@ -36,8 +54,8 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
     if (!autofill || guestInfo) return;
     setFormData(prev => ({
       ...prev,
-      full_name:      prev.full_name      || autofill.fullName,
-      contact_number: prev.contact_number || autofill.contactNumber,
+      full_name:       prev.full_name      || autofill.fullName,
+      contact_number:  prev.contact_number || autofill.contactNumber,
     }));
   }, [autofill, guestInfo]);
 
@@ -46,8 +64,8 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
     const fullName = `${guestInfo.firstName} ${guestInfo.lastName}`.trim();
     setFormData(prev => ({
       ...prev,
-      full_name:      prev.full_name      || fullName,
-      contact_number: prev.contact_number || guestInfo.contactNumber,
+      full_name:       prev.full_name      || fullName,
+      contact_number:  prev.contact_number || guestInfo.contactNumber,
     }));
   }, [guestInfo]);
 
@@ -56,6 +74,14 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
+    
+    // ✨ Enforce numbers-only for contact number field
+    if (name === "contact_number") {
+      const numbersOnly = value.replace(/\D/g, "");
+      setFormData((prev) => ({ ...prev, [name]: numbersOnly }));
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -89,6 +115,8 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
       setLoading(false);
     }
   };
+
+  const inputClass = "p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 h-screen w-screen">
@@ -171,7 +199,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                     value={formData.full_name}
                     onChange={handleChange}
                     required
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                    className={inputClass}
                     placeholder="First, Middle, Last"
                   />
                 </div>
@@ -182,7 +210,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                     name="address"
                     value={formData.address}
                     onChange={handleChange}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                    className={inputClass}
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -192,7 +220,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                     name="contact_number"
                     value={formData.contact_number}
                     onChange={handleChange}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                    className={inputClass}
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -202,7 +230,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                     name="email_address"
                     value={formData.email_address}
                     onChange={handleChange}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                    className={inputClass}
                   />
                 </div>
               </div>
@@ -220,7 +248,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                     name="intention_type"
                     value={formData.intention_type}
                     onChange={handleChange}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                    className={inputClass}
                   >
                     <option value="Thanksgiving">Thanksgiving</option>
                     <option value="Special Intention">Special Intention (Healing, Exams, Travel)</option>
@@ -240,7 +268,8 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                       name="specify_intention"
                       value={formData.specify_intention}
                       onChange={handleChange}
-                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                      className={inputClass}
+                      placeholder="Please specify..."
                     />
                   </div>
                 )}
@@ -253,7 +282,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                       name="date_of_death"
                       value={formData.date_of_death}
                       onChange={handleChange}
-                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                      className={inputClass}
                     />
                   </div>
                 )}
@@ -265,7 +294,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                     name="names_in_intention"
                     value={formData.names_in_intention}
                     onChange={handleChange}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 resize-none"
+                    className={`${inputClass} resize-none`}
                     placeholder="Write clearly. Separate multiple names with a comma."
                   />
                 </div>
@@ -277,7 +306,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                     name="special_prayer_request"
                     value={formData.special_prayer_request}
                     onChange={handleChange}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                    className={inputClass}
                     placeholder="e.g., Board Exams, 50th Birthday, etc."
                   />
                 </div>
@@ -299,18 +328,17 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                     onChange={handleChange}
                     required
                     min={new Date().toISOString().split("T")[0]}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                    className={inputClass}
                   />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Preferred Time</label>
-                  <input
-                    type="time"
-                    name="preferred_time"
-                    value={formData.preferred_time}
-                    onChange={handleChange}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
-                  />
+                  <select name="preferred_time" value={formData.preferred_time} onChange={handleChange} required className={inputClass}>
+                    <option value="" disabled>Select Time</option>
+                    {TIME_SLOTS.map((slot) => (
+                      <option key={slot.value} value={slot.value}>{slot.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Mass Type</label>
@@ -318,7 +346,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                     name="mass_type"
                     value={formData.mass_type}
                     onChange={handleChange}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                    className={inputClass}
                   >
                     <option>Regular Parish Mass</option>
                     <option>Special Mass (if available)</option>
@@ -330,7 +358,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                     name="location"
                     value={formData.location}
                     onChange={handleChange}
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                    className={inputClass}
                   >
                     <option>Parish Church</option>
                     <option>Chapel</option>
@@ -349,13 +377,13 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                   name="offering_amount"
                   value={formData.offering_amount}
                   onChange={handleChange}
-                  className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700"
+                  className={inputClass}
                   placeholder="₱ Amount"
                 />
               </div>
             </div>
 
-            {/* DECLARATION & SIGNATURE */}
+            {/* Declaration & Signature */}
             <DeclarationBlock
               declaration="I declare that the information provided above is true and correct, and I respectfully request the offering of the Holy Mass for the intention(s) stated above."
               consent={formData.declaration_consent}
@@ -367,7 +395,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-lg py-4 rounded-xl transition-colors shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
+                className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-lg py-4 rounded-xl transition-colors shadow-md disabled:opacity-70 disabled:cursor-not-allowed uppercase tracking-widest"
               >
                 {loading ? "Submitting..." : "Submit Mass Intention"}
               </button>

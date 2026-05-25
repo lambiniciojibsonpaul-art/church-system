@@ -5,6 +5,24 @@ import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
 
+// Helper function to generate time slots between 8:30 AM and 5:30 PM
+function generateTimeSlots() {
+  const slots = [];
+  for (let hour = 8; hour <= 17; hour++) {
+    const mins = hour === 8 ? ["30"] : ["00", "30"];
+    for (let min of mins) {
+      const time24 = `${hour.toString().padStart(2, "0")}:${min}`;
+      const suffix = hour >= 12 ? "PM" : "AM";
+      const displayHour = hour > 12 ? hour - 12 : hour;
+      const displayTime = `${displayHour}:${min} ${suffix}`;
+      slots.push({ value: time24, label: displayTime });
+    }
+  }
+  return slots;
+}
+
+const TIME_SLOTS = generateTimeSlots();
+
 const REQUIREMENT_ITEMS = [
   "Certificate of Live Birth (from the Philippine Statistics Authority)",
   "Baptismal Certificate",
@@ -19,13 +37,12 @@ const REQUIREMENT_ITEMS = [
 ];
 
 function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
-  const { user } = useAuth();
+  const { user } = useAuth(); 
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
 
-  // NEW: State to hold the dynamic list of priests
   const [priests, setPriests] = useState([]);
 
   const [formData, setFormData] = useState({
@@ -43,7 +60,7 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
     bride_contact: "",
     wedding_date: "",
     wedding_time: "",
-    preferred_priest: "", // NEW field for the form state
+    preferred_priest: "", 
     reservation_fee: "",
     official_receipt_no: "",
     reservation_date: "",
@@ -51,7 +68,6 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
     declaration_consent: false,
   });
 
-  // NEW: Fetch priests when the modal opens
   useEffect(() => {
     const fetchPriests = async () => {
       try {
@@ -92,9 +108,19 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
   if (!user && !guestInfo) return <SignInPrompt onClose={onClose} serviceName="a wedding" onGuest={onGuest} />;
 
   const handleChange = (e) => {
-    const { name, type, checked, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
-  };
+  const { name, type, checked, value } = e.target;
+  
+  // ✨ This checks if the input name is one of your contact fields
+  if (name === "groom_contact" || name === "bride_contact") {
+    // The regex /\D/g matches ANY character that is NOT a digit (0-9)
+    // and replaces it with an empty string.
+    const numbersOnly = value.replace(/\D/g, "");
+    setFormData((prev) => ({ ...prev, [name]: numbersOnly }));
+    return; // Exit the function early so the letter isn't saved
+  }
+  
+  setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -109,9 +135,7 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
         table: "weddings",
         payload: {
           ...formData,
-          // The DB column is "preferred_date" (NOT NULL); map wedding_date to it
           preferred_date: formData.wedding_date,
-          // Ensure preferred_priest is sent or null if empty
           preferred_priest: formData.preferred_priest || null,
         },
         user,
@@ -130,7 +154,7 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
     }
   };
 
-  const inputClass = "p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700";
+  const inputClass = "p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 h-screen w-screen">
@@ -240,10 +264,14 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Time of Wedding <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Kasal)</span></label>
-                  <input type="time" name="wedding_time" value={formData.wedding_time} onChange={handleChange} className={inputClass} />
+                  <select name="wedding_time" value={formData.wedding_time} onChange={handleChange} required className={inputClass}>
+                    <option value="" disabled>Select Time</option>
+                    {TIME_SLOTS.map((slot) => (
+                      <option key={slot.value} value={slot.value}>{slot.label}</option>
+                    ))}
+                  </select>
                 </div>
                 
-                {/* NEW: Preferred Priest Dropdown */}
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Preferred Priest (Optional)</label>
                   <select

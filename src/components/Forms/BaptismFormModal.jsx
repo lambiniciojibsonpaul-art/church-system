@@ -2,12 +2,30 @@ import { useState, useEffect } from "react";
 import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
-import { supabase } from "../../supabaseClient"; // ✨ ADDED: for notify_staff RPC
+import { supabase } from "../../supabaseClient"; 
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, useProfileAutofill } from "./formHelpers";
 
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// Helper function to generate time slots between 8:30 AM and 5:30 PM
+function generateTimeSlots() {
+  const slots = [];
+  for (let hour = 8; hour <= 17; hour++) {
+    const mins = hour === 8 ? ["30"] : ["00", "30"];
+    for (let min of mins) {
+      const time24 = `${hour.toString().padStart(2, "0")}:${min}`;
+      const suffix = hour >= 12 ? "PM" : "AM";
+      const displayHour = hour > 12 ? hour - 12 : hour;
+      const displayTime = `${displayHour}:${min} ${suffix}`;
+      slots.push({ value: time24, label: displayTime });
+    }
+  }
+  return slots;
+}
+
+const TIME_SLOTS = generateTimeSlots();
 
 async function submitGuestViaEdgeFunction(table, payload) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/submit-guest-form`, {
@@ -103,6 +121,14 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
+    
+    // Enforce numbers-only for the contact number field
+    if (name === "contactNumbers") {
+      const numbersOnly = value.replace(/\D/g, "");
+      setFormData({ ...formData, [name]: numbersOnly });
+      return;
+    }
+    
     setFormData({ ...formData, [name]: type === "checkbox" ? checked : value });
   };
 
@@ -204,7 +230,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         }
       }
 
-      // ✨ NOTIFY STAFF: Fire RPC after successful insert
+      // NOTIFY STAFF: Fire RPC after successful insert
       const submitterName = user
         ? (user.user_metadata?.first_name || user.email)
         : `${guestInfo?.firstName} ${guestInfo?.lastName}`.trim();
@@ -221,7 +247,6 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
       });
 
       if (rpcError) {
-        // Non-blocking: log but don't fail the submission
         console.error("notify_staff RPC error:", rpcError);
       } else {
         console.log("✅ notify_staff fired successfully");
@@ -317,8 +342,13 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Preferred Time *</label>
-                  <input type="time" name="preferredTime" value={formData.preferredTime} onChange={handleChange} required
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                  <select name="preferredTime" value={formData.preferredTime} onChange={handleChange} required
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700">
+                    <option value="" disabled>Select Time</option>
+                    {TIME_SLOTS.map((slot) => (
+                      <option key={slot.value} value={slot.value}>{slot.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Preferred Priest (Optional)</label>

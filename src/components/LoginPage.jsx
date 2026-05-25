@@ -316,6 +316,14 @@ function LoginPage() {
 
   const handleRegisterChange = (e) => {
     const { name, value, type, checked } = e.target;
+    
+    // ✨ Enforce numbers-only for the contact number field
+    if (name === "contactNumber") {
+      const numbersOnly = value.replace(/\D/g, "");
+      setRegisterData((prev) => ({ ...prev, [name]: numbersOnly }));
+      return;
+    }
+
     if (name === "accountType" && value === "parishioner") {
       setRegisterData((prev) => ({ ...prev, accountType: value, ministryGroups: [] }));
     } else {
@@ -409,10 +417,6 @@ function LoginPage() {
           .upsert(rolePayload, { onConflict: "user_id" });
 
         if (roleError) {
-          // Non-fatal: Supabase returns a sanitized/fake user ID for duplicate email
-          // sign-up attempts (anti-enumeration), which causes a FK violation here.
-          // The user still gets "parishioner" by default on login (AuthContext fallback).
-          // account_type is saved in user_metadata above as a reliable backup.
           console.warn("[Register] Role assignment skipped (non-fatal):", roleError.message);
         } else {
           console.log("[Register] Role assigned:", userRole);
@@ -752,17 +756,19 @@ function LoginPage() {
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Password</label>
-                    <input name="password" type={showPassword ? "text" : "password"} required value={registerData.password}
-                      onChange={handleRegisterChange}
-                      className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
-                      placeholder="••••••••" />
-                    <ul className="text-[11px] mt-1 grid grid-cols-2 gap-y-1 ml-1">
-                      {passwordRule("8+ characters", passwordCheck.minLength)}
-                      {passwordRule("Uppercase letter", passwordCheck.hasUpper)}
-                      {passwordRule("Lowercase letter", passwordCheck.hasLower)}
-                      {passwordRule("Number", passwordCheck.hasNumber)}
-                      {passwordRule("Special character", passwordCheck.hasSpecial)}
-                    </ul>
+                    <div className="relative">
+                      <input name="password" type={showPassword ? "text" : "password"} required value={registerData.password}
+                        onChange={handleRegisterChange} minLength={6}
+                        className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
+                        placeholder="••••••••" />
+                      <ul className="text-[11px] mt-1 grid grid-cols-2 gap-y-1 ml-1">
+                        {passwordRule("8+ characters", passwordCheck.minLength)}
+                        {passwordRule("Uppercase letter", passwordCheck.hasUpper)}
+                        {passwordRule("Lowercase letter", passwordCheck.hasLower)}
+                        {passwordRule("Number", passwordCheck.hasNumber)}
+                        {passwordRule("Special character", passwordCheck.hasSpecial)}
+                      </ul>
+                    </div>
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Confirm Password</label>
