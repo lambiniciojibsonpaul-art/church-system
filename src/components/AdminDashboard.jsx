@@ -213,6 +213,37 @@ function formatDate(d) {
   try { return new Date(d).toLocaleDateString(); } catch { return ""; }
 }
 
+function getTodayKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+}
+
+function getEventDisplayStatus(ev) {
+  const s = ev.status || "Active";
+  if (s === "Cancelled") return "Cancelled";
+  if (s === "Pending") return "Pending";
+  const d = String(ev.event_date || "");
+  const today = getTodayKey();
+  if (!d) return s;
+  if (d === today) return "Active";
+  if (d > today) return "Upcoming";
+  return "Past";
+}
+
+const EDIT_EXCLUDE_REQUEST = new Set([
+  "id","created_at","user_id","declaration_consent","_tab","_config",
+  "status","is_guest","guest_name","guest_contact",
+  "submitter_email","submitter_phone","submitter_signature",
+  "rejection_remarks","preferred_priest",
+]);
+
+function editFieldType(key) {
+  if (/(_date$|_dob$|^date_of_|^preferred_date$|^wedding_date$|^request_date$|^start_date$|^end_date$)/i.test(key)) return "date";
+  if (/_time$/i.test(key)) return "time";
+  if (/notes$|description$|detail$|^address$|intention_detail$|remarks$/i.test(key)) return "textarea";
+  return "text";
+}
+
 // ----------------------------------------------------------------------------
 // COMPONENT
 // ----------------------------------------------------------------------------
@@ -239,6 +270,8 @@ function AdminDashboard() {
 
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [requestEditSubmitting, setRequestEditSubmitting] = useState(false);
+  const [eventEditSubmitting, setEventEditSubmitting] = useState(false);
 
   const [rejectingRequest, setRejectingRequest] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -307,6 +340,7 @@ function AdminDashboard() {
     return () => { cancelled = true; };
   }, []);
 
+
   // Re-fetch all request tables when a new admin notification arrives (debounced)
   useEffect(() => {
     if (!user?.id) return;
@@ -351,7 +385,6 @@ function AdminDashboard() {
     (async () => {
       const { data, error } = await restSelect("events", {
         order: "event_date.desc",
-        rawFilter: { status: "not.eq.Cancelled" },
         timeoutMs: QUERY_TIMEOUT_MS,
       });
       if (cancelled) return;
@@ -482,27 +515,20 @@ function AdminDashboard() {
   useEffect(() => { setCurrentPage(1); }, [activeTab, activeSubTab, searchQuery, sortBy, pageSize]);
 
   // ── Events derived values ────────────────────────────────────────────────
-  const todayKey = (() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
-  })();
-
-  const ministryEvents      = events.filter((ev) => !ev.source_table);
-  const eventsTimeFiltered  = ministryEvents.filter((ev) => {
-    const d = String(ev.event_date || "");
-    const s = ev.status || "Active";
-    if (eventsFilter === "Cancelled") return s === "Cancelled";
-    if (eventsFilter === "Upcoming")  return d && d >= todayKey;
-    if (eventsFilter === "Past")      return d && d <  todayKey;
-    return true;
+  const ministryEvents     = events.filter((ev) => !ev.source_table);
+  const eventsTimeFiltered = ministryEvents.filter((ev) => {
+    if (eventsFilter === "All") return true;
+    return getEventDisplayStatus(ev) === eventsFilter;
   });
-  const eventsTrimmedQuery  = eventsSearchQuery.trim().toLowerCase();
-  const eventsSearchedData  = eventsTrimmedQuery
+  const eventsTrimmedQuery = eventsSearchQuery.trim().toLowerCase();
+  const eventsSearchedData = eventsTrimmedQuery
     ? eventsTimeFiltered.filter((ev) =>
         [ev.title, ev.event_class, ev.priest_name, ev.location, ev.description]
           .filter(Boolean).some((v) => String(v).toLowerCase().includes(eventsTrimmedQuery))
       )
     : eventsTimeFiltered;
+
+  const EVENT_STATUS_ORDER = { "Active": 0, "Upcoming": 1, "Past": 2, "Pending": 3, "Cancelled": 4 };
   const eventsSortedData = [...eventsSearchedData].sort((a, b) => {
     if (eventsSortBy === "title") return String(a.title||"").toLowerCase().localeCompare(String(b.title||"").toLowerCase());
     if (eventsSortBy === "class") {
@@ -514,6 +540,12 @@ function AdminDashboard() {
       const da = String(a.event_date||""), db = String(b.event_date||"");
       if (!da && !db) return 0; if (!da) return 1; if (!db) return -1;
       return da.localeCompare(db);
+    }
+    if (eventsSortBy === "status") {
+      const sa = EVENT_STATUS_ORDER[getEventDisplayStatus(a)] ?? 5;
+      const sb = EVENT_STATUS_ORDER[getEventDisplayStatus(b)] ?? 5;
+      if (sa !== sb) return sa - sb;
+      return String(b.event_date||"").localeCompare(String(a.event_date||""));
     }
     if (eventsSortBy === "created_desc") return String(b.created_at||"").localeCompare(String(a.created_at||""));
     if (eventsSortBy === "created_asc")  return String(a.created_at||"").localeCompare(String(b.created_at||""));
@@ -709,6 +741,45 @@ function AdminDashboard() {
     setEvents((prev) => prev.filter((ev) => ev.id !== deletingEvent.id));
     bustEventsPageCache();
     closeDeleteEventModal();
+  };
+
+  const saveRequestEdits = async (req, updates) => {
+    const reqTab = resolveTabFor(req);
+    const reqConfig = resolveConfigFor(req);
+    setRequestEditSubmitting(true);
+    const { error } = await restUpdate(reqConfig.table, { id: req.id }, updates);
+    if (error) {
+      setRequestEditSubmitting(false);
+      alert("Error updating request: " + error.message);
+      return { ok: false };
+    }
+    setRequests((prev) => ({
+      ...prev,
+      [reqTab]: prev[reqTab].map((r) => (r.id === req.id ? { ...r, ...updates } : r)),
+    }));
+    setSelectedRequest((prev) => (prev && prev.id === req.id ? { ...prev, ...updates } : prev));
+    setRequestEditSubmitting(false);
+    return { ok: true };
+  };
+
+  const saveEventEdits = async (ev, updates) => {
+    const displayStatus = getEventDisplayStatus(ev);
+    if (!(displayStatus === "Upcoming" || displayStatus === "Active")) {
+      alert("Only Upcoming or Active events can be edited.");
+      return { ok: false };
+    }
+    setEventEditSubmitting(true);
+    const { error } = await restUpdate("events", { id: ev.id }, updates);
+    if (error) {
+      setEventEditSubmitting(false);
+      alert("Error updating event: " + error.message);
+      return { ok: false };
+    }
+    setEvents((prev) => prev.map((row) => (row.id === ev.id ? { ...row, ...updates } : row)));
+    setSelectedEvent((prev) => (prev && prev.id === ev.id ? { ...prev, ...updates } : prev));
+    bustEventsPageCache();
+    setEventEditSubmitting(false);
+    return { ok: true };
   };
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -1022,8 +1093,14 @@ function AdminDashboard() {
               <div className="relative flex-1 max-w-xs">
                 <select value={eventsFilter} onChange={(e) => setEventsFilter(e.target.value)}
                   className="appearance-none w-full pl-4 pr-10 py-3 rounded-xl bg-[#F6F5ED] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-gray-700 cursor-pointer">
-                  {["All", "Upcoming", "Past", "Cancelled"].map((f) => (
-                    <option key={f} value={f}>{f} Events</option>
+                  {[
+                    { value: "All",          label: "All Events" },
+                    { value: "Active",       label: "Active" },
+                    { value: "Past",         label: "Past Events" },
+                    { value: "Pending",      label: "Pending" },
+                    { value: "Cancelled",    label: "Cancelled" },
+                  ].map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
                   ))}
                 </select>
                 <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
@@ -1051,6 +1128,7 @@ function AdminDashboard() {
                     <option value="created_asc">Created — Oldest</option>
                     <option value="title">Title (A–Z)</option>
                     <option value="class">Class</option>
+                    <option value="status">Status</option>
                   </select>
                   <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
                 </div>
@@ -1087,7 +1165,7 @@ function AdminDashboard() {
                         <td className="p-4 text-sm text-gray-600">{ev.event_class || "—"}</td>
                         <td className="p-4 text-sm text-gray-600">{ev.ministry || (ev.priest_name ? `Fr. ${ev.priest_name}` : "—")}</td>
                         <td className="p-4 text-sm text-gray-600">{ev.location || "—"}</td>
-                        <td className="p-4"><StatusBadge status={ev.status || "Active"} /></td>
+                        <td className="p-4"><StatusBadge status={getEventDisplayStatus(ev)} /></td>
                         <td className="p-4 text-right">
                           <div className="flex justify-end gap-2">
                             <button onClick={() => setSelectedEvent(ev)} className="text-[#B59E74] hover:text-[#9c8760] text-xs font-bold uppercase tracking-widest px-3 py-2 rounded hover:bg-[#B59E74]/10 transition-colors">View</button>
@@ -1108,7 +1186,7 @@ function AdminDashboard() {
                   <div key={ev.id} className="border border-gray-100 rounded-2xl p-4 bg-white shadow-sm">
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div className="min-w-0 flex-1"><p className="text-[10px] uppercase tracking-widest text-gray-400">Title</p><p className="font-serif text-gray-800 font-medium text-base break-words">{ev.title || "—"}</p></div>
-                      <StatusBadge status={ev.status || "Active"} />
+                      <StatusBadge status={getEventDisplayStatus(ev)} />
                     </div>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-2 mb-4">
                       <div className="min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Date</p><p className="text-sm text-gray-700 break-words">{formatDate(ev.event_date) || "—"}</p></div>
@@ -1129,7 +1207,7 @@ function AdminDashboard() {
 
             {!eventsLoading && eventsTotal === 0 && (
               <div className="text-center py-16 md:py-20 text-gray-400 italic font-serif">
-                {eventsTrimmedQuery ? `No events match "${eventsSearchQuery.trim()}".` : eventsFilter === "Upcoming" ? "No upcoming events." : eventsFilter === "Past" ? "No past events." : eventsFilter === "Cancelled" ? "No cancelled events." : "No events found."}
+                {eventsTrimmedQuery ? `No events match "${eventsSearchQuery.trim()}".` : eventsFilter === "Upcoming" ? "No upcoming events." : eventsFilter === "Active" ? "No active events today." : eventsFilter === "Past" ? "No past events." : eventsFilter === "Pending" ? "No pending events." : eventsFilter === "Cancelled" ? "No cancelled events." : "No events found."}
               </div>
             )}
 
@@ -1264,9 +1342,24 @@ function AdminDashboard() {
       )}
 
       {/* VIEW DETAILS */}
-      {selectedRequest && <DetailsModal request={selectedRequest} tabName={selectedRequest._tab || activeTab} onClose={() => setSelectedRequest(null)} />}
+      {selectedRequest && (
+        <DetailsModal
+          request={selectedRequest}
+          tabName={selectedRequest._tab || activeTab}
+          onClose={() => setSelectedRequest(null)}
+          onSave={saveRequestEdits}
+          saveSubmitting={requestEditSubmitting}
+        />
+      )}
 
-      {selectedEvent && <EventViewModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
+      {selectedEvent && (
+        <EventViewModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+          onSave={saveEventEdits}
+          saveSubmitting={eventEditSubmitting}
+        />
+      )}
 
       {/* CANCEL EVENT */}
       {cancellingEvent && (
@@ -1345,6 +1438,8 @@ function StatusBadge({ status }) {
     status === "Priest Rejected" ? "bg-orange-100 text-orange-700"  :
     status === "Approved"        ? "bg-green-100 text-green-700"    :
     status === "Active"          ? "bg-emerald-100 text-emerald-700":
+    status === "Upcoming"        ? "bg-blue-100 text-blue-700"      :
+    status === "Past"            ? "bg-gray-100 text-gray-500"      :
     status === "Cancelled"       ? "bg-orange-100 text-orange-700"  :
                                    "bg-red-100 text-red-700";
   return (
@@ -1367,7 +1462,36 @@ function formatValue(key, val) {
   return String(val);
 }
 
-function EventViewModal({ event, onClose }) {
+function EventViewModal({ event, onClose, onSave, saveSubmitting }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    title: event.title || "",
+    event_class: event.event_class || "",
+    event_date: event.event_date || "",
+    event_time: event.event_time || "",
+    ministry: event.ministry || "",
+    priest_name: event.priest_name || "",
+    setting: event.setting || "",
+    description: event.description || "",
+  });
+
+  useEffect(() => {
+    setDraft({
+      title: event.title || "",
+      event_class: event.event_class || "",
+      event_date: event.event_date || "",
+      event_time: event.event_time || "",
+      ministry: event.ministry || "",
+      priest_name: event.priest_name || "",
+      setting: event.setting || "",
+      description: event.description || "",
+    });
+    setIsEditing(false);
+  }, [event]);
+
+  const displayStatus = getEventDisplayStatus(event);
+  const canEdit = displayStatus === "Upcoming" || displayStatus === "Active";
+
   const formatTime = (t) => {
     if (!t) return "—";
     const [h, m] = t.split(":");
@@ -1377,7 +1501,7 @@ function EventViewModal({ event, onClose }) {
   const fields = [
     { label: "Title",       value: event.title },
     { label: "Type",        value: event.event_class },
-    { label: "Status",      value: event.status || "Active" },
+    { label: "Status",      value: displayStatus },
     { label: "Date",        value: event.event_date ? new Date(event.event_date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : null },
     { label: "Time",        value: formatTime(event.event_time) },
     { label: "Hosted By",   value: event.ministry || (event.priest_name ? `Fr. ${event.priest_name}` : null) },
@@ -1396,13 +1520,61 @@ function EventViewModal({ event, onClose }) {
           <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-600">✕</button>
         </div>
         <div className="p-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-            {fields.map(({ label, value, wide }) => (
-              <div key={label} className={wide ? "md:col-span-2" : ""}>
-                <p className="text-xs uppercase tracking-widest text-gray-400">{label}</p>
-                <p className="text-gray-800 font-medium mt-1 whitespace-pre-wrap break-words">{value}</p>
+          {isEditing ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+              <div><p className="text-xs uppercase tracking-widest text-gray-400">Title</p><input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" /></div>
+              <div><p className="text-xs uppercase tracking-widest text-gray-400">Type</p><input value={draft.event_class} onChange={(e) => setDraft((d) => ({ ...d, event_class: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" /></div>
+              <div><p className="text-xs uppercase tracking-widest text-gray-400">Date</p><input type="date" value={draft.event_date || ""} onChange={(e) => setDraft((d) => ({ ...d, event_date: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" /></div>
+              <div><p className="text-xs uppercase tracking-widest text-gray-400">Time</p><input type="time" value={draft.event_time || ""} onChange={(e) => setDraft((d) => ({ ...d, event_time: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" /></div>
+              <div>
+                <p className="text-xs uppercase tracking-widest text-gray-400">Hosted By (Ministry)</p>
+                <div className="mt-1 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{event.ministry || "—"}</div>
               </div>
-            ))}
+              <div>
+                <p className="text-xs uppercase tracking-widest text-gray-400">Priest Name</p>
+                <div className="mt-1 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{event.priest_name ? `Fr. ${event.priest_name}` : "—"}</div>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-widest text-gray-400">Facility</p>
+                <div className="mt-1 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{event.setting || "—"}</div>
+              </div>
+              <div className="md:col-span-2"><p className="text-xs uppercase tracking-widest text-gray-400">Description</p><textarea rows={4} value={draft.description} onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" /></div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+              {fields.map(({ label, value, wide }) => (
+                <div key={label} className={wide ? "md:col-span-2" : ""}>
+                  <p className="text-xs uppercase tracking-widest text-gray-400">{label}</p>
+                  <p className="text-gray-800 font-medium mt-1 whitespace-pre-wrap break-words">{value}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end gap-2">
+            {!isEditing && canEdit && <button onClick={() => setIsEditing(true)} className="px-4 py-2 rounded-lg border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74]/10 text-xs font-bold uppercase tracking-widest transition-all">Edit</button>}
+            {!isEditing && !canEdit && <span className="text-xs text-gray-500 italic">Editable only for Upcoming or Active events.</span>}
+            {isEditing && (
+              <>
+                <button onClick={() => setIsEditing(false)} disabled={saveSubmitting} className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-bold uppercase tracking-widest transition-all">Cancel</button>
+                <button
+                  onClick={async () => {
+                    const updates = {};
+                    Object.entries(draft).forEach(([k, v]) => {
+                      const cur = String(event[k] ?? "").trim();
+                      const nxt = String(v ?? "").trim();
+                      if (cur !== nxt) updates[k] = v;
+                    });
+                    if (Object.keys(updates).length === 0) { setIsEditing(false); return; }
+                    const result = await onSave(event, updates);
+                    if (result?.ok) setIsEditing(false);
+                  }}
+                  disabled={saveSubmitting}
+                  className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50"
+                >
+                  {saveSubmitting ? "Saving..." : "Save"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1410,7 +1582,17 @@ function EventViewModal({ event, onClose }) {
   );
 }
 
-function DetailsModal({ request, tabName, onClose }) {
+function DetailsModal({ request, tabName, onClose, onSave, saveSubmitting }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState({});
+  const canEdit = request.status === "Approved";
+  const editableEntries = Object.entries(request).filter(([k, v]) => !EDIT_EXCLUDE_REQUEST.has(k) && v !== null && v !== undefined);
+
+  useEffect(() => {
+    setIsEditing(false);
+    setDraft({});
+  }, [request]);
+
   const entries = Object.entries(request)
     .filter(([k, v]) => !HIDDEN_FIELDS.has(k) && v !== null && v !== "" && v !== false)
     .map(([k, v]) => [k, formatValue(k, v)])
@@ -1427,13 +1609,66 @@ function DetailsModal({ request, tabName, onClose }) {
           <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-600">✕</button>
         </div>
         <div className="p-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-            {entries.map(([key, val]) => (
-              <div key={key} className={key === "additional_notes" || key === "notes" || key === "request_details" || key === "intention_detail" || key === "rejection_remarks" ? "md:col-span-2" : ""}>
-                <p className="text-xs uppercase tracking-widest text-gray-400">{humanizeKey(key)}</p>
-                <p className="text-gray-800 font-medium mt-1 whitespace-pre-wrap break-words">{val}</p>
-              </div>
-            ))}
+          {isEditing ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+              {editableEntries.map(([key]) => (
+                <div key={key} className={key === "additional_notes" || key === "notes" || key === "request_details" || key === "intention_detail" || key === "rejection_remarks" ? "md:col-span-2" : ""}>
+                  <p className="text-xs uppercase tracking-widest text-gray-400">{humanizeKey(key)}</p>
+                  {editFieldType(key) === "textarea" ? (
+                    <textarea rows={4} value={draft[key] ?? ""} onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
+                  ) : (
+                    <input type={editFieldType(key)} value={draft[key] ?? ""} onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+              {entries.map(([key, val]) => (
+                <div key={key} className={key === "additional_notes" || key === "notes" || key === "request_details" || key === "intention_detail" || key === "rejection_remarks" ? "md:col-span-2" : ""}>
+                  <p className="text-xs uppercase tracking-widest text-gray-400">{humanizeKey(key)}</p>
+                  <p className="text-gray-800 font-medium mt-1 whitespace-pre-wrap break-words">{val}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end gap-2">
+            {!isEditing && canEdit && (
+              <button
+                onClick={() => {
+                  const next = {};
+                  editableEntries.forEach(([k, v]) => { next[k] = v == null ? "" : String(v); });
+                  setDraft(next);
+                  setIsEditing(true);
+                }}
+                className="px-4 py-2 rounded-lg border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74]/10 text-xs font-bold uppercase tracking-widest transition-all"
+              >
+                Edit
+              </button>
+            )}
+            {!isEditing && !canEdit && <span className="text-xs text-gray-500 italic">Only approved requests are editable.</span>}
+            {isEditing && (
+              <>
+                <button onClick={() => { setIsEditing(false); setDraft({}); }} disabled={saveSubmitting} className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-bold uppercase tracking-widest transition-all">Cancel</button>
+                <button
+                  onClick={async () => {
+                    const updates = {};
+                    Object.entries(draft).forEach(([k, v]) => {
+                      const cur = String(request[k] ?? "").trim();
+                      const nxt = String(v ?? "").trim();
+                      if (cur !== nxt) updates[k] = v;
+                    });
+                    if (Object.keys(updates).length === 0) { setIsEditing(false); return; }
+                    const result = await onSave(request, updates);
+                    if (result?.ok) setIsEditing(false);
+                  }}
+                  disabled={saveSubmitting}
+                  className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50"
+                >
+                  {saveSubmitting ? "Saving..." : "Save"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1442,3 +1677,5 @@ function DetailsModal({ request, tabName, onClose }) {
 }
 
 export default AdminDashboard;
+
+

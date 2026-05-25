@@ -176,6 +176,23 @@ const STATUS_COLOR = (s) => {
   }
 };
 
+function getTodayKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function getScheduleDisplayStatus(item) {
+  const raw = item.status || "Active";
+  if (raw === "Cancelled" || raw === "Rejected") return "Cancelled";
+  if (raw === "Pending") return "Pending";
+  const d = String(item.event_date || "");
+  const today = getTodayKey();
+  if (!d) return raw;
+  if (d === today) return "Active";
+  if (d < today) return "Past";
+  return "Active";
+}
+
 function AdminReports() {
   const { refreshRole, user } = useAuth();
   const [activeTab, setActiveTab] = useState("services");
@@ -743,13 +760,19 @@ function AdminReports() {
             {activeTab === "schedules" && (() => {
               const filtered = reportData.schedules
                 .filter(item => scheduleFilter === "all" ? true : item.event_class === scheduleFilter)
-                .filter(item => scheduleStatusFilter === "All" ? true : (item.status || "Active") === scheduleStatusFilter);
+                .filter(item => scheduleStatusFilter === "All" ? true : getScheduleDisplayStatus(item) === scheduleStatusFilter);
 
               const sorted = [...filtered].sort((a, b) => {
                 if (scheduleSortBy === "newest")       return (b.event_date || "").localeCompare(a.event_date || "");
                 if (scheduleSortBy === "oldest")       return (a.event_date || "").localeCompare(b.event_date || "");
                 if (scheduleSortBy === "alpha")        return (a.title || "").localeCompare(b.title || "");
-                if (scheduleSortBy === "status")       return (a.status || "").localeCompare(b.status || "");
+                if (scheduleSortBy === "status") {
+                  const order = { Active: 0, Past: 1, Pending: 2, Cancelled: 3 };
+                  const sa = order[getScheduleDisplayStatus(a)] ?? 4;
+                  const sb = order[getScheduleDisplayStatus(b)] ?? 4;
+                  if (sa !== sb) return sa - sb;
+                  return (b.event_date || "").localeCompare(a.event_date || "");
+                }
                 if (scheduleSortBy === "created_desc") return (b.created_at || "").localeCompare(a.created_at || "");
                 if (scheduleSortBy === "created_asc")  return (a.created_at || "").localeCompare(b.created_at || "");
                 return 0;
@@ -787,6 +810,8 @@ function AdminReports() {
                     >
                       <option value="All">All Statuses</option>
                       <option value="Active">Active</option>
+                      <option value="Past">Past Events</option>
+                      <option value="Pending">Pending</option>
                       <option value="Cancelled">Cancelled</option>
                     </select>
                   </div>
@@ -855,11 +880,15 @@ function AdminReports() {
                           </td>
                           <td className="p-4 text-sm print:text-black">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase print:bg-transparent ${
-                              item.status === "Cancelled" || item.status === "Rejected"
+                              getScheduleDisplayStatus(item) === "Cancelled"
                                 ? "bg-red-50 text-red-600"
+                                : getScheduleDisplayStatus(item) === "Pending"
+                                ? "bg-yellow-50 text-yellow-700"
+                                : getScheduleDisplayStatus(item) === "Past"
+                                ? "bg-gray-100 text-gray-600"
                                 : "bg-green-50 text-green-700"
                             }`}>
-                              {item.status || "Active"}
+                              {getScheduleDisplayStatus(item) === "Past" ? "Past Events" : getScheduleDisplayStatus(item)}
                             </span>
                           </td>
                         </tr>
