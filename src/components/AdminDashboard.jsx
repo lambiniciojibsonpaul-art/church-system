@@ -709,6 +709,8 @@ function AdminDashboard() {
             </Link>
             <button onClick={() => navigate("/admin/schedules")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>📅</span> Events</button>
             <button onClick={() => navigate("/admin/reports")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>📊</span> Reports</button>
+            <button onClick={() => navigate("/admin/attendance-list")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>👥</span> Attendance</button>
+            <button onClick={() => navigate("/admin/qr-generator")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>🔳</span> QR Codes</button>
             <button
               onClick={() => navigate("/admin/announcements")}
               className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"
@@ -1054,7 +1056,7 @@ function AdminDashboard() {
                         <td className="p-4"><StatusBadge status={ev.status || "Active"} /></td>
                         <td className="p-4 text-right">
                           <div className="flex justify-end gap-2">
-                            <button onClick={() => setSelectedEvent(ev)} className="text-[#B59E74] hover:text-[#9c8760] text-xs font-bold uppercase tracking-widest px-3 py-2 rounded hover:bg-[#B59E74]/10 transition-colors">View</button>
+                            <button onClick={() => setSelectedEvent(ev)} className="text-[#B59E74] hover:text-white hover:bg-[#B59E74] text-xs font-bold uppercase tracking-widest px-3 py-2 rounded-lg bg-[#B59E74]/10 transition-colors">View / QR / Attendance</button>
                             {(ev.status || "Active") !== "Cancelled" && <button onClick={() => openCancelEventModal(ev)} className="text-orange-600 hover:text-white hover:bg-orange-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-orange-50 transition-colors">Cancel</button>}
                             {(ev.status || "Active") === "Cancelled" && <button onClick={() => setDeletingEvent(ev)} className="text-red-600 hover:text-white hover:bg-red-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded bg-red-50 transition-colors">Delete</button>}
                           </div>
@@ -1082,7 +1084,7 @@ function AdminDashboard() {
                       <div className="col-span-2 min-w-0"><p className="text-[10px] uppercase tracking-widest text-gray-400">Location</p><p className="text-sm text-gray-700 break-words">{ev.location || "—"}</p></div>
                     </div>
                     <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-50">
-                      <button onClick={() => setSelectedEvent(ev)} className="flex-1 min-w-[100px] py-2.5 rounded-lg border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74]/10 text-xs font-bold uppercase tracking-widest transition-all">View</button>
+                      <button onClick={() => setSelectedEvent(ev)} className="flex-1 min-w-[120px] py-2.5 rounded-lg bg-[#B59E74]/10 border border-[#B59E74]/40 text-[#B59E74] hover:bg-[#B59E74] hover:text-white text-xs font-bold uppercase tracking-widest transition-all">View / QR / Attendance</button>
                       {(ev.status || "Active") !== "Cancelled" && <button onClick={() => openCancelEventModal(ev)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">Cancel</button>}
                       {(ev.status || "Active") === "Cancelled" && <button onClick={() => setDeletingEvent(ev)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">Delete</button>}
                     </div>
