@@ -198,6 +198,19 @@ function PriestDashboard() {
           });
         }
       }
+
+      if (newStatus === "Completed") {
+        if (req.user_id) {
+          await supabase.rpc('notify_parishioner', {
+            target_user_id: req.user_id,
+            notif_title: `Your ${type} — Completed`,
+            notif_message: `Fr. ${priestName} has marked your ${type} request as completed.`,
+            notif_link: '/profile',
+            p_source_id: id,
+            p_source_table: tableName,
+          });
+        }
+      }
     } catch (error) {
       alert("Error updating status: " + error.message);
     } finally {
@@ -207,9 +220,25 @@ function PriestDashboard() {
 
   const [priestSortBy, setPriestSortBy] = useState("submitted_desc");
   const [priestViewMode, setPriestViewMode] = useState("card"); // "card" | "table"
+  const [scheduleFilter, setScheduleFilter] = useState("All");
+
+  const todayKey = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  })();
 
   const pendingRequests  = requests.filter((r) => r.status === "Staff Approved");
-  const approvedRequests = requests.filter((r) => r.status === "Priest Approved" || r.status === "Approved");
+  const approvedRequests = requests.filter((r) =>
+    r.status === "Priest Approved" || r.status === "Approved" || r.status === "Completed"
+  );
+
+  const filteredApproved = approvedRequests.filter((r) => {
+    const d = String(r.display_date || "").split("T")[0];
+    if (scheduleFilter === "Active")   return d === todayKey && r.status !== "Completed";
+    if (scheduleFilter === "Upcoming") return d > todayKey && r.status !== "Completed";
+    if (scheduleFilter === "Past")     return d < todayKey || r.status === "Completed";
+    return true;
+  });
 
   const sortList = (list) => [...list].sort((a, b) => {
     if (priestSortBy === "date_asc")       return new Date(a.display_date) - new Date(b.display_date);
@@ -219,7 +248,7 @@ function PriestDashboard() {
     return 0;
   });
 
-  const currentList = sortList(activeTab === "pending" ? pendingRequests : approvedRequests);
+  const currentList = sortList(activeTab === "pending" ? pendingRequests : filteredApproved);
 
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans relative">
@@ -294,7 +323,24 @@ function PriestDashboard() {
           </div>
         ) : (
           <div className="animate-fade-in-up">
-          <div className="flex justify-end mb-4 gap-2">
+          <div className="flex justify-end mb-4 gap-2 flex-wrap items-center">
+            {activeTab === "schedule" && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Filter:</label>
+                <div className="relative">
+                  <select value={scheduleFilter} onChange={e => setScheduleFilter(e.target.value)}
+                    className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-[#F6F5ED] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-gray-700 cursor-pointer">
+                    {["All", "Active", "Upcoming", "Past"].map((f) => (
+                      <option key={f} value={f}>{f} Events</option>
+                    ))}
+                  </select>
+                  <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+                </div>
+                {scheduleFilter !== "All" && (
+                  <button onClick={() => setScheduleFilter("All")} className="text-xs text-gray-400 hover:text-gray-600 font-bold uppercase tracking-widest transition-colors whitespace-nowrap">✕ Clear</button>
+                )}
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Sort</label>
               <select
@@ -338,6 +384,8 @@ function PriestDashboard() {
                   {currentList.map((req) => {
                     const typeColor = req.request_type === "Wedding" ? "bg-rose-50 text-rose-600" : req.request_type === "Baptism" ? "bg-blue-50 text-blue-600" : req.request_type === "Holy Communion" ? "bg-amber-50 text-amber-600" : req.request_type === "Confirmation" ? "bg-red-50 text-red-600" : "bg-[#F6F5ED] text-[#B59E74]";
                     const isPending = req.status === "Pending" || !req.status;
+                    const isCompleted = req.status === "Completed";
+                    const isToday = String(req.display_date || "").split("T")[0] === todayKey;
                     const timeVal = req.time_of_communion || req.time_of_confirmation || req.request_time || req.wedding_time || "—";
                     return (
                       <tr key={`${req.request_type}-${req.id}`} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
@@ -351,7 +399,7 @@ function PriestDashboard() {
                         <td className="p-3 text-sm text-gray-600 whitespace-nowrap">{new Date(req.display_date).toLocaleDateString()}</td>
                         <td className="p-3 text-sm text-gray-500 whitespace-nowrap">{timeVal}</td>
                         <td className="p-3">
-                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${isPending ? "bg-yellow-100 text-yellow-700" : "bg-green-100 text-green-700"}`}>
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${isCompleted ? "bg-gray-100 text-gray-500" : isPending ? "bg-yellow-100 text-yellow-700" : "bg-green-100 text-green-700"}`}>
                             {req.status || "Pending"}
                           </span>
                         </td>
@@ -369,6 +417,9 @@ function PriestDashboard() {
                                   <button onClick={() => setRejectingId(req.id)} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✕</button>
                                 </>
                               )}
+                              {activeTab === "schedule" && isToday && !isCompleted && (
+                                <button onClick={() => handleStatusUpdate(req, "Completed")} disabled={processingId === req.id} className="px-2 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors whitespace-nowrap">✓ Done</button>
+                              )}
                               <button onClick={() => setViewingDetails(req)} className="px-2 py-1 bg-gray-50 hover:bg-[#B59E74] text-gray-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">View</button>
                             </div>
                           )}
@@ -381,7 +432,10 @@ function PriestDashboard() {
             </div>
           ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {currentList.map((req) => (
+            {currentList.map((req) => {
+              const isToday = String(req.display_date || "").split("T")[0] === todayKey;
+              const isCompleted = req.status === "Completed";
+              return (
               <div
                 key={`${req.request_type}-${req.id}`}
                 className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden group"
@@ -484,20 +538,39 @@ function PriestDashboard() {
                 
                 {activeTab === "schedule" && (
                   <div className="mt-4 flex flex-col gap-3">
-                    <div className="flex items-center gap-2 text-green-600 bg-green-50 px-4 py-2 rounded-lg w-fit border border-green-100">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      <span className="text-xs font-bold uppercase tracking-widest">{req.status === "Approved" ? "Admin Confirmed" : "Pending Admin Approval"}</span>
+                    {isCompleted ? (
+                      <div className="flex items-center gap-2 text-gray-500 bg-gray-100 px-4 py-2 rounded-lg w-fit border border-gray-200">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                        <span className="text-xs font-bold uppercase tracking-widest">Completed</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-green-600 bg-green-50 px-4 py-2 rounded-lg w-fit border border-green-100">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span className="text-xs font-bold uppercase tracking-widest">{req.status === "Approved" ? "Admin Confirmed" : "Pending Admin Approval"}</span>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setViewingDetails(req)}
+                        className="flex-1 bg-white border-2 border-[#B59E74] text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors"
+                      >
+                        View Full Details
+                      </button>
+                      {isToday && !isCompleted && (
+                        <button
+                          onClick={() => handleStatusUpdate(req, "Completed")}
+                          disabled={processingId === req.id}
+                          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors shadow-md"
+                        >
+                          {processingId === req.id ? "..." : "✓ Event Done"}
+                        </button>
+                      )}
                     </div>
-                    <button
-                      onClick={() => setViewingDetails(req)}
-                      className="w-full bg-white border-2 border-[#B59E74] text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors"
-                    >
-                      View Full Details
-                    </button>
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
           )}
           </div>

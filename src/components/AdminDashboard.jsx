@@ -990,17 +990,20 @@ function AdminDashboard() {
           </div>
 
           <div className="p-4 sm:p-6 md:p-8">
-            <div className="flex justify-center gap-1 sm:gap-3 mb-6 md:mb-8 p-1.5 sm:p-2 bg-[#F6F5ED] rounded-full w-full sm:w-fit mx-auto border border-gray-100">
-              {["All", "Upcoming", "Past", "Cancelled"].map((f) => {
-                const active = eventsFilter === f;
-                const activeCls = f === "Cancelled" ? "bg-orange-600 text-white shadow-md" : "bg-[#B59E74] text-white shadow-md";
-                return (
-                  <button key={f} onClick={() => setEventsFilter(f)} className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${active ? activeCls : "text-gray-500 hover:text-gray-700"}`}>
-                    <span className="sm:hidden">{f}</span>
-                    <span className="hidden sm:inline">{f} Events</span>
-                  </button>
-                );
-              })}
+            <div className="mb-6 md:mb-8 flex items-center gap-3">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap shrink-0">Filter:</label>
+              <div className="relative flex-1 max-w-xs">
+                <select value={eventsFilter} onChange={(e) => setEventsFilter(e.target.value)}
+                  className="appearance-none w-full pl-4 pr-10 py-3 rounded-xl bg-[#F6F5ED] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-gray-700 cursor-pointer">
+                  {["All", "Upcoming", "Past", "Cancelled"].map((f) => (
+                    <option key={f} value={f}>{f} Events</option>
+                  ))}
+                </select>
+                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+              </div>
+              {eventsFilter !== "All" && (
+                <button onClick={() => setEventsFilter("All")} className="text-xs text-gray-400 hover:text-gray-600 font-bold uppercase tracking-widest transition-colors whitespace-nowrap">✕ Clear</button>
+              )}
             </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
