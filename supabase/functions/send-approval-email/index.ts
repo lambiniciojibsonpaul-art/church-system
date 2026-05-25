@@ -1,8 +1,8 @@
 // Supabase Edge Function — sends an "approved + scheduled" email to a
 // parishioner once an admin approves their sacrament request.
 //
-// Uses the same RESEND_API_KEY / FROM_EMAIL env vars as send-request-email.
-// Without RESEND_API_KEY this returns `{ skipped: true }` so the admin
+// Uses the same MAILERSEND_API_KEY / FROM_EMAIL env vars as send-request-email.
+// Without MAILERSEND_API_KEY this returns `{ skipped: true }` so the admin
 // approval flow never fails just because email isn't configured yet.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -23,12 +23,18 @@ serve(async (req) => {
       return json({ error: "Missing 'to' or 'serviceName'." }, 400);
     }
 
-    const apiKey = Deno.env.get("RESEND_API_KEY");
-    const from = Deno.env.get("FROM_EMAIL") || "Parish Office <onboarding@resend.dev>";
+    const apiKey = Deno.env.get("MAILERSEND_API_KEY");
+    const fromEmail = Deno.env.get("FROM_EMAIL") || "Parish Office <onboarding@mailersend.net>";
 
     if (!apiKey) {
-      return json({ skipped: true, reason: "RESEND_API_KEY not set" });
+      return json({ skipped: true, reason: "MAILERSEND_API_KEY not set" });
     }
+
+    // Parse "Name <email@domain.com>" format
+    const emailMatch = fromEmail.match(/<(.+?)>/);
+    const email = emailMatch ? emailMatch[1] : fromEmail;
+    const nameMatch = fromEmail.match(/^(.+?)\s*</);
+    const name = nameMatch ? nameMatch[1].trim() : "Parish Office";
 
     const detailsRows = [
       body.eventDate ? rowHtml("Date", body.eventDate) : "",
@@ -59,18 +65,23 @@ serve(async (req) => {
       </div>
     `.trim();
 
-    const r = await fetch("https://api.resend.com/emails", {
+    const r = await fetch("https://api.mailersend.com/v1/email", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from, to: body.to, subject, html }),
+      body: JSON.stringify({
+        from: { email, name },
+        to: [{ email: body.to }],
+        subject,
+        html,
+      }),
     });
 
     if (!r.ok) {
       const errText = await r.text();
-      return json({ error: `Resend API error: ${errText}` }, 500);
+      return json({ error: `MailerSend API error: ${errText}` }, 500);
     }
 
     return json({ ok: true });
