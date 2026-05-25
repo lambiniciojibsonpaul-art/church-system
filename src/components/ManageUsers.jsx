@@ -171,7 +171,12 @@ function ManageUsers() {
     last_name: "",
     contact_number: "",
     ministries: [],
+    priest_subtitle: "",
+    priest_photo_url: "",
+    priest_is_leadership: false,
   });
+  const [priestPhotoFile, setPriestPhotoFile] = useState(null);
+  const [priestPhotoPreview, setPriestPhotoPreview] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Role-change → Minister modal (intercepts the inline role dropdown)
@@ -190,6 +195,16 @@ function ManageUsers() {
     fetchUsers();
     fetchActiveMinistries();
   }, []);
+
+  useEffect(() => {
+    if (!priestPhotoFile) {
+      setPriestPhotoPreview("");
+      return;
+    }
+    const url = URL.createObjectURL(priestPhotoFile);
+    setPriestPhotoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [priestPhotoFile]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -314,7 +329,13 @@ function ManageUsers() {
         const fullName = `${createForm.first_name} ${createForm.last_name}`.trim();
         const { error: priestErr } = await supabase
           .from("priests")
-          .upsert({ user_id: newUserId, name: fullName, is_active: true }, { onConflict: "user_id" });
+          .upsert({
+            user_id: newUserId,
+            name: fullName,
+            first_name: createForm.first_name || null,
+            last_name: createForm.last_name || null,
+            is_active: true,
+          }, { onConflict: "user_id" });
         if (priestErr) console.warn("[ManageUsers] priests table upsert failed:", priestErr.message);
       }
 
@@ -390,17 +411,28 @@ function ManageUsers() {
           .maybeSingle();
 
         if (existingPriest) {
-          await supabase.from("priests").update({ name: fullName, is_active: true }).eq("user_id", userId);
+          await supabase.from("priests").update({
+            name: fullName,
+            first_name: targetUser?.first_name || null,
+            last_name: targetUser?.last_name || null,
+            is_active: true,
+          }).eq("user_id", userId);
         } else {
           const { error: priestInsertErr } = await supabase
             .from("priests")
-            .insert({ user_id: userId, name: fullName, is_active: true });
+            .insert({
+              user_id: userId,
+              name: fullName,
+              first_name: targetUser?.first_name || null,
+              last_name: targetUser?.last_name || null,
+              is_active: true,
+            });
           if (!priestInsertErr) console.log(`[ManageUsers] ${fullName} added to priests table.`);
         }
       } else {
         const { error: priestDeactivateErr } = await supabase
           .from("priests")
-          .update({ is_active: false })
+          .update({ is_active: false, is_leadership: false })
           .eq("user_id", userId);
         if (!priestDeactivateErr) console.log(`[ManageUsers] ${fullName} deactivated in priests table.`);
       }
@@ -429,14 +461,35 @@ function ManageUsers() {
   };
 
   // --- PROFILE EDITING ---
-  const openEditModal = (userRecord) => {
+  const openEditModal = async (userRecord) => {
     setEditingUser(userRecord);
+    setPriestPhotoFile(null);
     setEditForm({
       first_name: userRecord.first_name || "",
       last_name: userRecord.last_name || "",
       contact_number: userRecord.contact_number || "",
       ministries: Array.isArray(userRecord.ministries) ? [...userRecord.ministries] : [],
+      priest_subtitle: "",
+      priest_photo_url: "",
+      priest_is_leadership: false,
     });
+
+    if (userRecord.role === "priest") {
+      const { data } = await supabase
+        .from("priests")
+        .select("subtitle, photo_url, is_leadership")
+        .eq("user_id", userRecord.id)
+        .maybeSingle();
+
+      if (data) {
+        setEditForm((prev) => ({
+          ...prev,
+          priest_subtitle: data.subtitle || "",
+          priest_photo_url: data.photo_url || "",
+          priest_is_leadership: !!data.is_leadership,
+        }));
+      }
+    }
   };
 
   const toggleEditMinistry = (name) => {
@@ -473,6 +526,49 @@ function ManageUsers() {
         .eq("id", editingUser.id);
 
       if (error) throw error;
+
+      if (editingUser.role === "priest") {
+        let photoUrl = editForm.priest_photo_url || null;
+
+        if (priestPhotoFile) {
+          const ext = (priestPhotoFile.name.split(".").pop() || "jpg").toLowerCase();
+          const safeExt = ["jpg", "jpeg", "png", "webp"].includes(ext) ? ext : "jpg";
+          const path = `${editingUser.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${safeExt}`;
+
+          const { error: uploadErr } = await supabase
+            .storage
+            .from("priest-photos")
+            .upload(path, priestPhotoFile, { upsert: false, cacheControl: "3600" });
+          if (uploadErr) throw new Error(`Photo upload failed: ${uploadErr.message}`);
+
+          const { data: publicData } = supabase.storage.from("priest-photos").getPublicUrl(path);
+          photoUrl = publicData?.publicUrl || photoUrl;
+        }
+
+        const fullName = `${editForm.first_name} ${editForm.last_name}`.trim();
+
+        if (editForm.priest_is_leadership) {
+          await supabase
+            .from("priests")
+            .update({ is_leadership: false })
+            .eq("is_leadership", true)
+            .neq("user_id", editingUser.id);
+        }
+
+        const { error: priestErr } = await supabase
+          .from("priests")
+          .upsert({
+            user_id: editingUser.id,
+            is_active: true,
+            name: fullName,
+            first_name: editForm.first_name || null,
+            last_name: editForm.last_name || null,
+            subtitle: editForm.priest_subtitle?.trim() || null,
+            photo_url: photoUrl || null,
+            is_leadership: !!editForm.priest_is_leadership,
+          }, { onConflict: "user_id" });
+        if (priestErr) throw priestErr;
+      }
 
       setUsers(prev =>
         prev.map(u =>
@@ -1099,6 +1195,55 @@ function ManageUsers() {
                   {editForm.ministries.length === 0 && (
                     <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider">At least one ministry is required.</p>
                   )}
+                </div>
+              )}
+
+              {editingUser.role === "priest" && (
+                <div className="flex flex-col gap-3 border-t border-gray-100 pt-5">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Priest Subtitle</label>
+                    <input
+                      type="text"
+                      value={editForm.priest_subtitle}
+                      onChange={(e) => setEditForm({ ...editForm, priest_subtitle: e.target.value })}
+                      className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] w-full text-sm"
+                      placeholder="e.g., Parish Priest & Rector"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Priest Photo</label>
+                    {(editForm.priest_photo_url || priestPhotoFile) && (
+                      <div className="w-28 h-36 rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                        <img
+                          src={priestPhotoPreview || editForm.priest_photo_url}
+                          alt="Priest preview"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={(e) => setPriestPhotoFile(e.target.files?.[0] || null)}
+                      className="text-xs text-gray-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-[#B59E74]/10 file:text-[#B59E74] file:font-bold"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!editForm.priest_is_leadership}
+                      onChange={(e) => setEditForm({ ...editForm, priest_is_leadership: e.target.checked })}
+                      className="w-4 h-4 accent-[#B59E74]"
+                    />
+                    <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Set as Leadership Priest
+                    </span>
+                  </label>
+                  <p className="text-[10px] text-gray-500 italic">
+                    Only one priest can be the leadership priest at a time.
+                  </p>
                 </div>
               )}
 

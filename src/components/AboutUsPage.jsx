@@ -1,13 +1,62 @@
+import { useEffect, useMemo, useState } from "react";
 import church2 from "../assets/Images/church2.jpg";
-
-// Make sure to place your images in the 'src/assets/Images/' folder 
-// and name them exactly like this (or update the filenames below to match yours).
-import frFernando from "../assets/Images/fr-fernando.jpg";
-import frEdwin from "../assets/Images/fr-edwin.jpg";
-import frMark from "../assets/Images/fr-mark.jpg";
-import frChristian from "../assets/Images/fr-christian.jpg";
+import { restSelect } from "../supabaseRest";
 
 function AboutUsPage() {
+  const [pastors, setPastors] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Use the same API path as priest selection in forms/schedules.
+      let { data, error } = await restSelect("priests", {
+        select: "id,name,first_name,last_name,subtitle,photo_url,is_active,is_leadership",
+        match: { is_active: true },
+        order: "name.asc",
+        timeoutMs: 12000,
+      });
+
+      // Backward compatibility if new columns are not migrated yet.
+      if (error) {
+        const fallback = await restSelect("priests", {
+          select: "id,name,is_active",
+          match: { is_active: true },
+          order: "name.asc",
+          timeoutMs: 12000,
+        });
+        data = fallback.data;
+        error = fallback.error;
+      }
+
+      if (cancelled) return;
+      if (error) {
+        console.warn("[AboutUsPage] priests fetch error:", error.message);
+        setPastors([]);
+        return;
+      }
+
+      const mapped = (data || []).map((p) => {
+        const derived = String(p.name || "").trim().split(/\s+/).filter(Boolean);
+        const first = String(p.first_name || derived[0] || "").trim();
+        const last = String(p.last_name || derived[derived.length - 1] || "").trim();
+        return {
+          id: p.id,
+          name: `Rev. Fr. ${[first, last].filter(Boolean).join(" ")}, OFM`,
+          role: p.subtitle || "Priest",
+          image: p.photo_url || null,
+          isLeadership: !!p.is_leadership,
+        };
+      });
+      setPastors(mapped);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const leadershipPriest = useMemo(
+    () => pastors.find((p) => p.isLeadership) || pastors[0] || null,
+    [pastors]
+  );
+
   // Parallax background style using church2.jpg
   const backgroundStyle = {
     backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('${church2}')`,
@@ -70,13 +119,13 @@ function AboutUsPage() {
               <div>
                 <h3 className="text-lg md:text-xl text-[#B59E74] font-sans tracking-[0.2em] uppercase font-bold mb-4">Mission</h3>
                 <p className="italic leading-relaxed">
-                  To serve as a vibrant community center dedicated to nurturing spiritual growth, offering unconditional support, and spreading love and hope to all.
+                  By 2026, we envision a sanctuary where communion of faithful stewards and integral human development are manifested through the celebration of the Eucharist, preaching the Word of God, prayer and devotion.
                 </p>
               </div>
               <div>
                 <h3 className="text-lg md:text-xl text-[#B59E74] font-sans tracking-[0.2em] uppercase font-bold mb-4">Vision</h3>
                 <p className="italic leading-relaxed">
-                  A unified, compassionate community where every individual experiences the transformative love of Christ, walking together in faith and service.
+                  We are a dynamic Franciscan parish founded and inspired by San Pedro Bautista. Committed to pursue the Church of the Poor and Care for Creation in joyful service and prophetic witnessing through revitalizing Pamayanan.
                 </p>
               </div>
             </div>
@@ -109,8 +158,7 @@ function AboutUsPage() {
               <div>
                 <h3 className="text-3xl text-[#B59E74] font-serif mb-4">Leadership</h3>
                 <div className="border border-[#B59E74] rounded-lg p-6 max-w-sm bg-white shadow-sm">
-                  <h4 className="text-xl text-[#B59E74] font-serif mb-2">Rev. Fr. Fernando B. Radin, Jr., OFM</h4>
-                  <p className="text-gray-600 font-serif text-sm">Parish Priest & Rector</p>
+                  <h4 className="text-xl text-[#B59E74] font-serif mb-2">{leadershipPriest?.name || "Rev. Fr. —, OFM"}</h4>
                 </div>
               </div>
             </div>
@@ -172,10 +220,9 @@ function AboutUsPage() {
           <h2 className="text-3xl md:text-4xl font-bold text-gray-500 tracking-wide">Our Pastors:</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 md:gap-8">
-          <PastorProfile name="Rev. Fr. Fernando B. Radin, Jr., OFM" role="Parish Priest & Rector" image={frFernando} />
-          <PastorProfile name="Rev. Fr. Edwin Peter R. Dionisio, OFM" role="Guardian" image={frEdwin} />
-          <PastorProfile name="Rev. Fr. Mark Gil D. Yongco, OFM" role="Parochial Vicar, Master of Postulants, Bursar" image={frMark} />
-          <PastorProfile name="Rev. Fr. Christian Exequiel T. Bueno, OFM" role="Vocation Director" image={frChristian} />
+          {pastors.map((p) => (
+            <PastorProfile key={p.id} name={p.name} role={p.role} image={p.image} />
+          ))}
         </div>
       </section>
     </div>
