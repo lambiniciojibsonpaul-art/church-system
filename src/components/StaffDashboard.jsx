@@ -20,6 +20,7 @@ const TAB_CONFIG = {
   Baptisms: {
     table: "baptisms",
     isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.child_first_name || ""} ${r.child_last_name || ""}`.trim() || "Baptism",
     columns: [
       { label: "Child's Name", value: (r) => `${r.child_first_name || ""} ${r.child_last_name || ""}`.trim() },
@@ -40,6 +41,7 @@ const TAB_CONFIG = {
   "Holy Communion": {
     table: "holy_communions",
     isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() || "Communion",
     columns: [
       { label: "Candidate", value: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() },
@@ -60,6 +62,7 @@ const TAB_CONFIG = {
   Confirmation: {
     table: "confirmations",
     isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() || "Confirmation",
     columns: [
       { label: "Candidate", value: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() },
@@ -80,6 +83,7 @@ const TAB_CONFIG = {
   Weddings: {
     table: "weddings",
     isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.groom_first_name || ""} ${r.groom_surname || ""} & ${r.bride_first_name || ""} ${r.bride_surname || ""}`.trim(),
     columns: [
       { label: "Couple", value: (r) => `${r.groom_first_name || ""} ${r.groom_surname || ""} & ${r.bride_first_name || ""} ${r.bride_surname || ""}`.trim() },
@@ -120,6 +124,7 @@ const TAB_CONFIG = {
   "Sacraments & Liturgical": {
     table: "sacraments_liturgical",
     isSacrament: true,
+    requiresPriest: true,
     title: (r) => r.request_type || "Sacrament Service",
     columns: [
       { label: "Service", value: (r) => r.request_type },
@@ -344,13 +349,16 @@ function StaffDashboard() {
     setRequestsLoading(true);
     const entries = Object.entries(TAB_CONFIG);
     const results = await Promise.allSettled(
-      entries.map(([, cfg]) =>
-        restSelect(cfg.table, {
-          match: { status: "Pending" },
-          order: "created_at.asc",
-          timeoutMs: 12000,
-        })
-      )
+      entries.map(async ([, cfg]) => {
+        if (cfg.requiresPriest) {
+          const [pendingRes, priestRejectedRes] = await Promise.all([
+            restSelect(cfg.table, { match: { status: "Pending" }, order: "created_at.asc", timeoutMs: 12000 }),
+            restSelect(cfg.table, { match: { status: "Priest Rejected" }, order: "created_at.asc", timeoutMs: 12000 }),
+          ]);
+          return { data: [...(pendingRes.data || []), ...(priestRejectedRes.data || [])] };
+        }
+        return restSelect(cfg.table, { match: { status: "Pending" }, order: "created_at.asc", timeoutMs: 12000 });
+      })
     );
 
     const merged = {};
@@ -447,26 +455,51 @@ function StaffDashboard() {
       });
     }
 
-    // ✨ NOTIFY ADMIN: Staff has approved, admin needs to give final approval
     const requestTitle = reqConfig.title(acceptingRequest);
-    await supabase.rpc('notify_admin', {
-      notif_title: `Staff Approved: ${reqTab}`,
-      notif_message: `Staff approved "${requestTitle}". Please review for final approval.`,
-      notif_link: '/admin',
-      p_source_id: acceptingRequest.id,
-      p_source_table: reqConfig.table,
-    });
 
-    // ✨ NOTIFY PARISHIONER: Their request has been approved by staff
-    if (acceptingRequest.user_id) {
-      await supabase.rpc('notify_parishioner', {
-        target_user_id: acceptingRequest.user_id,
-        notif_title: `Your ${reqTab} Request — Staff Approved`,
-        notif_message: `Your request has been reviewed and approved by our staff. It is now pending final admin confirmation.`,
-        notif_link: '/profile',
+    if (reqConfig.requiresPriest) {
+      // New flow: send to priest — notify priest of new assignment
+      const { data: priestUserData } = await supabase
+        .from("priests").select("user_id").eq("name", assignedPriest).maybeSingle();
+      if (priestUserData?.user_id) {
+        await supabase.rpc('notify_parishioner', {
+          target_user_id: priestUserData.user_id,
+          notif_title: `New ${reqTab} Request Assigned`,
+          notif_message: `A ${reqTab} request "${requestTitle}" has been assigned to you. Please review and accept or decline in your dashboard.`,
+          notif_link: '/priest-dashboard',
+          p_source_id: acceptingRequest.id,
+          p_source_table: reqConfig.table,
+        });
+      }
+      if (acceptingRequest.user_id) {
+        await supabase.rpc('notify_parishioner', {
+          target_user_id: acceptingRequest.user_id,
+          notif_title: `Your ${reqTab} Request — Sent to Priest`,
+          notif_message: `Your request has been reviewed by staff and forwarded to Fr. ${assignedPriest} for scheduling confirmation.`,
+          notif_link: '/profile',
+          p_source_id: acceptingRequest.id,
+          p_source_table: reqConfig.table,
+        });
+      }
+    } else {
+      // Old flow: notify admin directly
+      await supabase.rpc('notify_admin', {
+        notif_title: `Staff Approved: ${reqTab}`,
+        notif_message: `Staff approved "${requestTitle}". Please review for final approval.`,
+        notif_link: '/admin',
         p_source_id: acceptingRequest.id,
         p_source_table: reqConfig.table,
       });
+      if (acceptingRequest.user_id) {
+        await supabase.rpc('notify_parishioner', {
+          target_user_id: acceptingRequest.user_id,
+          notif_title: `Your ${reqTab} Request — Staff Approved`,
+          notif_message: `Your request has been reviewed and approved by our staff. It is now pending final admin confirmation.`,
+          notif_link: '/profile',
+          p_source_id: acceptingRequest.id,
+          p_source_table: reqConfig.table,
+        });
+      }
     }
 
     setRequests((prev) => ({
@@ -806,7 +839,10 @@ function StaffDashboard() {
                           className={`border-b border-gray-50 transition-all duration-500 ${highlightId === req.id ? "bg-[#B59E74]/10" : "hover:bg-gray-50"}`}
                         >
                           <td className="p-3">
+                            <div className="flex flex-col gap-1">
                             <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-[#B59E74]/10 text-[#B59E74] whitespace-nowrap">{req._tab}</span>
+                            {req.status === "Priest Rejected" && <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-orange-100 text-orange-700 whitespace-nowrap">⚠️ Priest Declined</span>}
+                          </div>
                           </td>
                           <td className="p-3">
                             <p className="text-sm font-medium text-gray-800">{req._config.title(req)}</p>
@@ -872,8 +908,15 @@ function StaffDashboard() {
                         ))}
                       </div>
 
+                      {req.status === "Priest Rejected" && (
+                        <div className="mb-3 p-3 bg-orange-50 border border-orange-200 rounded-xl text-xs text-orange-700">
+                          <p className="font-bold uppercase tracking-widest mb-0.5">⚠️ Priest Declined — Reassign Required</p>
+                          {req.rejection_remarks && <p className="italic mt-0.5">Reason: {req.rejection_remarks}</p>}
+                          <p className="mt-1 text-orange-600">Please select a different priest below.</p>
+                        </div>
+                      )}
                       <div className="mt-auto flex gap-2 pt-4 border-t border-gray-200">
-                        <button onClick={() => setAcceptingRequest(req)} className="flex-1 bg-green-50 hover:bg-green-600 text-green-700 hover:text-white py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✓ Accept</button>
+                        <button onClick={() => setAcceptingRequest(req)} className="flex-1 bg-green-50 hover:bg-green-600 text-green-700 hover:text-white py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✓ {req.status === "Priest Rejected" ? "Reassign" : "Accept"}</button>
                         <button onClick={() => setRejectingRequest(req)} className="flex-1 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✕ Reject</button>
                       </div>
                     </div>
@@ -1046,7 +1089,10 @@ function StaffDashboard() {
                 </div>
               )}
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700 font-serif">
-                ℹ️ Approving will notify the <strong>admin</strong> for final confirmation and notify the <strong>parishioner</strong> that their request is under review.
+                {resolveConfigFor(acceptingRequest).requiresPriest
+                  ? <>ℹ️ Approving will notify <strong>Fr. {assignedPriest || "the assigned priest"}</strong> to confirm the schedule. The parishioner will be notified once the priest accepts.</>
+                  : <>ℹ️ Approving will notify the <strong>admin</strong> for final confirmation and notify the <strong>parishioner</strong> that their request is under review.</>
+                }
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setAcceptingRequest(null)} disabled={acceptSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Cancel</button>

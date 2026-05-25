@@ -12,6 +12,7 @@ const TAB_CONFIG = {
   Baptisms: {
     table: "baptisms",
     isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.child_first_name || ""} ${r.child_last_name || ""}`.trim() || "Baptism",
     columns: [
       { label: "Child's Name", value: (r) => `${r.child_first_name || ""} ${r.child_last_name || ""}`.trim() },
@@ -34,6 +35,7 @@ const TAB_CONFIG = {
   "Holy Communion": {
     table: "holy_communions",
     isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() || "Communion",
     columns: [
       { label: "Candidate", value: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() },
@@ -56,6 +58,7 @@ const TAB_CONFIG = {
   Confirmation: {
     table: "confirmations",
     isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() || "Confirmation",
     columns: [
       { label: "Candidate", value: (r) => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() },
@@ -78,6 +81,7 @@ const TAB_CONFIG = {
   Weddings: {
     table: "weddings",
     isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.groom_first_name || ""} ${r.groom_surname || ""} & ${r.bride_first_name || ""} ${r.bride_surname || ""}`.trim(),
     columns: [
       { label: "Couple", value: (r) => `${r.groom_first_name || ""} ${r.groom_surname || ""} & ${r.bride_first_name || ""} ${r.bride_surname || ""}`.trim() },
@@ -122,6 +126,7 @@ const TAB_CONFIG = {
   "Sacraments & Liturgical": {
     table: "sacraments_liturgical",
     isSacrament: true,
+    requiresPriest: true,
     title: (r) => r.request_type || "Sacrament Service",
     columns: [
       { label: "Service", value: (r) => r.request_type },
@@ -446,8 +451,11 @@ function AdminDashboard() {
   const pageEnd      = Math.min(pageStart + pageSize, totalRecords);
   const pageData     = filteredData.slice(pageStart, pageEnd);
 
-  const pendingCount = (tab) =>
-    (requests[tab] || []).filter((r) => r.status === "Staff Approved").length;
+  const pendingCount = (tab) => {
+    const cfg = TAB_CONFIG[tab];
+    const targetStatus = cfg?.requiresPriest ? "Priest Approved" : "Staff Approved";
+    return (requests[tab] || []).filter((r) => r.status === targetStatus).length;
+  };
   const totalPending = TAB_NAMES.reduce((sum, t) => sum + pendingCount(t), 0);
 
   useEffect(() => { setCurrentPage(1); }, [activeTab, activeSubTab, searchQuery, sortBy, pageSize]);
@@ -724,7 +732,7 @@ function AdminDashboard() {
         <div className="mb-6 bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between relative overflow-hidden">
           <div className="absolute top-0 left-0 w-1 h-full bg-[#B59E74]"></div>
           <div>
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Awaiting Admin Approval (Staff Approved)</h3>
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Awaiting Admin Approval</h3>
             <p className="text-3xl text-gray-800 font-serif mt-1">{totalPending}</p>
           </div>
           <div className="text-4xl text-[#B59E74]/30">📋</div>
@@ -734,7 +742,7 @@ function AdminDashboard() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {TAB_NAMES.map((tab) => (
             <StatCard key={tab} label={`Pending ${tab}`} count={pendingCount(tab)} active={activeTab === tab}
-              onClick={() => { setActiveTab(tab); setActiveSubTab("Staff Approved"); }} />
+              onClick={() => { setActiveTab(tab); setActiveSubTab(TAB_CONFIG[tab]?.requiresPriest ? "Priest Approved" : "Staff Approved"); }} />
           ))}
         </div>
 
@@ -767,7 +775,7 @@ function AdminDashboard() {
               return (
                 <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-red-600">
                   <span className="inline-flex items-center justify-center w-6 h-6 text-[11px] text-white bg-red-500 rounded-full">{badgeCount}</span>
-                  staff-approved request{badgeCount === 1 ? "" : "s"} awaiting your approval
+                  request{badgeCount === 1 ? "" : "s"} awaiting your final approval
                 </span>
               );
             })()}
@@ -776,11 +784,12 @@ function AdminDashboard() {
           <div className="p-4 sm:p-6 md:p-8">
 
             {/* Sub-tabs */}
-            <div className="mb-6 md:mb-8">
-              <div className="relative sm:hidden">
+            <div className="mb-6 md:mb-8 flex items-center gap-3">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap shrink-0">Filter:</label>
+              <div className="relative flex-1 max-w-xs">
                 <select value={activeSubTab} onChange={(e) => setActiveSubTab(e.target.value)}
                   className="appearance-none w-full pl-4 pr-10 py-3 rounded-xl bg-[#F6F5ED] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-gray-700 cursor-pointer">
-                  {["All", "Pending", "Staff Approved", "Approved", "Rejected", "Cancelled"].map((sub) => (
+                  {["All", "Pending", "Staff Approved", "Priest Approved", "Priest Rejected", "Approved", "Rejected", "Cancelled"].map((sub) => (
                     <option key={sub} value={sub}>{sub} Requests</option>
                   ))}
                 </select>
@@ -788,14 +797,9 @@ function AdminDashboard() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                 </svg>
               </div>
-              <div className="hidden sm:flex justify-center gap-1 sm:gap-3 p-1.5 sm:p-2 bg-[#F6F5ED] rounded-full w-full sm:w-fit mx-auto border border-gray-100">
-                {["All", "Pending", "Staff Approved", "Approved", "Rejected", "Cancelled"].map((sub) => (
-                  <button key={sub} onClick={() => setActiveSubTab(sub)}
-                    className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-tighter transition-all ${activeSubTab === sub ? "bg-[#B59E74] text-white shadow-md" : "text-gray-500 hover:text-gray-700"}`}>
-                    {sub} Requests
-                  </button>
-                ))}
-              </div>
+              {activeSubTab !== "All" && (
+                <button onClick={() => setActiveSubTab("All")} className="text-xs text-gray-400 hover:text-gray-600 font-bold uppercase tracking-widest transition-colors whitespace-nowrap">✕ Clear</button>
+              )}
             </div>
 
             {/* Search + sort + page size */}
@@ -873,7 +877,7 @@ function AdminDashboard() {
                       <td className="p-4"><StatusBadge status={req.status} /></td>
                       <td className="p-4 text-right">
                         <div className="flex justify-end gap-2">
-                          {req.status === "Staff Approved" && (
+                          {(req.status === "Staff Approved" || req.status === "Priest Approved") && (
                             <>
                               <button onClick={() => openAcceptModal(req)} className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-600 hover:text-white transition-all" title="Accept"><span className="font-bold">✓</span></button>
                               <button onClick={() => openRejectModal(req)} className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all" title="Reject"><span className="font-bold">✕</span></button>
@@ -925,7 +929,7 @@ function AdminDashboard() {
                       ))}
                     </div>
                     <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-50">
-                      {req.status === "Staff Approved" && (
+                      {(req.status === "Staff Approved" || req.status === "Priest Approved") && (
                         <>
                           <button onClick={() => openAcceptModal(req)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">✓ Accept</button>
                           <button onClick={() => openRejectModal(req)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">✕ Reject</button>
@@ -1305,12 +1309,14 @@ function StatCard({ label, count, active, onClick }) {
 
 function StatusBadge({ status }) {
   const cls =
-    status === "Pending"        ? "bg-yellow-100 text-yellow-700" :
-    status === "Staff Approved" ? "bg-blue-100 text-blue-700"     :
-    status === "Approved"       ? "bg-green-100 text-green-700"   :
-    status === "Active"         ? "bg-emerald-100 text-emerald-700":
-    status === "Cancelled"      ? "bg-orange-100 text-orange-700" :
-                                  "bg-red-100 text-red-700";
+    status === "Pending"         ? "bg-yellow-100 text-yellow-700"  :
+    status === "Staff Approved"  ? "bg-blue-100 text-blue-700"      :
+    status === "Priest Approved" ? "bg-purple-100 text-purple-700"  :
+    status === "Priest Rejected" ? "bg-orange-100 text-orange-700"  :
+    status === "Approved"        ? "bg-green-100 text-green-700"    :
+    status === "Active"          ? "bg-emerald-100 text-emerald-700":
+    status === "Cancelled"       ? "bg-orange-100 text-orange-700"  :
+                                   "bg-red-100 text-red-700";
   return (
     <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${cls}`}>{status}</span>
   );

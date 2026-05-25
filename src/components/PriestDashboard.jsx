@@ -143,12 +143,14 @@ function PriestDashboard() {
     }
   };
 
-  const handleStatusUpdate = async (id, type, newStatus) => {
+  const handleStatusUpdate = async (req, newStatus) => {
+    const id = req.id;
+    const type = req.request_type;
     setProcessingId(id);
     const tableName = getTableName(type);
-    
+
     const updatePayload = { status: newStatus };
-    if (newStatus === "Rejected") {
+    if (newStatus === "Priest Rejected") {
       updatePayload.rejection_remarks = rejectReason || "Schedule conflict.";
     }
 
@@ -160,10 +162,42 @@ function PriestDashboard() {
 
       if (error) throw error;
 
-      // Optimistic update for a smooth UI
       setRequests(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
       setRejectingId(null);
       setRejectReason("");
+
+      if (newStatus === "Priest Approved") {
+        await supabase.rpc('notify_admin', {
+          notif_title: `Priest Approved: ${type}`,
+          notif_message: `Fr. ${priestName} has accepted the ${type} request for "${req.display_name}". Awaiting your final confirmation.`,
+          notif_link: '/admin',
+          p_source_id: id,
+          p_source_table: tableName,
+        });
+        if (req.user_id) {
+          await supabase.rpc('notify_parishioner', {
+            target_user_id: req.user_id,
+            notif_title: `Your ${type} Request — Priest Confirmed`,
+            notif_message: `Fr. ${priestName} has accepted your request and it is now awaiting the admin's final confirmation.`,
+            notif_link: '/profile',
+            p_source_id: id,
+            p_source_table: tableName,
+          });
+        }
+      }
+
+      if (newStatus === "Priest Rejected") {
+        if (req.user_id) {
+          await supabase.rpc('notify_parishioner', {
+            target_user_id: req.user_id,
+            notif_title: `Your ${type} Request — Being Reassigned`,
+            notif_message: `The assigned priest was unable to accommodate your request. Our staff will reassign it to another available priest shortly.`,
+            notif_link: '/profile',
+            p_source_id: id,
+            p_source_table: tableName,
+          });
+        }
+      }
     } catch (error) {
       alert("Error updating status: " + error.message);
     } finally {
@@ -174,8 +208,8 @@ function PriestDashboard() {
   const [priestSortBy, setPriestSortBy] = useState("submitted_desc");
   const [priestViewMode, setPriestViewMode] = useState("card"); // "card" | "table"
 
-  const pendingRequests  = requests.filter((r) => r.status === "Pending" || !r.status);
-  const approvedRequests = requests.filter((r) => r.status === "Approved" || r.status === "Active");
+  const pendingRequests  = requests.filter((r) => r.status === "Staff Approved");
+  const approvedRequests = requests.filter((r) => r.status === "Priest Approved" || r.status === "Approved");
 
   const sortList = (list) => [...list].sort((a, b) => {
     if (priestSortBy === "date_asc")       return new Date(a.display_date) - new Date(b.display_date);
@@ -254,7 +288,7 @@ function PriestDashboard() {
             </h3>
             <p className="text-gray-500 font-serif italic">
               {activeTab === "pending"
-                ? "There are no pending requests waiting for your approval right now."
+                ? "There are no staff-approved requests assigned to you right now."
                 : "You do not have any approved sacraments scheduled yet."}
             </p>
           </div>
@@ -324,14 +358,14 @@ function PriestDashboard() {
                         <td className="p-3">
                           {activeTab === "pending" && rejectingId === req.id ? (
                             <div className="flex gap-1 min-w-[180px]">
-                              <button onClick={() => handleStatusUpdate(req.id, req.request_type, "Rejected")} disabled={processingId === req.id} className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">Confirm</button>
+                              <button onClick={() => handleStatusUpdate(req, "Priest Rejected")} disabled={processingId === req.id} className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">Confirm</button>
                               <button onClick={() => { setRejectingId(null); setRejectReason(""); }} className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">Cancel</button>
                             </div>
                           ) : (
                             <div className="flex gap-1">
                               {activeTab === "pending" && (
                                 <>
-                                  <button onClick={() => handleStatusUpdate(req.id, req.request_type, "Approved")} disabled={processingId === req.id} className="px-2 py-1 bg-green-50 hover:bg-green-600 text-green-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✓</button>
+                                  <button onClick={() => handleStatusUpdate(req, "Priest Approved")} disabled={processingId === req.id} className="px-2 py-1 bg-green-50 hover:bg-green-600 text-green-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✓</button>
                                   <button onClick={() => setRejectingId(req.id)} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✕</button>
                                 </>
                               )}
@@ -406,7 +440,7 @@ function PriestDashboard() {
                         ></textarea>
                         <div className="flex gap-2">
                           <button
-                            onClick={() => handleStatusUpdate(req.id, req.request_type, "Rejected")}
+                            onClick={() => handleStatusUpdate(req, "Priest Rejected")}
                             disabled={processingId === req.id}
                             className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-xl uppercase tracking-widest text-xs transition-colors"
                           >
@@ -430,7 +464,7 @@ function PriestDashboard() {
                         </button>
                         <div className="flex gap-2 w-full sm:flex-1">
                           <button
-                            onClick={() => handleStatusUpdate(req.id, req.request_type, "Approved")}
+                            onClick={() => handleStatusUpdate(req, "Priest Approved")}
                             disabled={processingId === req.id}
                             className="flex-1 bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs shadow-md transition-transform hover:-translate-y-1"
                           >
@@ -452,7 +486,7 @@ function PriestDashboard() {
                   <div className="mt-4 flex flex-col gap-3">
                     <div className="flex items-center gap-2 text-green-600 bg-green-50 px-4 py-2 rounded-lg w-fit border border-green-100">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      <span className="text-xs font-bold uppercase tracking-widest">Confirmed to Officiate</span>
+                      <span className="text-xs font-bold uppercase tracking-widest">{req.status === "Approved" ? "Admin Confirmed" : "Pending Admin Approval"}</span>
                     </div>
                     <button
                       onClick={() => setViewingDetails(req)}
