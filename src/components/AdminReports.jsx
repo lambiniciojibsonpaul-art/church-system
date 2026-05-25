@@ -90,6 +90,14 @@ function EventSearchSelect({ events, value, onChange, placeholder = "-- Select a
   );
 }
 
+const getRequestedBy = r => {
+  if (r.is_guest) return r.guest_name || "Guest";
+  const first = r.profiles?.first_name || "";
+  const last = r.profiles?.last_name || "";
+  const full = [first, last].filter(Boolean).join(" ");
+  return full || r.submitter_email || "—";
+};
+
 // Config for every service type — drives the dropdown, fetch, and table render
 const SERVICE_CONFIGS = {
   baptisms: {
@@ -97,18 +105,21 @@ const SERVICE_CONFIGS = {
     getName: r => `${r.child_first_name || ""} ${r.child_last_name || ""}`.trim() || "—",
     getDate: r => r.preferred_date,
     dateLabel: "Preferred Date",
+    getRequestedBy,
   },
   confirmations: {
     label: "Confirmations",
     getName: r => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() || "—",
     getDate: r => r.date_of_confirmation,
     dateLabel: "Date of Confirmation",
+    getRequestedBy,
   },
   holy_communions: {
     label: "Holy Communions",
     getName: r => `${r.child_first_name || ""} ${r.child_surname || ""}`.trim() || "—",
     getDate: r => r.date_of_communion,
     dateLabel: "Date of Communion",
+    getRequestedBy,
   },
   weddings: {
     label: "Weddings",
@@ -119,6 +130,7 @@ const SERVICE_CONFIGS = {
     },
     getDate: r => r.preferred_date,
     dateLabel: "Wedding Date",
+    getRequestedBy,
   },
   mass_intentions: {
     label: "Mass Intentions",
@@ -127,12 +139,14 @@ const SERVICE_CONFIGS = {
       : r.full_name || "—",
     getDate: r => r.preferred_date,
     dateLabel: "Preferred Date",
+    getRequestedBy,
   },
   facilities_bookings: {
     label: "Facilities Bookings",
     getName: r => r.event_purpose || r.purpose || r.event_name || "—",
     getDate: r => r.start_date,
     dateLabel: "Start Date",
+    getRequestedBy,
   },
   certifications: {
     label: "Certification Requests",
@@ -143,12 +157,14 @@ const SERVICE_CONFIGS = {
     },
     getDate: r => r.record_date,
     dateLabel: "Date of Sacrament",
+    getRequestedBy,
   },
   sacraments_liturgical: {
     label: "Sacraments & Liturgical",
     getName: r => r.request_type || "—",
     getDate: r => r.request_date,
     dateLabel: "Request Date",
+    getRequestedBy,
   },
 };
 
@@ -269,7 +285,7 @@ function AdminReports() {
   const fetchServiceData = async (serviceKey) => {
     setServiceLoading(true);
     try {
-      const { data } = await supabase.from(serviceKey).select("*");
+      const { data } = await supabase.from(serviceKey).select("*, profiles(first_name, last_name)");
       setServiceData(data || []);
     } catch (err) {
       console.error("fetchServiceData error:", err);
@@ -520,6 +536,7 @@ function AdminReports() {
                           <tr className="bg-gray-50 print:bg-transparent text-[10px] text-gray-500 print:text-black uppercase tracking-widest font-bold">
                             <th className="p-3 border-b border-gray-200 print:border-black border-r border-r-gray-100 print:border-r-black">#</th>
                             <th className="p-3 border-b border-gray-200 print:border-black border-r border-r-gray-100 print:border-r-black">{cfg.label}</th>
+                            <th className="p-3 border-b border-gray-200 print:border-black border-r border-r-gray-100 print:border-r-black">Requested By</th>
                             <th className="p-3 border-b border-gray-200 print:border-black border-r border-r-gray-100 print:border-r-black">{cfg.dateLabel}</th>
                             <th className="p-3 border-b border-gray-200 print:border-black">Status</th>
                           </tr>
@@ -532,6 +549,9 @@ function AdminReports() {
                                 <td className="p-3 text-xs text-gray-400 border-r border-r-gray-100 print:border-r-black">{idx + 1}</td>
                                 <td className="p-3 text-sm font-medium text-gray-800 print:text-black border-r border-r-gray-100 print:border-r-black">
                                   {cfg.getName(item)}
+                                </td>
+                                <td className="p-3 text-sm text-gray-600 print:text-black border-r border-r-gray-100 print:border-r-black">
+                                  {cfg.getRequestedBy(item)}
                                 </td>
                                 <td className="p-3 text-sm text-gray-600 print:text-black border-r border-r-gray-100 print:border-r-black">
                                   {dateVal ? new Date(dateVal).toLocaleDateString() : "—"}
