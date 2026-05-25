@@ -40,8 +40,6 @@ function CheckInPage() {
     init();
   }, [eventId]);
 
-  // Phase 1 — fast wifi/cell location. Works reliably on both iOS and Android.
-  // maximumAge:60000 allows a cached fix up to 1 min old (user hasn't moved).
   const getLocationFast = () =>
     new Promise((resolve, reject) => {
       if (!navigator.geolocation) { reject(new Error("location_unavailable")); return; }
@@ -219,7 +217,7 @@ function CheckInPage() {
           <div className="text-6xl mb-6">🔑</div>
           <h2 className="text-2xl font-serif text-[#B59E74] uppercase tracking-widest mb-2">Login Required</h2>
           <p className="text-gray-500 italic mb-8 text-sm leading-relaxed">
-            Sign in to your parish account to mark your attendance, or continue as a guest.
+            Sign in to your parish account to confirm your attendance, or continue as a guest.
           </p>
 
           {!showGuestForm ? (
@@ -411,7 +409,7 @@ function CheckInPage() {
             {status === "locating" ? "Getting Location..." :
              status === "improving" ? "Improving Accuracy..." :
              status === "checking_in" ? "Checking In..." :
-             "Tap to Mark Presence"}
+             "Tap to confirm attendance"}
           </button>
 
           <div className="mt-10 text-gray-400 text-xs uppercase tracking-widest">
