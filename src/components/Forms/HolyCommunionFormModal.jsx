@@ -94,10 +94,34 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
     }
     setLoading(true);
     try {
+      // Build an explicit payload that matches the holy_communions DB schema.
+      // Spreading formData directly caused INSERT failures because form fields
+      // like contact_number_1/2, other_guardian_info, and other_requirements
+      // do not exist as columns in the DB table.
+      const safePayload = {
+        date_of_communion:  formData.date_of_communion,
+        time_of_communion:  formData.time_of_communion,
+        preferred_priest:   formData.preferred_priest || null,
+        child_first_name:   formData.child_first_name,
+        child_middle_name:  formData.child_middle_name,
+        child_surname:      formData.child_surname,
+        date_of_birth:      formData.date_of_birth,
+        place_of_birth:     formData.place_of_birth,
+        gender:             formData.gender,
+        current_age:        formData.current_age,
+        date_of_baptism:    formData.date_of_baptism,
+        baptism_parish:     formData.baptism_parish,
+        father_name:        formData.father_name,
+        mother_maiden_name: formData.mother_maiden_name,
+        complete_address:   formData.complete_address,
+        residence_parish:   formData.residence_parish,
+        // Merge both UI contact fields into the single DB column
+        contact_number: [formData.contact_number_1, formData.contact_number_2]
+          .filter(Boolean).join(", "),
+      };
       await submitRequest({
         table: "holy_communions",
-        // Ensure preferred_priest is sent or null if empty
-        payload: { ...formData, preferred_priest: formData.preferred_priest || null },
+        payload: safePayload,
         user,
         guestInfo,
         serviceName: "holy communion",
