@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { restSelect, restUpdate, restInsert, restDelete } from "../supabaseRest";
@@ -234,13 +234,15 @@ function StaffDashboard() {
   const [cancelItemReason, setCancelItemReason] = useState("");
   const [cancelItemSubmitting, setCancelItemSubmitting] = useState(false);
 
+  const refetchTimerRef = useRef(null);
+
   useEffect(() => {
     fetchPendingRequests();
     fetchApprovedItems();
     fetchPriests();
   }, []);
 
-  // Real-time refetch on new notification
+  // Real-time refetch on new notification — debounced to prevent burst queries
   useEffect(() => {
     if (!user?.id) return;
     const channel = supabase
@@ -248,9 +250,15 @@ function StaffDashboard() {
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "notifications",
         filter: `user_id=eq.${user.id}`,
-      }, () => { fetchPendingRequests(); })
+      }, () => {
+        clearTimeout(refetchTimerRef.current);
+        refetchTimerRef.current = setTimeout(() => fetchPendingRequests(), 800);
+      })
       .subscribe();
-    return () => supabase.removeChannel(channel);
+    return () => {
+      clearTimeout(refetchTimerRef.current);
+      supabase.removeChannel(channel);
+    };
   }, [user?.id]);
 
   // Notification-driven highlight + scroll + modal

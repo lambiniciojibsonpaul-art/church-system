@@ -248,6 +248,7 @@ function AdminSchedules() {
     try {
       const { data, error } = await restSelect("events", {
         order: "event_date.asc",
+        rawFilter: { status: "not.eq.Cancelled" },
         timeoutMs: 12000,
       });
       

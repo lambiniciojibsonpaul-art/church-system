@@ -267,37 +267,45 @@ function AdminDashboard() {
   const [deleteEventSubmitting, setDeleteEventSubmitting] = useState(false);
 
   // ── Initial data fetch ───────────────────────────────────────────────────
+  const refetchTimerRef = useRef(null);
+
+  const fetchAllRequestTables = async () => {
+    const entries = Object.entries(TAB_CONFIG);
+    const results = await Promise.allSettled(
+      entries.map(([, cfg]) =>
+        restSelect(cfg.table, {
+          order: "created_at.desc",
+          rawFilter: { status: "not.in.(Rejected,Cancelled)" },
+          timeoutMs: QUERY_TIMEOUT_MS,
+        })
+      )
+    );
+    const merged = {};
+    entries.forEach(([tabName], idx) => {
+      const r = results[idx];
+      if (r.status === "fulfilled" && r.value?.data) {
+        merged[tabName] = r.value.data;
+      } else {
+        merged[tabName] = [];
+        if (r.status === "fulfilled" && r.value?.error)
+          console.warn(`[AdminDashboard] ${tabName} fetch error:`, r.value.error.message);
+      }
+    });
+    return merged;
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const entries = Object.entries(TAB_CONFIG);
-      const [tabResults] = await Promise.all([
-        Promise.allSettled(
-          entries.map(([, cfg]) =>
-            restSelect(cfg.table, { order: "created_at.desc", timeoutMs: QUERY_TIMEOUT_MS })
-          )
-        ),
-      ]);
+      const merged = await fetchAllRequestTables();
       if (cancelled) return;
-
-      const merged = {};
-      entries.forEach(([tabName], idx) => {
-        const r = tabResults[idx];
-        if (r.status === "fulfilled" && r.value?.data) {
-          merged[tabName] = r.value.data;
-        } else {
-          merged[tabName] = [];
-          if (r.status === "fulfilled" && r.value?.error)
-            console.warn(`[AdminDashboard] ${tabName} fetch error:`, r.value.error.message);
-        }
-      });
       setRequests(merged);
       setLoading(false);
     })();
     return () => { cancelled = true; };
   }, []);
 
-  // Re-fetch all request tables when a new admin notification arrives
+  // Re-fetch all request tables when a new admin notification arrives (debounced)
   useEffect(() => {
     if (!user?.id) return;
     const channel = supabase
@@ -308,22 +316,17 @@ function AdminDashboard() {
         table: "notifications",
         filter: `user_id=eq.${user.id}`,
       }, () => {
-        const entries = Object.entries(TAB_CONFIG);
-        Promise.allSettled(
-          entries.map(([, cfg]) =>
-            restSelect(cfg.table, { order: "created_at.desc", timeoutMs: QUERY_TIMEOUT_MS })
-          )
-        ).then((tabResults) => {
-          const merged = {};
-          entries.forEach(([tabName], idx) => {
-            const r = tabResults[idx];
-            if (r.status === "fulfilled" && r.value?.data) merged[tabName] = r.value.data;
-          });
+        clearTimeout(refetchTimerRef.current);
+        refetchTimerRef.current = setTimeout(async () => {
+          const merged = await fetchAllRequestTables();
           setRequests(prev => ({ ...prev, ...merged }));
-        });
+        }, 800);
       })
       .subscribe();
-    return () => supabase.removeChannel(channel);
+    return () => {
+      supabase.removeChannel(channel);
+      clearTimeout(refetchTimerRef.current);
+    };
   }, [user?.id]);
 
   // ── Events fetch ─────────────────────────────────────────────────────────
@@ -331,7 +334,9 @@ function AdminDashboard() {
     let cancelled = false;
     (async () => {
       const { data, error } = await restSelect("events", {
-        order: "event_date.desc", timeoutMs: QUERY_TIMEOUT_MS,
+        order: "event_date.desc",
+        rawFilter: { status: "not.eq.Cancelled" },
+        timeoutMs: QUERY_TIMEOUT_MS,
       });
       if (cancelled) return;
       if (error) console.warn("[AdminDashboard] events fetch error:", error.message);

@@ -51,6 +51,7 @@ export async function restSelect(table, opts = {}) {
   const {
     select = "*",
     match = {},
+    rawFilter = {},
     order = null,
     single = false,
     timeoutMs = 12000,
@@ -59,6 +60,9 @@ export async function restSelect(table, opts = {}) {
   const params = { select };
   Object.entries(match).forEach(([col, val]) => {
     params[col] = `eq.${val}`;
+  });
+  Object.entries(rawFilter).forEach(([col, val]) => {
+    params[col] = val;
   });
   if (order) params.order = order;
 

@@ -125,6 +125,7 @@ function EventsPage() {
     try {
       const { data, error } = await restSelect("events", {
         order: "event_time.asc",
+        rawFilter: { status: "not.eq.Cancelled" },
         timeoutMs: EVENTS_FETCH_TIMEOUT_MS,
       });
 
