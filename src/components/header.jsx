@@ -384,7 +384,7 @@ function Header({ forceSolidBg = false }) {
             {(isAdmin || isPriest || isStaff || isMinister) ? (
               /* Staff nav — sans-serif, uppercase, matching dashboard style */
               <div className="flex gap-6 xl:gap-8 items-center">
-                <Link to="/events"     className={`text-[11px] font-bold uppercase tracking-widest transition-colors hover:text-[#B59E74] ${isSolid ? "text-gray-600" : "text-white"}`}>Events</Link>
+                <Link to="/events"     className={`text-[11px] font-bold uppercase tracking-widest transition-colors hover:text-[#B59E74] ${isSolid ? "text-gray-600" : "text-white"}`}>Calendar</Link>
                 <Link to="/services"   className={`text-[11px] font-bold uppercase tracking-widest transition-colors hover:text-[#B59E74] ${isSolid ? "text-gray-600" : "text-white"}`}>Services</Link>
                 <Link to="/ministries" className={`text-[11px] font-bold uppercase tracking-widest transition-colors hover:text-[#B59E74] ${isSolid ? "text-gray-600" : "text-white"}`}>Ministries</Link>
               </div>
@@ -394,7 +394,7 @@ function Header({ forceSolidBg = false }) {
                 <Link to="/"           className="hover:text-[#B59E74] transition-colors">Home</Link>
                 <Link to="/about"      className="hover:text-[#B59E74] transition-colors">About Us</Link>
                 <Link to="/services"   className="hover:text-[#B59E74] transition-colors">Services</Link>
-                <Link to="/events"     className="hover:text-[#B59E74] transition-colors">Events</Link>
+                <Link to="/events"     className="hover:text-[#B59E74] transition-colors">Calendar</Link>
                 <Link to="/ministries" className="hover:text-[#B59E74] transition-colors">Ministries</Link>
                 <Link to="/give"       className="hover:text-[#B59E74] transition-colors">Give</Link>
                 <a
@@ -481,7 +481,7 @@ function Header({ forceSolidBg = false }) {
             <ul className={`mt-2 flex flex-col gap-4 p-6 rounded-2xl shadow-xl ${isSolid ? "bg-gray-50" : "bg-black/90 text-white"}`}>
               {(isAdmin || isPriest || isStaff || isMinister) ? (
                 <>
-                  <li><Link to="/events"     onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Events</Link></li>
+                  <li><Link to="/events"     onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Calendar</Link></li>
                   <li><Link to="/services"   onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Services</Link></li>
                   <li><Link to="/ministries" onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Ministries</Link></li>
                 </>
@@ -490,7 +490,7 @@ function Header({ forceSolidBg = false }) {
                   <li><Link to="/"           onClick={() => setIsOpen(false)}>Home</Link></li>
                   <li><Link to="/about"      onClick={() => setIsOpen(false)}>About Us</Link></li>
                   <li><Link to="/services"   onClick={() => setIsOpen(false)}>Services</Link></li>
-                  <li><Link to="/events"     onClick={() => setIsOpen(false)}>Events</Link></li>
+                  <li><Link to="/events"     onClick={() => setIsOpen(false)}>Calendar</Link></li>
                   <li><Link to="/ministries" onClick={() => setIsOpen(false)}>Ministries</Link></li>
                 </>
               )}
