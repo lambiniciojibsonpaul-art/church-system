@@ -2,14 +2,15 @@
 // after they submit a sacrament request.
 //
 // SETUP REQUIRED before this function will actually deliver mail:
-//   1. Sign up for Resend (https://resend.com) — free tier is fine.
-//   2. Verify the sender domain or use the resend.dev test sender for now.
-//   3. In the Supabase Dashboard → Edge Functions → Settings, set:
-//        RESEND_API_KEY     = "re_xxxxxxxxxxxxxx"
+//   1. Sign up for MailerSend (https://app.mailersend.com/) — free tier is fine.
+//   2. Generate an API token in Settings → API.
+//   3. Verify the sender domain under Sending Domains (or use trial domain temporarily).
+//   4. In the Supabase Dashboard → Edge Functions → Settings, set:
+//        MAILERSEND_API_KEY = "ms_xxxxxxxxxxxxxxxxxxxxxx"
 //        FROM_EMAIL         = "Parish Office <noreply@yourdomain.com>"
-//   4. Deploy:  npx supabase functions deploy send-request-email
+//   5. Deploy:  npx supabase functions deploy send-request-email
 //
-// Without RESEND_API_KEY this function returns 200 with `{ skipped: true }` —
+// Without MAILERSEND_API_KEY this function returns 200 with `{ skipped: true }` —
 // it is safe to call from the client without breaking the request flow.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -30,12 +31,18 @@ serve(async (req) => {
       return json({ error: "Missing 'to' or 'serviceName'." }, 400);
     }
 
-    const apiKey = Deno.env.get("RESEND_API_KEY");
-    const from = Deno.env.get("FROM_EMAIL") || "Parish Office <onboarding@resend.dev>";
+    const apiKey = Deno.env.get("MAILERSEND_API_KEY");
+    const fromEmail = Deno.env.get("FROM_EMAIL") || "Parish Office <onboarding@mailersend.net>";
 
     if (!apiKey) {
-      return json({ skipped: true, reason: "RESEND_API_KEY not set" });
+      return json({ skipped: true, reason: "MAILERSEND_API_KEY not set" });
     }
+
+    // Parse "Name <email@domain.com>" format
+    const emailMatch = fromEmail.match(/<(.+?)>/);
+    const email = emailMatch ? emailMatch[1] : fromEmail;
+    const nameMatch = fromEmail.match(/^(.+?)\s*</);
+    const name = nameMatch ? nameMatch[1].trim() : "Parish Office";
 
     const subject = `We received your ${body.serviceName} request`;
     const html = `
@@ -55,18 +62,23 @@ serve(async (req) => {
       </div>
     `.trim();
 
-    const r = await fetch("https://api.resend.com/emails", {
+    const r = await fetch("https://api.mailersend.com/v1/email", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from, to: body.to, subject, html }),
+      body: JSON.stringify({
+        from: { email, name },
+        to: [{ email: body.to }],
+        subject,
+        html,
+      }),
     });
 
     if (!r.ok) {
       const errText = await r.text();
-      return json({ error: `Resend API error: ${errText}` }, 500);
+      return json({ error: `MailerSend API error: ${errText}` }, 500);
     }
 
     return json({ ok: true });
