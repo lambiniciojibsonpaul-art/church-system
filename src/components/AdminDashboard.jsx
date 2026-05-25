@@ -882,7 +882,10 @@ function AdminDashboard() {
                       <td className="p-4"><StatusBadge status={req.status} /></td>
                       <td className="p-4 text-right">
                         <div className="flex justify-end gap-2">
-                          {(req.status === "Staff Approved" || req.status === "Priest Approved") && (
+                          {resolveConfigFor(req)?.requiresPriest && req.status === "Staff Approved" && (
+                            <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-blue-50 text-blue-500">Awaiting Priest</span>
+                          )}
+                          {(resolveConfigFor(req)?.requiresPriest ? req.status === "Priest Approved" : req.status === "Staff Approved") && (
                             <>
                               <button onClick={() => openAcceptModal(req)} className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-600 hover:text-white transition-all" title="Accept"><span className="font-bold">✓</span></button>
                               <button onClick={() => openRejectModal(req)} className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all" title="Reject"><span className="font-bold">✕</span></button>
@@ -934,7 +937,10 @@ function AdminDashboard() {
                       ))}
                     </div>
                     <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-50">
-                      {(req.status === "Staff Approved" || req.status === "Priest Approved") && (
+                      {resolveConfigFor(req)?.requiresPriest && req.status === "Staff Approved" && (
+                        <div className="w-full py-2 px-3 rounded-lg bg-blue-50 text-blue-500 text-xs font-bold uppercase tracking-widest text-center">Awaiting Priest Approval</div>
+                      )}
+                      {(resolveConfigFor(req)?.requiresPriest ? req.status === "Priest Approved" : req.status === "Staff Approved") && (
                         <>
                           <button onClick={() => openAcceptModal(req)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">✓ Accept</button>
                           <button onClick={() => openRejectModal(req)} className="flex-1 min-w-[100px] py-2.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-600 hover:text-white text-xs font-bold uppercase tracking-widest transition-all">✕ Reject</button>
