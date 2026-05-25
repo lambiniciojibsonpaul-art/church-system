@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { QRCodeCanvas } from "qrcode.react";
 import { useNavigate, useLocation, Link } from "react-router-dom"; // ✨ added useLocation
 import { restSelect, restUpdate, restInsert, restDelete } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
@@ -530,7 +531,7 @@ function AdminDashboard() {
         }
         if (eventErr) {
           console.warn("[AdminDashboard] event creation failed:", eventErr.message);
-          alert("Request approved, but the calendar event could not be created: " + eventErr.message + "\n\nYou can add it manually from the Schedules page.");
+          alert("Request approved, but the calendar event could not be created: " + eventErr.message + "\n\nYou can add it manually from the Events page.");
         }
       }
     }
@@ -706,10 +707,8 @@ function AdminDashboard() {
             <Link to="/admin/manage-users" className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95">
               <span>👤</span> Manage Accounts
             </Link>
-            <button onClick={() => navigate("/admin/schedules")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>📅</span> Schedules</button>
+            <button onClick={() => navigate("/admin/schedules")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>📅</span> Events</button>
             <button onClick={() => navigate("/admin/reports")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>📊</span> Reports</button>
-            <button onClick={() => navigate("/admin/attendance-list")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>👥</span> Attendance</button>
-            <button onClick={() => navigate("/admin/qr-generator")} className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"><span>🔳</span> QR Codes</button>
             <button
               onClick={() => navigate("/admin/announcements")}
               className="flex items-center justify-center gap-2 bg-white border-2 border-[#B59E74] text-[#B59E74] px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm hover:bg-[#B59E74] hover:text-white active:scale-95"
@@ -1232,7 +1231,7 @@ function AdminDashboard() {
       {selectedRequest && <DetailsModal request={selectedRequest} tabName={selectedRequest._tab || activeTab} onClose={() => setSelectedRequest(null)} />}
 
       {/* EVENT DETAILS */}
-      {selectedEvent && <DetailsModal request={selectedEvent} tabName="Parish Event" onClose={() => setSelectedEvent(null)} />}
+      {selectedEvent && <EventDetailsModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
 
       {/* CANCEL EVENT */}
       {cancellingEvent && (
@@ -1329,6 +1328,156 @@ function formatValue(key, val) {
     try { const d = new Date(val); if (!isNaN(d)) return d.toLocaleDateString(); } catch { /* ignore */ }
   }
   return String(val);
+}
+
+function EventDetailsModal({ event, onClose }) {
+  const [activePanel, setActivePanel] = useState("details");
+  const [attendance, setAttendance] = useState([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const qrRef = useRef(null);
+
+  const baseUrl = window.location.href.split("#")[0].replace(/\/$/, "");
+  const checkInUrl = `${baseUrl}/#/check-in/${event.id}`;
+
+  const formatTime = (t) => {
+    if (!t) return "";
+    const [h, m] = t.split(":");
+    const hr = parseInt(h, 10);
+    return `${hr % 12 || 12}:${m} ${hr >= 12 ? "PM" : "AM"}`;
+  };
+
+  useEffect(() => {
+    if (activePanel !== "attendance") return;
+    setAttendanceLoading(true);
+    supabase
+      .from("attendance_details")
+      .select("*")
+      .eq("event_id", event.id)
+      .order("check_in_time", { ascending: false })
+      .then(({ data }) => {
+        setAttendance(data || []);
+        setAttendanceLoading(false);
+      });
+  }, [activePanel, event.id]);
+
+  const handlePrint = () => window.print();
+
+  const panels = [
+    { key: "details",    label: "📋 Details" },
+    { key: "qr",         label: "🔳 QR Code" },
+    { key: "attendance", label: "👥 Attendance" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+      <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">
+
+        {/* Header */}
+        <div className="sticky top-0 bg-white px-6 sm:px-8 py-5 z-10 flex justify-between items-start border-b border-gray-100">
+          <div className="min-w-0 pr-4">
+            <p className="text-[10px] font-bold text-[#B59E74] uppercase tracking-widest mb-0.5">{event.event_class || "Parish Event"}</p>
+            <h2 className="text-xl font-serif text-gray-800 font-medium leading-tight break-words">{event.title}</h2>
+            <p className="text-xs text-gray-400 mt-1">{event.event_date ? new Date(event.event_date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : ""}{event.event_time ? ` · ${formatTime(event.event_time)}` : ""}</p>
+          </div>
+          <button onClick={onClose} className="shrink-0 w-9 h-9 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500 text-sm">✕</button>
+        </div>
+
+        {/* Panel tabs */}
+        <div className="px-6 sm:px-8 pt-4 pb-0">
+          <div className="flex gap-1 p-1.5 bg-[#F6F5ED] rounded-full w-fit border border-gray-100">
+            {panels.map(({ key, label }) => (
+              <button key={key} onClick={() => setActivePanel(key)}
+                className={`px-4 py-2 rounded-full text-[11px] font-bold uppercase tracking-widest transition-all whitespace-nowrap ${activePanel === key ? "bg-[#B59E74] text-white shadow-md" : "text-gray-500 hover:text-gray-700"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-6 sm:p-8">
+
+          {/* ── Details panel ── */}
+          {activePanel === "details" && (
+            <div className="space-y-4 text-sm">
+              {[
+                { label: "Status",    value: event.status || "Active" },
+                { label: "Date",      value: event.event_date ? new Date(event.event_date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : "—" },
+                { label: "Time",      value: formatTime(event.event_time) || "—" },
+                { label: "Location",  value: event.location || "—" },
+                { label: "Facility",  value: event.setting || null },
+                { label: "Hosted By", value: event.ministry || (event.priest_name ? `Fr. ${event.priest_name}` : null) },
+              ].filter(({ value }) => value).map(({ label, value }) => (
+                <div key={label} className="flex gap-3">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 w-20 shrink-0 pt-0.5">{label}</span>
+                  <span className="text-gray-800 font-medium flex-1 break-words">{value}</span>
+                </div>
+              ))}
+              {event.description && (
+                <div className="flex gap-3">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 w-20 shrink-0 pt-0.5">Notes</span>
+                  <p className="text-gray-700 flex-1 whitespace-pre-wrap leading-relaxed">{event.description}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── QR Code panel ── */}
+          {activePanel === "qr" && (
+            <div className="flex flex-col items-center gap-5">
+              <p className="text-xs text-gray-400 italic text-center">Parishioners scan this QR code to check in to the event.</p>
+              <div ref={qrRef} className="flex flex-col items-center p-6 bg-white border-2 border-dashed border-gray-200 rounded-2xl print:border-none">
+                <h3 className="text-lg font-serif text-gray-800 uppercase tracking-wide text-center mb-4">{event.title}</h3>
+                <div className="p-3 bg-white shadow-sm border border-gray-100 rounded-xl">
+                  <QRCodeCanvas value={checkInUrl} size={220} level="H" includeMargin={true} />
+                </div>
+                <p className="mt-4 text-[10px] text-gray-400 uppercase tracking-widest text-center">Scan with phone camera to mark attendance</p>
+              </div>
+              <button onClick={handlePrint} className="print:hidden w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-3 rounded-xl uppercase tracking-widest transition-all shadow-md text-xs">
+                🖨️ Print QR Code
+              </button>
+            </div>
+          )}
+
+          {/* ── Attendance panel ── */}
+          {activePanel === "attendance" && (
+            <div>
+              {attendanceLoading ? (
+                <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B59E74]"></div></div>
+              ) : attendance.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-4xl mb-3">👥</p>
+                  <p className="text-gray-500 font-serif italic">No check-ins recorded for this event yet.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">{attendance.length} attendee{attendance.length !== 1 ? "s" : ""}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {attendance.map((a, i) => (
+                      <div key={a.id || i} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-xl border border-gray-100">
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">
+                            {a.is_guest
+                              ? `${a.guest_name || "Guest"} (Guest)`
+                              : `${a.first_name || ""} ${a.last_name || ""}`.trim() || a.email || "Parishioner"}
+                          </p>
+                          {!a.is_guest && a.email && <p className="text-[11px] text-gray-400">{a.email}</p>}
+                        </div>
+                        <span className="text-[10px] text-gray-400 shrink-0 ml-3">
+                          {a.check_in_time ? new Date(a.check_in_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function DetailsModal({ request, tabName, onClose }) {
