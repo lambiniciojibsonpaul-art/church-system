@@ -1,5 +1,12 @@
 import church2 from "../assets/Images/church2.jpg";
 
+// ✨ Make sure to place your images in the 'src/assets/Images/' folder 
+// and name them exactly like this (or update the filenames below to match yours).
+import frFernando from "../assets/Images/fr-fernando.jpg";
+import frEdwin from "../assets/Images/fr-edwin.jpg";
+import frMark from "../assets/Images/fr-mark.jpg";
+import frChristian from "../assets/Images/fr-christian.jpg";
+
 function AboutUsPage() {
   // Parallax background style using church2.jpg
   const backgroundStyle = {
@@ -10,10 +17,14 @@ function AboutUsPage() {
   };
 
   // Helper component for the Pastor profiles
-  const PastorProfile = ({ name, role, email }) => (
+  const PastorProfile = ({ name, role, email, image }) => (
     <div className="flex flex-col text-left">
-      <div className="w-full aspect-[3/4] bg-gray-200 mb-6 flex items-center justify-center text-gray-400 rounded-md shadow-sm">
-        [Image Placeholder]
+      <div className="w-full aspect-[3/4] bg-gray-200 mb-6 flex items-center justify-center text-gray-400 rounded-md shadow-sm overflow-hidden">
+        {image ? (
+          <img src={image} alt={name} className="w-full h-full object-cover" />
+        ) : (
+          <span>[Image Placeholder]</span>
+        )}
       </div>
       <h3 className="text-2xl text-[#B59E74] font-bold mb-2 leading-tight">
         {name.split(" ").map((part, i) => (
@@ -23,12 +34,14 @@ function AboutUsPage() {
         ))}
       </h3>
       <p className="text-gray-500 font-serif italic mb-1">{role}</p>
-      <a
-        href={`mailto:${email}`}
-        className="text-[#B59E74] font-serif italic underline text-sm hover:text-[#9c8760] transition-colors"
-      >
-        {email}
-      </a>
+      {email && (
+        <a
+          href={`mailto:${email}`}
+          className="text-[#B59E74] font-serif italic underline text-sm hover:text-[#9c8760] transition-colors"
+        >
+          {email}
+        </a>
+      )}
     </div>
   );
 
@@ -125,10 +138,10 @@ function AboutUsPage() {
                 </h3>
                 <div className="border border-[#B59E74] rounded-lg p-6 max-w-sm bg-white shadow-sm">
                   <h4 className="text-xl text-[#B59E74] font-serif mb-2">
-                    Rev. Fr. Fernando B. Jardin Jr.
+                    Rev. Fr. Fernando B. Radin, Jr., OFM
                   </h4>
                   <p className="text-gray-600 font-serif text-sm">
-                    Parish Priest and Rector
+                    Parish Priest & Rector
                   </p>
                 </div>
               </div>
@@ -230,25 +243,26 @@ function AboutUsPage() {
 
         {/* 4-Column Grid for Pastors */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 md:gap-8">
+          {/* ✨ Reordered to match the requested hierarchy */}
           <PastorProfile
-            name="Name 1"
-            role="Lead Pastor"
-            email="Info@mysite.com"
+            name="Rev. Fr. Fernando B. Radin, Jr., OFM"
+            role="Parish Priest & Rector"
+            image={frFernando}
           />
           <PastorProfile
-            name="Name 2"
-            role="Executive Pastor"
-            email="Info@mysite.com"
+            name="Rev. Fr. Edwin Peter R. Dionisio, OFM"
+            role="Guardian"
+            image={frEdwin}
           />
           <PastorProfile
-            name="Name 3"
-            role="Director of Children's Ministry"
-            email="Info@mysite.com"
+            name="Rev. Fr. Mark Gil D. Yongco, OFM"
+            role="Parochial Vicar, Master of Postulants, Bursar"
+            image={frMark}
           />
           <PastorProfile
-            name="Name 4"
-            role="Marriage Preparation"
-            email="Info@mysite.com"
+            name="Rev. Fr. Christian Exequiel T. Bueno, OFM"
+            role="Vocation Director"
+            image={frChristian}
           />
         </div>
       </section>
