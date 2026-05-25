@@ -27,6 +27,7 @@ const ROLE_FILTERS = [
   { label: "Parishioners", value: "parishioner" },
   { label: "Staff", value: "staff" },
   { label: "Admin", value: "admin" },
+  { label: "Priests", value: "priest" },
   { label: "Ministry", value: "ministry" },
 ];
 
