@@ -6,6 +6,7 @@ import { useAuth } from "../contexts/useAuth";
 import { sendApprovalEmail } from "../emailNotifications";
 import { QRCodeCanvas } from "qrcode.react";
 import jsPDF from "jspdf";
+import UserRepository from "./UserRepository";
 
 function formatDate(d) {
   if (!d) return "";
@@ -164,26 +165,14 @@ const TAB_CONFIG = {
 
 const TAB_NAMES = Object.keys(TAB_CONFIG);
 
-// ----------------------------------------------------------------------------
-// FULL DETAILS VIEWER CONFIGURATION
-// ----------------------------------------------------------------------------
+// ─── Details viewer helpers ───────────────────────────────────────────────────
 const HIDDEN_FIELDS = new Set([
-  "id",
-  "created_at",
-  "user_id",
-  "declaration_consent",
-  "_tab",
-  "_config",
-  "request_type",
-  "display_date",
-  "display_name",
-  "preferred_time"
+  "id", "created_at", "user_id", "declaration_consent",
+  "_tab", "_config", "request_type", "display_date", "display_name", "preferred_time"
 ]);
 
 function humanizeKey(key) {
-  return key
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function formatValue(key, val) {
@@ -198,51 +187,49 @@ function formatValue(key, val) {
   return String(val);
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
 function StaffDashboard() {
   const { user, role, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation(); // ✨ NEW
-  const [activeTab, setActiveTab] = useState("requests");
+  const location = useLocation();
 
-  // ✨ NEW: highlight state for notification-driven scroll+glow
+  const [activeTab, setActiveTab] = useState("requests");
   const [highlightId, setHighlightId] = useState(null);
 
-  // Role guard — only staff (and admin/superadmin) may access this page
+  // Role guard
   useEffect(() => {
     if (!authLoading && role && role !== "staff" && role !== "admin" && role !== "superadmin") {
       navigate("/", { replace: true });
     }
   }, [authLoading, role, navigate]);
 
-  // State for Dynamic Priests
   const [priestNames, setPriestNames] = useState([]);
 
-  // States for Approved Items (Events, Certs, QR)
+  // Approved items
   const [items, setItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [viewingDetails, setViewingDetails] = useState(null);
   const [activeQR, setActiveQR] = useState(null);
 
-  // States for Pending Requests
+  // Pending requests
   const [requests, setRequests] = useState({});
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [activeServiceTab, setActiveServiceTab] = useState("All Services");
-  const [staffSortBy, setStaffSortBy] = useState("submitted_desc");
+  const [staffSortBy, setStaffSortBy] = useState("submitted_asc");
 
   // Approval/Rejection Modals
   const [staffViewMode, setStaffViewMode] = useState("card"); // "card" | "table"
-  const [staffSearch, setStaffSearch] = useState("");
-  const [itemsSortBy, setItemsSortBy] = useState("submitted_desc");
 
   const [acceptingRequest, setAcceptingRequest] = useState(null);
   const [assignedPriest, setAssignedPriest] = useState("");
   const [acceptSubmitting, setAcceptSubmitting] = useState(false);
 
+  // Reject modal
   const [rejectingRequest, setRejectingRequest] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [rejectSubmitting, setRejectSubmitting] = useState(false);
 
-  // Revoke/Cancel States for Approved Items
+  // Revoke modal
   const [cancellingItem, setCancellingItem] = useState(null);
   const [cancelItemReason, setCancelItemReason] = useState("");
   const [cancelItemSubmitting, setCancelItemSubmitting] = useState(false);
@@ -253,56 +240,37 @@ function StaffDashboard() {
     fetchPriests();
   }, []);
 
-  // Re-fetch pending requests when a new staff notification arrives (e.g. new form submission)
+  // Real-time refetch on new notification
   useEffect(() => {
     if (!user?.id) return;
     const channel = supabase
       .channel("staff-dashboard-new-requests")
       .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "notifications",
+        event: "INSERT", schema: "public", table: "notifications",
         filter: `user_id=eq.${user.id}`,
-      }, () => {
-        fetchPendingRequests();
-      })
+      }, () => { fetchPendingRequests(); })
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [user?.id]);
 
-  // ✨ NEW: Handle notification click → switch tab → scroll → highlight → open modal
+  // Notification-driven highlight + scroll + modal
   useEffect(() => {
     if (!location.state?.highlightId || requestsLoading) return;
-
     const { highlightId: targetId, highlightTable } = location.state;
-
-    // Find which service tab owns this table
-    const targetTab = Object.entries(TAB_CONFIG).find(
-      ([, cfg]) => cfg.table === highlightTable
-    )?.[0];
-
+    const targetTab = Object.entries(TAB_CONFIG).find(([, cfg]) => cfg.table === highlightTable)?.[0];
     if (!targetTab) return;
 
-    // Switch to requests tab and the correct service filter
     setActiveTab("requests");
     setActiveServiceTab(targetTab);
 
-    // Poll for the card to appear in the DOM after tab switch + render
     let attempts = 0;
     const interval = setInterval(() => {
       attempts++;
       const cardEl = document.getElementById(`request-card-${targetId}`);
-
       if (cardEl) {
         clearInterval(interval);
-
-        // Scroll the card into the center of the viewport
         cardEl.scrollIntoView({ behavior: "smooth", block: "center" });
-
-        // Trigger the gold glow highlight
         setHighlightId(targetId);
-
-        // Open the details modal after scroll settles
         setTimeout(() => {
           const allReqs = Object.values(requests).flat();
           const targetReq = allReqs.find((r) => r.id === targetId);
@@ -314,37 +282,23 @@ function StaffDashboard() {
             });
           }
         }, 700);
-
-        // Remove highlight after 2.5s
         setTimeout(() => setHighlightId(null), 2500);
-
-        // Clear location state so a page refresh doesn't re-trigger
         window.history.replaceState({}, document.title);
       }
-
-      // Give up after 3 seconds (30 × 100ms)
       if (attempts > 30) clearInterval(interval);
     }, 100);
-
     return () => clearInterval(interval);
   }, [location.state, requestsLoading, requests]);
 
-  // --- FETCH DYNAMIC PRIESTS ---
+  // ── Fetchers ─────────────────────────────────────────────────────────────
   const fetchPriests = async () => {
     try {
-      const { data, error } = await restSelect("priests", {
-        match: { is_active: true },
-        order: "name.asc",
-        timeoutMs: 10000,
-      });
+      const { data, error } = await restSelect("priests", { match: { is_active: true }, order: "name.asc", timeoutMs: 10000 });
       if (error) throw error;
       if (data) setPriestNames(data.map(p => p.name));
-    } catch (err) {
-      console.error("Failed to load priests:", err);
-    }
+    } catch (err) { console.error("Failed to load priests:", err); }
   };
 
-  // --- FETCH PENDING REQUESTS ---
   const fetchPendingRequests = async () => {
     setRequestsLoading(true);
     const entries = Object.entries(TAB_CONFIG);
@@ -360,96 +314,63 @@ function StaffDashboard() {
         return restSelect(cfg.table, { match: { status: "Pending" }, order: "created_at.asc", timeoutMs: 12000 });
       })
     );
-
     const merged = {};
     entries.forEach(([tabName], idx) => {
       const r = results[idx];
-      if (r.status === "fulfilled" && r.value?.data) {
-        merged[tabName] = r.value.data;
-      } else {
-        merged[tabName] = [];
-      }
+      merged[tabName] = (r.status === "fulfilled" && r.value?.data) ? r.value.data : [];
     });
     setRequests(merged);
     setRequestsLoading(false);
   };
 
-  // --- FETCH APPROVED ITEMS ---
   const fetchApprovedItems = async () => {
     setItemsLoading(true);
     let allItems = [];
     try {
       const { data: baptisms } = await supabase.from("baptisms").select("*").eq("status", "Approved");
-      if (baptisms) {
-        allItems = [...allItems, ...baptisms.map((b) => ({
-          ...b, request_type: "Baptism", display_date: b.preferred_date || b.created_at,
-          display_name: `${b.child_first_name || ''} ${b.child_last_name || ''}`,
-        }))];
-      }
+      if (baptisms) allItems = [...allItems, ...baptisms.map((b) => ({
+        ...b, request_type: "Baptism", display_date: b.preferred_date || b.created_at,
+        display_name: `${b.child_first_name || ""} ${b.child_last_name || ""}`,
+      }))];
 
       const { data: weddings } = await supabase.from("weddings").select("*").eq("status", "Approved");
-      if (weddings) {
-        allItems = [...allItems, ...weddings.map((w) => ({
-          ...w, request_type: "Wedding", display_date: w.wedding_date || w.created_at,
-          display_name: `${w.groom_first_name || ''} ${w.groom_surname || ''}`.trim() + ` & ${w.bride_first_name || ''} ${w.bride_surname || ''}`.trim() || 'Wedding',
-        }))];
-      }
+      if (weddings) allItems = [...allItems, ...weddings.map((w) => ({
+        ...w, request_type: "Wedding", display_date: w.wedding_date || w.created_at,
+        display_name: `${w.groom_first_name || ""} ${w.groom_surname || ""}`.trim() + ` & ${w.bride_first_name || ""} ${w.bride_surname || ""}`.trim() || "Wedding",
+      }))];
 
       const { data: events } = await supabase.from("events").select("*").eq("status", "Active");
-      if (events) {
-        allItems = [...allItems, ...events.map(e => ({
-          ...e, request_type: "Parish Event", display_date: e.event_date,
-          display_name: e.title, preferred_time: e.event_time
-        }))];
-      }
+      if (events) allItems = [...allItems, ...events.map(e => ({
+        ...e, request_type: "Parish Event", display_date: e.event_date,
+        display_name: e.title, preferred_time: e.event_time,
+      }))];
 
       allItems.sort((a, b) => new Date(a.display_date) - new Date(b.display_date));
       setItems(allItems);
-    } catch (err) {
-      console.error("Fetch error:", err);
-    } finally {
-      setItemsLoading(false);
-    }
+    } catch (err) { console.error("Fetch error:", err); }
+    finally { setItemsLoading(false); }
   };
 
-  // --- APPROVAL LOGIC ---
-  const resolveTabFor = (req) => req._tab || activeServiceTab;
+  // ── Approval handlers ─────────────────────────────────────────────────────
+  const resolveTabFor    = (req) => req._tab || activeServiceTab;
   const resolveConfigFor = (req) => req._config || TAB_CONFIG[resolveTabFor(req)];
 
   const confirmAccept = async () => {
     if (!acceptingRequest) return;
-    const reqTab = resolveTabFor(acceptingRequest);
+    const reqTab    = resolveTabFor(acceptingRequest);
     const reqConfig = resolveConfigFor(acceptingRequest);
-
-    if (reqConfig.isSacrament && !assignedPriest) {
-      return alert("Please assign a priest before approving.");
-    }
-
+    if (reqConfig.isSacrament && !assignedPriest) return alert("Please assign a priest before approving.");
     setAcceptSubmitting(true);
 
-    const { error: updateErr } = await restUpdate(
-      reqConfig.table,
-      { id: acceptingRequest.id },
-      { status: "Staff Approved", preferred_priest: assignedPriest || null }
-    );
-
-    if (updateErr) {
-      setAcceptSubmitting(false);
-      return alert("Error approving request: " + updateErr.message);
-    }
+    const { error: updateErr } = await restUpdate(reqConfig.table, { id: acceptingRequest.id }, { status: "Staff Approved", preferred_priest: assignedPriest || null });
+    if (updateErr) { setAcceptSubmitting(false); return alert("Error approving request: " + updateErr.message); }
 
     if (acceptingRequest.submitter_email) {
       sendApprovalEmail({
         to: acceptingRequest.submitter_email,
         serviceName: reqTab.toLowerCase(),
-        eventDate: formatDate(
-          acceptingRequest.preferred_date || acceptingRequest.wedding_date ||
-          acceptingRequest.date_of_confirmation || acceptingRequest.date_of_communion ||
-          acceptingRequest.start_date || acceptingRequest.request_date
-        ),
-        eventTime: acceptingRequest.preferred_time || acceptingRequest.wedding_time ||
-          acceptingRequest.time_of_confirmation || acceptingRequest.time_of_communion ||
-          acceptingRequest.start_time || "",
+        eventDate: formatDate(acceptingRequest.preferred_date || acceptingRequest.wedding_date || acceptingRequest.date_of_confirmation || acceptingRequest.date_of_communion || acceptingRequest.start_date || acceptingRequest.request_date),
+        eventTime: acceptingRequest.preferred_time || acceptingRequest.wedding_time || acceptingRequest.time_of_confirmation || acceptingRequest.time_of_communion || acceptingRequest.start_time || "",
         location: acceptingRequest.location || "Parish",
         priestName: assignedPriest,
       });
@@ -458,7 +379,6 @@ function StaffDashboard() {
     const requestTitle = reqConfig.title(acceptingRequest);
 
     if (reqConfig.requiresPriest) {
-      // New flow: send to priest — notify priest of new assignment
       const { data: priestUserData } = await supabase
         .from("priests").select("user_id").eq("name", assignedPriest).maybeSingle();
       if (priestUserData?.user_id) {
@@ -482,7 +402,6 @@ function StaffDashboard() {
         });
       }
     } else {
-      // Old flow: notify admin directly
       await supabase.rpc('notify_admin', {
         notif_title: `Staff Approved: ${reqTab}`,
         notif_message: `Staff approved "${requestTitle}". Please review for final approval.`,
@@ -502,11 +421,7 @@ function StaffDashboard() {
       }
     }
 
-    setRequests((prev) => ({
-      ...prev,
-      [reqTab]: prev[reqTab].filter((r) => r.id !== acceptingRequest.id),
-    }));
-
+    setRequests((prev) => ({ ...prev, [reqTab]: prev[reqTab].filter((r) => r.id !== acceptingRequest.id) }));
     fetchApprovedItems();
     setAcceptingRequest(null);
     setAssignedPriest("");
@@ -516,53 +431,37 @@ function StaffDashboard() {
   const confirmReject = async () => {
     if (!rejectingRequest) return;
     if (!rejectionReason.trim()) return alert("Please provide a reason for rejection.");
-
-    const reqTab = resolveTabFor(rejectingRequest);
+    const reqTab    = resolveTabFor(rejectingRequest);
     const reqConfig = resolveConfigFor(rejectingRequest);
     setRejectSubmitting(true);
 
-    const { error } = await restUpdate(
-      reqConfig.table,
-      { id: rejectingRequest.id },
-      { status: "Rejected", rejection_remarks: rejectionReason }
-    );
+    const { error } = await restUpdate(reqConfig.table, { id: rejectingRequest.id }, { status: "Rejected", rejection_remarks: rejectionReason });
+    if (error) { setRejectSubmitting(false); return alert("Error rejecting request: " + error.message); }
 
-    if (error) {
-      setRejectSubmitting(false);
-      return alert("Error rejecting request: " + error.message);
-    }
-
-    // ✨ NOTIFY PARISHIONER: Their request has been rejected
     if (rejectingRequest.user_id) {
-      await supabase.rpc('notify_parishioner', {
+      await supabase.rpc("notify_parishioner", {
         target_user_id: rejectingRequest.user_id,
         notif_title: `Your ${reqTab} Request — Not Approved`,
         notif_message: `We regret to inform you that your request could not be approved. Reason: ${rejectionReason}`,
-        notif_link: '/profile',
+        notif_link: "/profile",
         p_source_id: rejectingRequest.id,
         p_source_table: reqConfig.table,
       });
     }
 
-    setRequests((prev) => ({
-      ...prev,
-      [reqTab]: prev[reqTab].filter((r) => r.id !== rejectingRequest.id),
-    }));
-
+    setRequests((prev) => ({ ...prev, [reqTab]: prev[reqTab].filter((r) => r.id !== rejectingRequest.id) }));
     setRejectingRequest(null);
     setRejectionReason("");
     setRejectSubmitting(false);
   };
 
-  // --- REVOKE/CANCEL APPROVED ITEM LOGIC ---
   const confirmCancelItem = async () => {
     if (!cancellingItem) return;
     if (!cancelItemReason.trim()) return alert("Please provide a reason for cancellation.");
-
     setCancelItemSubmitting(true);
 
     let tableName = "";
-    if (cancellingItem.request_type === "Baptism") tableName = "baptisms";
+    if (cancellingItem.request_type === "Baptism")      tableName = "baptisms";
     else if (cancellingItem.request_type === "Wedding") tableName = "weddings";
     else if (cancellingItem.request_type === "Parish Event") tableName = "events";
 
@@ -570,119 +469,72 @@ function StaffDashboard() {
       const payload = tableName === "events"
         ? { status: "Cancelled", cancellation_remarks: cancelItemReason }
         : { status: "Cancelled", rejection_remarks: cancelItemReason };
-
       const { error } = await restUpdate(tableName, { id: cancellingItem.id }, payload);
       if (error) throw new Error(error.message);
-
-      if (tableName !== "events") {
-        await restDelete("events", {
-          source_table: tableName,
-          source_id: cancellingItem.id
-        });
-      }
-
+      if (tableName !== "events") await restDelete("events", { source_table: tableName, source_id: cancellingItem.id });
       setItems(items.filter(i => !(i.id === cancellingItem.id && i.request_type === cancellingItem.request_type)));
       setCancellingItem(null);
       setCancelItemReason("");
-    } catch (error) {
-      console.error("Cancellation error:", error.message);
-      alert("Failed to cancel item: " + error.message);
-    } finally {
-      setCancelItemSubmitting(false);
-    }
+    } catch (err) {
+      console.error("Cancellation error:", err.message);
+      alert("Failed to cancel item: " + err.message);
+    } finally { setCancelItemSubmitting(false); }
   };
 
-  // --- PDF GENERATION LOGIC ---
+  // ── Certificate PDF ───────────────────────────────────────────────────────
   const generateCertificate = (item) => {
-    const doc = new jsPDF('p', 'mm', 'a4');
+    const doc       = new jsPDF("p", "mm", "a4");
     const pageWidth = doc.internal.pageSize.getWidth();
-    const centerX = pageWidth / 2;
+    const centerX   = pageWidth / 2;
 
-    doc.setDrawColor(181, 158, 116);
-    doc.setLineWidth(1.5);
+    doc.setDrawColor(181, 158, 116); doc.setLineWidth(1.5);
     doc.rect(10, 10, pageWidth - 20, 287);
     doc.setLineWidth(0.5);
     doc.rect(12, 12, pageWidth - 24, 283);
 
-    doc.setFont("times", "bold");
-    doc.setFontSize(22);
-    doc.setTextColor(181, 158, 116);
+    doc.setFont("times", "bold"); doc.setFontSize(22); doc.setTextColor(181, 158, 116);
     doc.text("Minore Basilica of San Pedro Bautista", centerX, 40, { align: "center" });
-
-    doc.setFontSize(12);
-    doc.setTextColor(100, 100, 100);
-    doc.setFont("times", "italic");
+    doc.setFontSize(12); doc.setTextColor(100, 100, 100); doc.setFont("times", "italic");
     doc.text("Quezon City, Philippines", centerX, 48, { align: "center" });
-
-    doc.setFont("times", "bold");
-    doc.setFontSize(32);
-    doc.setTextColor(0, 0, 0);
-    const title = item.request_type === "Baptism" ? "CERTIFICATE OF BAPTISM" : "CERTIFICATE OF MARRIAGE";
-    doc.text(title, centerX, 80, { align: "center" });
-
-    doc.setFont("times", "normal");
-    doc.setFontSize(16);
-    doc.setTextColor(60, 60, 60);
+    doc.setFont("times", "bold"); doc.setFontSize(32); doc.setTextColor(0, 0, 0);
+    doc.text(item.request_type === "Baptism" ? "CERTIFICATE OF BAPTISM" : "CERTIFICATE OF MARRIAGE", centerX, 80, { align: "center" });
+    doc.setFont("times", "normal"); doc.setFontSize(16); doc.setTextColor(60, 60, 60);
 
     if (item.request_type === "Baptism") {
       doc.text("This is to certify that", centerX, 110, { align: "center" });
-      doc.setFontSize(24);
-      doc.setFont("times", "bold italic");
+      doc.setFontSize(24); doc.setFont("times", "bold italic");
       doc.text(`${item.child_first_name} ${item.child_last_name}`, centerX, 125, { align: "center" });
-      doc.setFontSize(16);
-      doc.setFont("times", "normal");
-      doc.text(`was baptized into the Holy Catholic Church on`, centerX, 140, { align: "center" });
+      doc.setFontSize(16); doc.setFont("times", "normal");
+      doc.text("was baptized into the Holy Catholic Church on", centerX, 140, { align: "center" });
       doc.setFont("times", "bold");
-      doc.text(new Date(item.preferred_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), centerX, 150, { align: "center" });
+      doc.text(new Date(item.preferred_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }), centerX, 150, { align: "center" });
     } else {
       doc.text("This is to certify that", centerX, 110, { align: "center" });
-      doc.setFontSize(24);
-      doc.setFont("times", "bold italic");
+      doc.setFontSize(24); doc.setFont("times", "bold italic");
       doc.text(`${item.groom_name} & ${item.bride_name}`, centerX, 125, { align: "center" });
-      doc.setFontSize(16);
-      doc.setFont("times", "normal");
-      doc.text(`were united in the Sacrament of Holy Matrimony on`, centerX, 140, { align: "center" });
+      doc.setFontSize(16); doc.setFont("times", "normal");
+      doc.text("were united in the Sacrament of Holy Matrimony on", centerX, 140, { align: "center" });
       doc.setFont("times", "bold");
-      doc.text(new Date(item.wedding_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), centerX, 150, { align: "center" });
+      doc.text(new Date(item.wedding_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }), centerX, 150, { align: "center" });
     }
 
-    doc.setFontSize(12);
-    doc.setFont("times", "italic");
+    doc.setFontSize(12); doc.setFont("times", "italic");
     doc.text("Given this day under the seal of the Parish.", centerX, 180, { align: "center" });
-
     doc.setDrawColor(150, 150, 150);
-    doc.line(40, 240, 100, 240);
-    doc.line(150, 240, 210, 240);
-
-    doc.setFont("times", "normal");
-    doc.setFontSize(10);
+    doc.line(40, 240, 100, 240); doc.line(150, 240, 210, 240);
+    doc.setFont("times", "normal"); doc.setFontSize(10);
     doc.text("Parish Secretary", 70, 245, { align: "center" });
     doc.text("Officiating Priest", 180, 245, { align: "center" });
 
-    const fileName = `${item.request_type}_${item.display_name.replace(/\s+/g, '_')}.pdf`;
-    doc.save(fileName);
+    doc.save(`${item.request_type}_${item.display_name.replace(/\s+/g, "_")}.pdf`);
   };
 
-  // --- RENDER HELPERS ---
+  // ── Derived ───────────────────────────────────────────────────────────────
   const getVisibleItems = () => {
-    let result = activeTab === "certificates"
-      ? items.filter(i => i.request_type === "Baptism" || i.request_type === "Wedding")
-      : items;
-    if (staffSearch) {
-      const q = staffSearch.toLowerCase();
-      result = result.filter(i =>
-        (i.display_name || "").toLowerCase().includes(q) ||
-        (i.request_type || "").toLowerCase().includes(q) ||
-        (i.location || "").toLowerCase().includes(q)
-      );
+    if (activeTab === "certificates") {
+      return items.filter(i => i.request_type === "Baptism" || i.request_type === "Wedding");
     }
-    return [...result].sort((a, b) => {
-      if (itemsSortBy === "date_asc")       return new Date(a.display_date) - new Date(b.display_date);
-      if (itemsSortBy === "date_desc")      return new Date(b.display_date) - new Date(a.display_date);
-      if (itemsSortBy === "submitted_desc") return new Date(b.created_at)   - new Date(a.created_at);
-      if (itemsSortBy === "submitted_asc")  return new Date(a.created_at)   - new Date(b.created_at);
-      return 0;
-    });
+    return items;
   };
 
   const totalPending = TAB_NAMES.reduce((sum, t) => sum + (requests[t]?.length || 0), 0);
@@ -690,11 +542,7 @@ function StaffDashboard() {
   const pendingData = (activeServiceTab === "All Services"
     ? TAB_NAMES.flatMap(t => (requests[t] || []).map(r => ({ ...r, _tab: t, _config: TAB_CONFIG[t] })))
     : (requests[activeServiceTab] || []).map(r => ({ ...r, _tab: activeServiceTab, _config: TAB_CONFIG[activeServiceTab] }))
-  ).filter(req => {
-    if (!staffSearch) return true;
-    const q = staffSearch.toLowerCase();
-    return req._config.title(req).toLowerCase().includes(q) || req._tab.toLowerCase().includes(q);
-  }).sort((a, b) => {
+  ).sort((a, b) => {
     if (staffSortBy === "submitted_asc")   return new Date(a.created_at) - new Date(b.created_at);
     if (staffSortBy === "submitted_desc")  return new Date(b.created_at) - new Date(a.created_at);
     if (staffSortBy === "date_desc")       return new Date(b.display_date || b.created_at) - new Date(a.display_date || a.created_at);
@@ -702,7 +550,6 @@ function StaffDashboard() {
     return 0;
   });
 
-  // Generates dynamic fields for the View Details Modal
   const getViewingEntries = () => {
     if (!viewingDetails) return [];
     return Object.entries(viewingDetails)
@@ -711,19 +558,18 @@ function StaffDashboard() {
       .filter(([, v]) => v !== null);
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans relative">
 
       {!activeQR && (
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-28 sm:pt-32 pb-12">
+
+          {/* Page header */}
           <div className="mb-8 border-b border-gray-200 pb-6 flex justify-between items-end">
             <div>
-              <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] uppercase tracking-widest font-medium">
-                Staff Portal
-              </h1>
-              <p className="text-gray-500 font-serif italic mt-2 text-sm sm:text-base">
-                Review requests, generate certificates, and manage attendance.
-              </p>
+              <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] uppercase tracking-widest font-medium">Staff Portal</h1>
+              <p className="text-gray-500 font-serif italic mt-2 text-sm sm:text-base">Review requests, generate certificates, and manage attendance.</p>
             </div>
             {totalPending > 0 && (
               <div className="hidden sm:flex items-center gap-2 bg-red-50 text-red-600 px-4 py-2 rounded-xl border border-red-100">
@@ -733,40 +579,15 @@ function StaffDashboard() {
             )}
           </div>
 
-          {/* Search bar */}
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-[#B59E74] mb-4 max-w-md shadow-sm">
-            <span className="text-gray-400 text-sm">🔍</span>
-            <input
-              type="text"
-              value={staffSearch}
-              onChange={e => setStaffSearch(e.target.value)}
-              placeholder="Search by name, type, or location..."
-              className="flex-1 outline-none text-sm text-gray-700 bg-transparent"
-            />
-            {staffSearch && (
-              <button type="button" onClick={() => setStaffSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
-            )}
-          </div>
-
-          {/* Pill tabs */}
-          <div className="flex gap-2 sm:gap-3 mb-6 p-2 bg-[#F6F5ED] rounded-full w-fit border border-gray-100 overflow-x-auto">
-            {[
-              { key: "requests",    label: "🔔 Pending",        badge: totalPending, badgeColor: "bg-red-500" },
-              { key: "events",      label: "📅 Approved Events", badge: null },
-              { key: "certificates",label: "📜 Certificates",   badge: null },
-              { key: "qr-generator",label: "🔳 Generate QR",    badge: null },
-            ].map(({ key, label, badge, badgeColor }) => (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                className={`px-4 sm:px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all relative whitespace-nowrap ${activeTab === key ? "bg-[#B59E74] text-white shadow-md" : "text-gray-500 hover:text-gray-700"}`}
-              >
-                {label}
-                {badge > 0 && (
-                  <span className={`absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full ${badgeColor} text-[9px] text-white`}>{badge}</span>
-                )}
-              </button>
-            ))}
+          <div className="flex flex-wrap gap-2 sm:gap-4 mb-8">
+            <button onClick={() => setActiveTab("requests")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all relative ${activeTab === "requests" ? "bg-[#B59E74] text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>
+              🔔 Pending Requests
+              {totalPending > 0 && <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white shadow-sm">{totalPending}</span>}
+            </button>
+            <button onClick={() => setActiveTab("events")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all ${activeTab === "events" ? "bg-[#B59E74] text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>📅 Approved Events</button>
+            <button onClick={() => setActiveTab("certificates")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all ${activeTab === "certificates" ? "bg-[#B59E74] text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>📜 Certificates</button>
+            <button onClick={() => setActiveTab("qr-generator")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all ${activeTab === "qr-generator" ? "bg-gray-800 text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>🔳 Generate QR</button>
+            <button onClick={() => setActiveTab("user-repository")} className={`px-6 py-3.5 font-bold uppercase tracking-widest text-xs rounded-xl transition-all ${activeTab === "user-repository" ? "bg-[#B59E74] text-white shadow-md" : "bg-white text-gray-500 border border-gray-200 hover:bg-gray-50"}`}>🗂️ Users Repository</button>
           </div>
 
           {/* Unified white card */}
@@ -817,7 +638,7 @@ function StaffDashboard() {
                 <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div></div>
               ) : pendingData.length === 0 ? (
                 <div className="text-center py-16 text-gray-400 italic font-serif">
-                  {staffSearch ? `No results matching "${staffSearch}".` : `No pending requests for ${activeServiceTab}.`}
+                  No pending requests for {activeServiceTab}.
                 </div>
               ) : staffViewMode === "table" ? (
                 <div className="overflow-x-auto">
@@ -926,29 +747,15 @@ function StaffDashboard() {
             </div>
           )}
 
-          {/* --- APPROVED ITEMS VIEW --- */}
-          {activeTab !== "requests" && (
-            itemsLoading ? (
-              <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div></div>
-            ) : (
-              <div className="animate-fade-in-up">
-                {/* Toolbar */}
-                <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 border-b border-gray-100 pb-6">
-                  <h2 className="text-xl font-serif text-gray-800 font-medium uppercase tracking-widest">
-                    {activeTab === "events" ? "Approved Events" : activeTab === "certificates" ? "Certificates" : "QR Generator"}
-                  </h2>
-                  <div className="flex gap-2 w-full sm:w-auto">
-                    <select
-                      value={itemsSortBy}
-                      onChange={e => setItemsSortBy(e.target.value)}
-                      className="w-full sm:w-auto p-3 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74] cursor-pointer"
-                    >
-                      <option value="date_asc">Date — Oldest</option>
-                      <option value="date_desc">Date — Newest</option>
-                      <option value="submitted_desc">Submitted — Newest</option>
-                      <option value="submitted_asc">Submitted — Oldest</option>
-                    </select>
-                    <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white shrink-0">
+            {/* ── APPROVED EVENTS / CERTIFICATES / QR ── */}
+            {(activeTab === "events" || activeTab === "certificates" || activeTab === "qr-generator") && (
+              itemsLoading ? (
+                <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div></div>
+              ) : (
+                <div className="animate-fade-in-up">
+                  {/* Toolbar */}
+                  <div className="flex justify-end mb-4">
+                    <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white">
                       <button
                         onClick={() => setStaffViewMode("card")}
                         title="Card view"
@@ -961,108 +768,103 @@ function StaffDashboard() {
                       >≡</button>
                     </div>
                   </div>
-                </div>
 
-                {getVisibleItems().length === 0 ? (
-                  <div className="text-center py-16 text-gray-400 italic font-serif">
-                    <div className="text-4xl mb-4">📭</div>
-                    <p>{staffSearch ? `No results matching "${staffSearch}".` : "No active records found."}</p>
-                  </div>
-                ) : staffViewMode === "table" ? (
-                  <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="text-[10px] text-gray-400 uppercase tracking-widest font-bold border-b border-gray-100">
-                          <th className="p-3">Type</th>
-                          <th className="p-3">Name / Subject</th>
-                          <th className="p-3">Date</th>
-                          <th className="p-3">Time</th>
-                          {activeTab === "events" && <th className="p-3">Location</th>}
-                          <th className="p-3">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {getVisibleItems().map((item) => (
-                          <tr key={`${item.request_type}-${item.id}`} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                            <td className="p-3">
-                              <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 whitespace-nowrap">{item.request_type}</span>
-                            </td>
-                            <td className="p-3 text-sm font-medium text-gray-800">{item.display_name}</td>
-                            <td className="p-3 text-sm text-gray-600 whitespace-nowrap">{new Date(item.display_date).toLocaleDateString()}</td>
-                            <td className="p-3 text-sm text-gray-500 whitespace-nowrap">{item.preferred_time || item.wedding_time || "—"}</td>
-                            {activeTab === "events" && <td className="p-3 text-sm text-gray-500 max-w-[160px] truncate">{item.location || "—"}</td>}
-                            <td className="p-3">
-                              <div className="flex gap-1">
-                                {activeTab === "events" && (
-                                  <button onClick={() => setViewingDetails(item)} className="px-2 py-1 bg-gray-50 hover:bg-[#B59E74] text-gray-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">View</button>
-                                )}
-                                {activeTab === "certificates" && (
-                                  <button onClick={() => generateCertificate(item)} className="px-2 py-1 bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">📜 Download</button>
-                                )}
-                                {activeTab === "qr-generator" && (
-                                  <button onClick={() => setActiveQR(item)} className="px-2 py-1 bg-gray-800 hover:bg-black text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">🔳 QR</button>
-                                )}
-                                <button
-                                  onClick={() => { setCancellingItem(item); setCancelItemReason(""); }}
-                                  className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors"
-                                  title="Revoke"
-                                >✕</button>
-                              </div>
-                            </td>
+                  {getVisibleItems().length === 0 ? (
+                    <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center"><div className="text-4xl mb-4">📭</div><h3 className="text-xl font-serif text-gray-800">No active records found.</h3></div>
+                  ) : staffViewMode === "table" ? (
+                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="text-[10px] text-gray-400 uppercase tracking-widest font-bold border-b border-gray-100">
+                            <th className="p-3">Type</th><th className="p-3">Name / Subject</th>
+                            <th className="p-3">Date</th><th className="p-3">Time</th>
+                            {activeTab === "events" && <th className="p-3">Location</th>}
+                            <th className="p-3">Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                    {getVisibleItems().map((item) => (
-                      <div key={`${item.request_type}-${item.id}`} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col h-full relative overflow-hidden group hover:shadow-md transition-shadow">
-                        <div className={`absolute top-0 left-0 w-1.5 h-full ${item.request_type === "Wedding" ? "bg-rose-400" : item.request_type === "Baptism" ? "bg-blue-400" : "bg-[#B59E74]"}`}></div>
-                        <div className="flex justify-between items-start mb-3">
-                          <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-100 text-gray-600">{item.request_type}</span>
+                        </thead>
+                        <tbody>
+                          {getVisibleItems().map((item) => (
+                            <tr key={`${item.request_type}-${item.id}`} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                              <td className="p-3"><span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 whitespace-nowrap">{item.request_type}</span></td>
+                              <td className="p-3 text-sm font-medium text-gray-800">{item.display_name}</td>
+                              <td className="p-3 text-sm text-gray-600 whitespace-nowrap">{new Date(item.display_date).toLocaleDateString()}</td>
+                              <td className="p-3 text-sm text-gray-500 whitespace-nowrap">{item.preferred_time || item.wedding_time || "—"}</td>
+                              {activeTab === "events" && <td className="p-3 text-sm text-gray-500 max-w-[160px] truncate">{item.location || "—"}</td>}
+                              <td className="p-3">
+                                <div className="flex gap-1">
+                                  {activeTab === "events" && <button onClick={() => setViewingDetails(item)} className="px-2 py-1 bg-gray-50 hover:bg-[#B59E74] text-gray-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">View</button>}
+                                  {activeTab === "certificates" && <button onClick={() => generateCertificate(item)} className="px-2 py-1 bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">📜 Download</button>}
+                                  {activeTab === "qr-generator" && <button onClick={() => setActiveQR(item)} className="px-2 py-1 bg-gray-800 hover:bg-black text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">🔳 QR</button>}
+                                  <button onClick={() => { setCancellingItem(item); setCancelItemReason(""); }} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors" title="Revoke">✕</button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                      {getVisibleItems().map((item) => (
+                        <div key={`${item.request_type}-${item.id}`} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col h-full relative overflow-hidden group hover:shadow-md transition-shadow">
+                          <div className={`absolute top-0 left-0 w-1.5 h-full ${item.request_type === "Wedding" ? "bg-rose-400" : item.request_type === "Baptism" ? "bg-blue-400" : "bg-[#B59E74]"}`}></div>
+                          <div className="flex justify-between items-start mb-3">
+                            <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-100 text-gray-600">{item.request_type}</span>
+                          </div>
+                          <h3 className="text-xl font-serif text-gray-800 font-medium leading-tight mb-2 pr-4">{item.display_name}</h3>
+                          <div className="text-sm text-gray-500 flex flex-col gap-1 mb-6 flex-grow">
+                            <div className="flex items-center gap-2"><span>🗓️</span> {new Date(item.display_date).toLocaleDateString()}</div>
+                            <div className="flex items-center gap-2"><span>⏰</span> {item.preferred_time || item.wedding_time || "TBD"}</div>
+                            {item.location && <div className="flex items-center gap-2"><span>📍</span> {item.location}</div>}
+                          </div>
+                          <div className="mt-auto border-t border-gray-100 pt-4 flex gap-2">
+                            {activeTab === "events" && <button onClick={() => setViewingDetails(item)} className="flex-1 bg-gray-50 text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors">View Details</button>}
+                            {activeTab === "certificates" && <button onClick={() => generateCertificate(item)} className="flex-1 bg-white border-2 border-[#B59E74] text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2">📜 Download</button>}
+                            {activeTab === "qr-generator" && <button onClick={() => setActiveQR(item)} className="flex-1 bg-gray-800 hover:bg-black text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2"><span>🔳</span> Show QR</button>}
+                            <button onClick={() => { setCancellingItem(item); setCancelItemReason(""); }} className="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors flex items-center justify-center" title="Revoke / Cancel">✕ Revoke</button>
+                          </div>
                         </div>
-                        <h3 className="text-xl font-serif text-gray-800 font-medium leading-tight mb-2 pr-4">{item.display_name}</h3>
-                        <div className="text-sm text-gray-500 flex flex-col gap-1 mb-6 flex-grow">
-                          <div className="flex items-center gap-2"><span>🗓️</span> {new Date(item.display_date).toLocaleDateString()}</div>
-                          <div className="flex items-center gap-2"><span>⏰</span> {item.preferred_time || item.wedding_time || "TBD"}</div>
-                          {item.location && <div className="flex items-center gap-2"><span>📍</span> {item.location}</div>}
-                        </div>
-                        <div className="mt-auto border-t border-gray-100 pt-4 flex gap-2">
-                          {activeTab === "events" && <button onClick={() => setViewingDetails(item)} className="flex-1 bg-gray-50 text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors">View Details</button>}
-                          {activeTab === "certificates" && (
-                            <button onClick={() => generateCertificate(item)} className="flex-1 bg-white border-2 border-[#B59E74] text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2">
-                              📜 Download
-                            </button>
-                          )}
-                          {activeTab === "qr-generator" && (
-                            <button onClick={() => setActiveQR(item)} className="flex-1 bg-gray-800 hover:bg-black text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2">
-                              <span>🔳</span> Show QR
-                            </button>
-                          )}
-                          <button
-                            onClick={() => { setCancellingItem(item); setCancelItemReason(""); }}
-                            className="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors flex items-center justify-center"
-                            title="Revoke / Cancel"
-                          >
-                            ✕ Revoke
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          )}
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            )}
 
-          </div>{/* end unified white card */}
+            {/* ── USERS REPOSITORY (✨ FIXED: Moved inside the unified white card) ── */}
+            {activeTab === "user-repository" && (
+              <div className="animate-fade-in-up">
+                <div className="mb-6 border-b border-gray-200 pb-4">
+                  <h2 className="text-xl font-serif text-gray-800 font-medium uppercase tracking-widest">Users Repository</h2>
+                  <p className="text-sm text-gray-400 italic mt-1">Upload and manage archived documents per parishioner.</p>
+                </div>
+                <UserRepository />
+              </div>
+            )}
+
+          </div>
         </main>
       )}
 
-      {/* --- MODALS --- */}
+      {/* ── QR FULLSCREEN ── */}
+      {activeQR && (
+        <div className="fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center p-6 animate-fade-in">
+          <button onClick={() => setActiveQR(null)} className="absolute top-6 right-6 w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors text-xl">✕</button>
+          <div className="text-center max-w-md w-full">
+            <div className="w-24 h-24 mx-auto rounded-full bg-[#F6F5ED] flex items-center justify-center border-2 border-[#B59E74] text-4xl mb-6 shadow-sm">⛪</div>
+            <h2 className="text-3xl font-serif text-gray-800 font-medium uppercase tracking-widest mb-2">{activeQR.display_name}</h2>
+            <p className="text-gray-500 italic mb-10">{activeQR.location || "Main Church"}</p>
+            <div className="bg-white p-8 rounded-[3rem] shadow-2xl border-4 border-[#B59E74] inline-block mx-auto">
+              <QRCodeCanvas value={`${window.location.href.split("#")[0].replace(/\/$/, "")}/#/check-in/${activeQR.id}`} size={280} level="H" includeMargin={true} />
+            </div>
+            <p className="mt-10 text-sm font-bold text-gray-400 uppercase tracking-[0.2em]">Scan to mark attendance</p>
+          </div>
+        </div>
+      )}
 
-      {/* ACCEPT MODAL */}
+      {/* ── MODALS ── */}
+
+      {/* Accept */}
       {acceptingRequest && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
@@ -1076,14 +878,14 @@ function StaffDashboard() {
                   {acceptingRequest.preferred_priest && (
                     <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700">
                       <span className="font-bold uppercase tracking-widest">Parishioner's Preferred Priest:</span>{" "}
-                      Fr. {acceptingRequest.preferred_priest}
+                      {acceptingRequest.preferred_priest}
                       <span className="block mt-0.5 text-blue-500 italic font-normal">This is only a preference — your selection below is final.</span>
                     </div>
                   )}
                   <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Assign Priest *</label>
                   <select value={assignedPriest} onChange={(e) => setAssignedPriest(e.target.value)} className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white">
                     <option value="" disabled>Select a priest…</option>
-                    {priestNames.map((p) => (<option key={p} value={p}>Fr. {p}</option>))}
+                    {priestNames.map((p) => (<option key={p} value={p}>{p}</option>))}
                   </select>
                   <p className="text-xs text-gray-400 italic mt-1">The assigned priest will host this on the parish events calendar.</p>
                 </div>
@@ -1105,7 +907,7 @@ function StaffDashboard() {
         </div>
       )}
 
-      {/* REJECT MODAL */}
+      {/* Reject */}
       {rejectingRequest && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
@@ -1132,7 +934,7 @@ function StaffDashboard() {
         </div>
       )}
 
-      {/* CANCEL/REVOKE MODAL */}
+      {/* Revoke */}
       {cancellingItem && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
@@ -1141,9 +943,7 @@ function StaffDashboard() {
               <p className="text-sm text-orange-700 italic">For {cancellingItem.display_name}</p>
             </div>
             <div className="p-8 space-y-6">
-              <p className="text-sm text-gray-600">
-                This item is currently approved. Revoking it will mark it as <span className="font-bold">Cancelled</span> and remove it from active records.
-              </p>
+              <p className="text-sm text-gray-600">This item is currently approved. Revoking it will mark it as <span className="font-bold">Cancelled</span> and remove it from active records.</p>
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Reason for Cancellation *</label>
                 <textarea className="p-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none h-32 text-sm resize-none" placeholder="Please specify why this is being revoked..." value={cancelItemReason} onChange={(e) => setCancelItemReason(e.target.value)} />
@@ -1159,23 +959,7 @@ function StaffDashboard() {
         </div>
       )}
 
-      {/* QR MODAL */}
-      {activeQR && (
-        <div className="fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center p-6 animate-fade-in">
-          <button onClick={() => setActiveQR(null)} className="absolute top-6 right-6 w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors text-xl">✕</button>
-          <div className="text-center max-w-md w-full">
-            <div className="w-24 h-24 mx-auto rounded-full bg-[#F6F5ED] flex items-center justify-center border-2 border-[#B59E74] text-4xl mb-6 shadow-sm">⛪</div>
-            <h2 className="text-3xl font-serif text-gray-800 font-medium uppercase tracking-widest mb-2">{activeQR.display_name}</h2>
-            <p className="text-gray-500 italic mb-10">{activeQR.location || "Main Church"}</p>
-            <div className="bg-white p-8 rounded-[3rem] shadow-2xl border-4 border-[#B59E74] inline-block mx-auto">
-              <QRCodeCanvas value={`${window.location.href.split("#")[0].replace(/\/$/, "")}/#/check-in/${activeQR.id}`} size={280} level="H" includeMargin={true} />
-            </div>
-            <p className="mt-10 text-sm font-bold text-gray-400 uppercase tracking-[0.2em]">Scan to mark attendance</p>
-          </div>
-        </div>
-      )}
-
-      {/* DETAILS MODAL */}
+      {/* Details */}
       {viewingDetails && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative">
@@ -1190,12 +974,8 @@ function StaffDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {getViewingEntries().map(([key, val]) => (
                   <div key={key} className={key === "additional_notes" || key === "notes" || key === "request_details" || key === "intention_detail" || key === "rejection_remarks" ? "md:col-span-2" : ""}>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">
-                      {humanizeKey(key)}
-                    </p>
-                    <p className="font-medium text-gray-800 whitespace-pre-wrap break-words">
-                      {val}
-                    </p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{humanizeKey(key)}</p>
+                    <p className="font-medium text-gray-800 whitespace-pre-wrap break-words">{val}</p>
                   </div>
                 ))}
               </div>
@@ -1203,6 +983,7 @@ function StaffDashboard() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
