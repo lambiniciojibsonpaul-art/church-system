@@ -284,8 +284,27 @@ function AdminReports() {
   const fetchServiceData = async (serviceKey) => {
     setServiceLoading(true);
     try {
-      const { data } = await supabase.from(serviceKey).select("*, profiles(first_name, last_name)");
-      setServiceData(data || []);
+      const { data, error } = await supabase.from(serviceKey).select("*");
+      if (error) throw error;
+      const records = data || [];
+
+      // Separately fetch profiles for all user_ids (avoids FK dependency)
+      const userIds = [...new Set(records.filter(r => r.user_id).map(r => r.user_id))];
+      let profileMap = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, first_name, last_name")
+          .in("id", userIds);
+        if (profiles) {
+          profileMap = Object.fromEntries(profiles.map(p => [p.id, p]));
+        }
+      }
+
+      setServiceData(records.map(r => ({
+        ...r,
+        profiles: r.user_id ? (profileMap[r.user_id] || null) : null,
+      })));
     } catch (err) {
       console.error("fetchServiceData error:", err);
       setServiceData([]);
