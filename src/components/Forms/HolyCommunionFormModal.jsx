@@ -115,9 +115,6 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
         mother_maiden_name: formData.mother_maiden_name,
         complete_address:   formData.complete_address,
         residence_parish:   formData.residence_parish,
-        // Merge both UI contact fields into the single DB column
-        contact_number: [formData.contact_number_1, formData.contact_number_2]
-          .filter(Boolean).join(", "),
       };
       await submitRequest({
         table: "holy_communions",
