@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { restSelect } from "../supabaseRest";
@@ -96,6 +96,44 @@ function LoginPage() {
   // Set to true when a ministry login attempt is blocked due to pending approval
   const [pendingMinistry, setPendingMinistry] = useState(false);
 
+  // On mount: if a pending-ministry session already exists (e.g. after page refresh)
+  // resume the waiting screen without requiring the user to re-enter credentials.
+  useEffect(() => {
+    const checkPendingSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      const { data: rows } = await restSelect("user_roles", {
+        match: { user_id: session.user.id },
+        timeoutMs: 8000,
+      });
+      const roleRow = rows?.[0];
+      if (roleRow?.role === "ministry" && roleRow?.approval_status === "pending") {
+        setPendingMinistry(true);
+      }
+    };
+    checkPendingSession();
+  }, []);
+
+  // While pending screen is showing, poll every 8 s for admin approval.
+  // Redirects automatically — no manual re-login needed.
+  useEffect(() => {
+    if (!pendingMinistry) return;
+    const timer = setInterval(async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      const { data: rows } = await restSelect("user_roles", {
+        match: { user_id: session.user.id },
+        timeoutMs: 8000,
+      });
+      const roleRow = rows?.[0];
+      if (roleRow && roleRow.approval_status === "approved") {
+        writeLongTermAdminCache(session.user.email, roleRow.role);
+        navigate(getRoleDest(roleRow.role), { replace: true });
+      }
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [pendingMinistry, navigate]);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -190,9 +228,10 @@ function LoginPage() {
     }
 
     if (roleData) {
-      // Block ministry accounts that haven't been approved by admin yet
+      // Block ministry accounts that haven't been approved by admin yet.
+      // Do NOT sign out — session must survive a page refresh so the pending
+      // screen can resume without requiring the user to re-enter credentials.
       if (roleData.role === "ministry" && roleData.approval_status === "pending") {
-        await supabase.auth.signOut();
         const pendingErr = new Error("PENDING_MINISTRY_APPROVAL");
         pendingErr.isPendingApproval = true;
         throw pendingErr;
@@ -521,8 +560,12 @@ function LoginPage() {
               </p>
               <p className="text-xs text-gray-400 italic leading-relaxed">
                 The parish office will review your registration and approve it shortly.
-                You will be able to sign in once your account has been approved.
+                You will be redirected automatically once your account is approved.
               </p>
+              <div className="flex items-center justify-center gap-2 text-[11px] text-amber-500 font-bold uppercase tracking-widest">
+                <div className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+                Checking for approval...
+              </div>
               <button type="button" onClick={() => setPendingMinistry(false)}
                 className="w-full text-xs text-gray-500 hover:text-[#B59E74] uppercase tracking-widest font-bold py-4">
                 ← Back to Sign In
