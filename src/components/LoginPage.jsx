@@ -359,7 +359,10 @@ function LoginPage() {
       if (createdUser?.id) {
         const userRole = registerData.accountType === "ministry" ? "ministry" : "parishioner";
         const rolePayload = { user_id: createdUser.id, role: userRole };
-        if (userRole === "ministry") rolePayload.approval_status = "pending";
+        if (userRole === "ministry") {
+          rolePayload.approval_status = "pending";
+          rolePayload.pending_ministries = registerData.ministryGroups;
+        }
 
         const { error: roleError } = await supabase
           .from("user_roles")

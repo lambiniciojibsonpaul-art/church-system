@@ -217,6 +217,7 @@ function ManageUsers() {
           role: assignedRole,
           ministries: profile.ministries || [],
           approval_status: userRoleRow?.approval_status || "approved",
+          pending_ministries: userRoleRow?.pending_ministries || [],
         };
       });
 
@@ -508,13 +509,28 @@ function ManageUsers() {
 
   // --- MINISTRY APPROVAL ---
   const handleApproveMinistry = async (userId) => {
+    const pendingUser = users.find(u => u.id === userId);
+    const ministries = pendingUser?.pending_ministries || [];
     try {
-      const { error } = await supabase
+      // Promote role to minister and clear pending status
+      const { error: roleErr } = await supabase
         .from("user_roles")
-        .update({ approval_status: "approved" })
+        .update({ role: "minister", approval_status: "approved" })
         .eq("user_id", userId);
-      if (error) throw error;
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, approval_status: "approved" } : u));
+      if (roleErr) throw roleErr;
+
+      // Save chosen ministries to the profile (admin RLS policy allows this)
+      if (ministries.length > 0) {
+        await supabase
+          .from("profiles")
+          .upsert({ id: userId, ministries }, { onConflict: "id" });
+      }
+
+      setUsers(prev => prev.map(u =>
+        u.id === userId
+          ? { ...u, role: "minister", approval_status: "approved", ministries }
+          : u
+      ));
     } catch (err) {
       alert("Failed to approve account: " + err.message);
     }
@@ -522,6 +538,8 @@ function ManageUsers() {
 
   // --- FILTERING LOGIC ---
   const filteredUsers = users.filter(u => {
+    // Pending ministry self-registrations live in the Pending tab, not the main list
+    if (u.role === "ministry" && u.approval_status === "pending") return false;
     const searchStr = searchQuery.toLowerCase();
     const fullName = `${u.first_name || ""} ${u.last_name || ""}`.toLowerCase();
     const matchesSearch = fullName.includes(searchStr) || (u.email && u.email.toLowerCase().includes(searchStr));
@@ -771,9 +789,9 @@ function ManageUsers() {
                             Pending
                           </span>
                         </div>
-                        {Array.isArray(u.ministries) && u.ministries.length > 0 && (
+                        {Array.isArray(u.pending_ministries) && u.pending_ministries.length > 0 && (
                           <div className="flex flex-wrap gap-1">
-                            {u.ministries.map((m, i) => (
+                            {u.pending_ministries.map((m, i) => (
                               <span key={i} className="bg-[#B59E74]/10 border border-[#B59E74]/20 text-[#9c8760] text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full">
                                 {m}
                               </span>
