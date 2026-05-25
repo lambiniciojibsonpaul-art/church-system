@@ -250,6 +250,8 @@ function AdminDashboard() {
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
 
+  const [adminName, setAdminName] = useState("");
+
   const [deletingRequest, setDeletingRequest] = useState(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
@@ -327,6 +329,20 @@ function AdminDashboard() {
       supabase.removeChannel(channel);
       clearTimeout(refetchTimerRef.current);
     };
+  }, [user?.id]);
+
+  // ── Admin profile name ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from("profiles")
+      .select("first_name, last_name")
+      .eq("id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        const name = [data?.first_name, data?.last_name].filter(Boolean).join(" ");
+        if (name) setAdminName(name);
+      });
   }, [user?.id]);
 
   // ── Events fetch ─────────────────────────────────────────────────────────
@@ -713,7 +729,7 @@ function AdminDashboard() {
           <div>
             <h1 className="text-3xl md:text-4xl font-serif text-[#B59E74] mb-2 uppercase tracking-wide">Parish Dashboard</h1>
             <p className="text-gray-500 font-serif italic">
-              Welcome back, <span className="font-semibold not-italic">{user?.user_metadata?.full_name || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(" ") || user?.email?.split("@")[0] || "Admin"}</span>
+              Welcome back, <span className="font-semibold not-italic">{adminName || user?.user_metadata?.full_name || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(" ") || user?.email?.split("@")[0] || "Admin"}</span>
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
