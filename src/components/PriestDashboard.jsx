@@ -4,7 +4,7 @@ import { useAuth } from "../contexts/useAuth";
 
 function PriestDashboard() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState("pending"); // "pending" | "schedule"
+  const [activeTab, setActiveTab] = useState("schedule"); // "pending" | "schedule"
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
