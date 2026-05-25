@@ -169,6 +169,7 @@ function AdminReports() {
   // Services tab state
   const [selectedService, setSelectedService] = useState("baptisms");
   const [sortBy, setSortBy] = useState("newest");
+  const [serviceStatusFilter, setServiceStatusFilter] = useState("All");
   const [serviceData, setServiceData] = useState([]);
   const [serviceLoading, setServiceLoading] = useState(false);
 
@@ -280,6 +281,7 @@ function AdminReports() {
   useEffect(() => {
     if (activeTab === "services") {
       fetchServiceData(selectedService);
+      setServiceStatusFilter("All");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedService, activeTab]);
@@ -426,7 +428,10 @@ function AdminReports() {
             {/* ── SERVICE RESERVATIONS TAB ── */}
             {activeTab === "services" && (() => {
               const cfg = SERVICE_CONFIGS[selectedService];
-              const sorted = [...serviceData].sort((a, b) => {
+              const statusFiltered = serviceStatusFilter === "All"
+                ? serviceData
+                : serviceData.filter(r => (r.status || "").toLowerCase() === serviceStatusFilter.toLowerCase());
+              const sorted = [...statusFiltered].sort((a, b) => {
                 if (sortBy === "newest")         return (cfg.getDate(b) || "").localeCompare(cfg.getDate(a) || "");
                 if (sortBy === "oldest")         return (cfg.getDate(a) || "").localeCompare(cfg.getDate(b) || "");
                 if (sortBy === "alpha")          return (cfg.getName(a) || "").localeCompare(cfg.getName(b) || "");
@@ -452,7 +457,27 @@ function AdminReports() {
                         ))}
                       </select>
                     </div>
-                    <div className="sm:w-52">
+                    <div className="sm:w-48">
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Filter by Status</label>
+                      <select
+                        value={serviceStatusFilter}
+                        onChange={e => setServiceStatusFilter(e.target.value)}
+                        className={`w-full p-3 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#B59E74] ${
+                          serviceStatusFilter === "All"
+                            ? "border-gray-200 bg-gray-50 text-gray-700"
+                            : "border-[#B59E74]/40 bg-[#B59E74]/5 text-[#9c8760]"
+                        }`}
+                      >
+                        <option value="All">All Statuses</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Staff Approved">Staff Approved</option>
+                        <option value="Priest Approved">Priest Approved</option>
+                        <option value="Approved">Approved</option>
+                        <option value="Rejected">Rejected</option>
+                        <option value="Cancelled">Cancelled</option>
+                      </select>
+                    </div>
+                    <div className="sm:w-48">
                       <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Sort By</label>
                       <select
                         value={sortBy}
@@ -472,7 +497,7 @@ function AdminReports() {
                   {/* Section heading */}
                   <div className="flex items-center gap-4 mb-4">
                     <h4 className="text-sm font-bold text-[#B59E74] print:text-black uppercase tracking-widest whitespace-nowrap">
-                      {cfg.label}
+                      {cfg.label}{serviceStatusFilter !== "All" && <span className="ml-2 text-[10px] bg-[#B59E74]/10 text-[#9c8760] px-2 py-0.5 rounded-full normal-case tracking-normal font-bold">{serviceStatusFilter}</span>}
                     </h4>
                     <div className="h-px w-full bg-gray-100 print:bg-black"></div>
                     <span className="text-xs text-gray-400 whitespace-nowrap">{sorted.length} record{sorted.length !== 1 ? "s" : ""}</span>
