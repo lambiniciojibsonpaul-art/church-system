@@ -62,8 +62,6 @@ function CreateUserModal({ onClose, onSuccess }) {
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
-
-        {/* Header */}
         <div className="bg-[#F6F5ED] px-8 py-6 border-b border-[#B59E74]/20 flex justify-between items-center">
           <div>
             <h2 className="text-xl font-serif text-gray-800 font-medium uppercase tracking-widest">
@@ -81,8 +79,189 @@ function CreateUserModal({ onClose, onSuccess }) {
           </button>
         </div>
 
+        <form onSubmit={handleSubmit} className="p-8 space-y-5">
+          {error && (
+            <div className="p-3 bg-red-50 text-red-600 border border-red-100 rounded-xl text-xs font-bold text-center">
+              {error}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">First Name</label>
+              <input
+                type="text"
+                value={form.first_name}
+                onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+                className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
+                placeholder="Juan"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Last Name</label>
+              <input
+                type="text"
+                value={form.last_name}
+                onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+                className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
+                placeholder="Dela Cruz"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+              Email Address <span className="text-gray-400 normal-case font-normal">(optional)</span>
+            </label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
+              placeholder="name@email.com"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+              Contact Number <span className="text-gray-400 normal-case font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={form.contact_number}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, "");
+                setForm({ ...form, contact_number: val });
+              }}
+              className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
+              placeholder="09XX XXX XXXX"
+              maxLength={15}
+            />
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
+            <span className="text-amber-500 text-sm shrink-0 mt-0.5">ℹ</span>
+            <p className="text-[11px] text-amber-700 leading-relaxed">
+              This creates a <strong>document folder only</strong> — not a system account.
+              This person will not be able to log in.
+            </p>
+          </div>
+
+          <div className="pt-2 flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-3 rounded-xl bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-xs uppercase tracking-widest transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
+                  Creating…
+                </span>
+              ) : (
+                "Create Folder"
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Edit User Modal ──────────────────────────────────────────────────────────
+function EditUserModal({ user, getUserName, onClose, onSuccess }) {
+  const [form, setForm] = useState({
+    first_name: user.first_name || "",
+    last_name: user.last_name || "",
+    email: user.email || "",
+    contact_number: user.contact_number || "",
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
+
+  const hasChanges =
+    form.first_name.trim() !== (user.first_name || "") ||
+    form.last_name.trim() !== (user.last_name || "") ||
+    form.email.trim() !== (user.email || "") ||
+    form.contact_number.trim() !== (user.contact_number || "");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!form.first_name.trim() && !form.last_name.trim()) {
+      setError("Please enter at least a first or last name.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error: updateErr } = await supabase
+        .from("profiles")
+        .update({
+          first_name: form.first_name.trim() || null,
+          last_name: form.last_name.trim() || null,
+          email: form.email.trim() || null,
+          contact_number: form.contact_number.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id);
+
+      if (updateErr) throw updateErr;
+
+      setSuccess(true);
+      onSuccess();
+      setTimeout(() => onClose(), 900);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+
+        {/* Header */}
+        <div className="bg-[#F6F5ED] px-8 py-6 border-b border-[#B59E74]/20 flex justify-between items-center">
+          <div>
+            <h2 className="text-xl font-serif text-gray-800 font-medium uppercase tracking-widest">
+              Edit Details
+            </h2>
+            <p className="text-xs text-gray-500 italic mt-1">
+              Updating record for <span className="font-semibold text-gray-700">{getUserName(user)}</span>
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors text-lg"
+          >
+            ✕
+          </button>
+        </div>
+
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-8 space-y-5">
+
+          {/* Success banner */}
+          {success && (
+            <div className="p-3 bg-green-50 text-green-700 border border-green-100 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-2">
+              <span>✓</span> Details updated successfully!
+            </div>
+          )}
+
+          {/* Error banner */}
           {error && (
             <div className="p-3 bg-red-50 text-red-600 border border-red-100 rounded-xl text-xs font-bold text-center">
               {error}
@@ -120,7 +299,8 @@ function CreateUserModal({ onClose, onSuccess }) {
           {/* Email */}
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-              Email Address <span className="text-gray-400 normal-case font-normal">(optional)</span>
+              Email Address
+              <span className="text-gray-400 normal-case font-normal ml-1">(optional)</span>
             </label>
             <input
               type="email"
@@ -134,7 +314,8 @@ function CreateUserModal({ onClose, onSuccess }) {
           {/* Contact Number */}
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-              Contact Number <span className="text-gray-400 normal-case font-normal">(optional)</span>
+              Contact Number
+              <span className="text-gray-400 normal-case font-normal ml-1">(optional)</span>
             </label>
             <input
               type="text"
@@ -150,36 +331,41 @@ function CreateUserModal({ onClose, onSuccess }) {
             />
           </div>
 
-          {/* Info note */}
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
-            <span className="text-amber-500 text-sm shrink-0 mt-0.5">ℹ</span>
-            <p className="text-[11px] text-amber-700 leading-relaxed">
-              This creates a <strong>document folder only</strong> — not a system account.
-              This person will not be able to log in.
-            </p>
-          </div>
+          {/* Note for non-manual entries */}
+          {!user.is_manual_entry && (
+            <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-start gap-2.5">
+              <span className="text-blue-400 text-sm shrink-0 mt-0.5">ℹ</span>
+              <p className="text-[11px] text-blue-700 leading-relaxed">
+                This is a <strong>registered account</strong>. Only contact details can be overridden here —
+                the user may update their own name and email through their profile.
+              </p>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="pt-2 flex gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all"
+              disabled={loading}
+              className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !hasChanges || success}
               className="flex-1 py-3 rounded-xl bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-xs uppercase tracking-widest transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
-                  Creating…
+                  Saving…
                 </span>
+              ) : success ? (
+                "✓ Saved"
               ) : (
-                "Create Folder"
+                "Save Changes"
               )}
             </button>
           </div>
@@ -216,8 +402,9 @@ export default function UserRepository() {
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
 
-  // Create user modal
+  // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
 
   // ── Fetch users ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -229,7 +416,7 @@ export default function UserRepository() {
     try {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, first_name, last_name, email, updated_at, is_manual_entry");
+        .select("id, full_name, first_name, last_name, email, contact_number, updated_at, is_manual_entry");
 
       if (error) throw error;
 
@@ -372,7 +559,7 @@ export default function UserRepository() {
   return (
     <div className="animate-fade-in-up">
 
-      {/* ── Toolbar: search + create button ── */}
+      {/* ── Toolbar ── */}
       <div className="flex items-center gap-3 mb-5">
         <div className="relative flex-1 max-w-sm">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm">🔍</span>
@@ -390,7 +577,6 @@ export default function UserRepository() {
           {filteredUsers.length === 1 ? "user" : "users"}
         </p>
 
-        {/* Create User Button */}
         <button
           onClick={() => setShowCreateModal(true)}
           className="shrink-0 flex items-center gap-2 px-4 py-3 bg-[#B59E74] hover:bg-[#9c8760] text-white rounded-2xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm"
@@ -425,7 +611,6 @@ export default function UserRepository() {
               const userDocs      = documents[u.id] || [];
               const isDocsLoading = docsLoading[u.id];
 
-              // Avatar initials
               const initials = getUserName(u)
                 .split(" ")
                 .map((w) => w[0])
@@ -446,31 +631,51 @@ export default function UserRepository() {
                       <span className="text-[11px] font-bold text-[#B59E74]">{initials}</span>
                     </div>
 
-                    {/* Info — name + email only */}
+                    {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-gray-800 text-sm leading-tight">
                           {getUserName(u)}
                         </span>
-
                       </div>
-                      <span className="text-xs text-gray-400 mt-0.5 block truncate">
-                        {u.email || "—"}
-                      </span>
+                      <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                        <span className="text-xs text-gray-400 truncate">
+                          {u.email || "—"}
+                        </span>
+                        {u.contact_number && (
+                          <span className="text-xs text-gray-400">
+                            📞 {u.contact_number}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Expand button */}
-                    <button
-                      onClick={() => handleToggleExpand(u.id)}
-                      className={`shrink-0 flex flex-col items-center justify-center gap-0.5 transition-all ${
-                        isExpanded ? "text-[#B59E74]" : "text-gray-400 hover:text-[#B59E74]"
-                      }`}
-                    >
-                      <span className="text-base">{isExpanded ? "✕" : "↗"}</span>
-                      <span className="text-[9px] font-bold uppercase tracking-widest">
-                        {isExpanded ? "Close" : "Edit"}
-                      </span>
-                    </button>
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {/* Edit button */}
+                      <button
+                        onClick={() => setEditingUser(u)}
+                        className="flex flex-col items-center justify-center gap-0.5 text-gray-400 hover:text-blue-500 transition-colors"
+                        title="Edit user details"
+                      >
+                        <span className="text-base">✏️</span>
+                        <span className="text-[9px] font-bold uppercase tracking-widest">Edit</span>
+                      </button>
+
+                      {/* Expand / documents button */}
+                      <button
+                        onClick={() => handleToggleExpand(u.id)}
+                        className={`flex flex-col items-center justify-center gap-0.5 transition-all ${
+                          isExpanded ? "text-[#B59E74]" : "text-gray-400 hover:text-[#B59E74]"
+                        }`}
+                        title={isExpanded ? "Close" : "Manage documents"}
+                      >
+                        <span className="text-base">{isExpanded ? "✕" : "↗"}</span>
+                        <span className="text-[9px] font-bold uppercase tracking-widest">
+                          {isExpanded ? "Close" : "Docs"}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* ── Expanded panel ── */}
@@ -622,6 +827,16 @@ export default function UserRepository() {
       {showCreateModal && (
         <CreateUserModal
           onClose={() => setShowCreateModal(false)}
+          onSuccess={fetchUsers}
+        />
+      )}
+
+      {/* ── Edit User Modal ── */}
+      {editingUser && (
+        <EditUserModal
+          user={editingUser}
+          getUserName={getUserName}
+          onClose={() => setEditingUser(null)}
           onSuccess={fetchUsers}
         />
       )}

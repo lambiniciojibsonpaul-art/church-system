@@ -211,6 +211,11 @@ function StaffDashboard() {
   const [viewingDetails, setViewingDetails] = useState(null);
   const [activeQR, setActiveQR] = useState(null);
 
+  // ── NEW: Filter/Sort/Search state for events/certificates/qr tabs ──
+  const [itemsSearch, setItemsSearch] = useState("");
+  const [itemsFilterType, setItemsFilterType] = useState("All");
+  const [itemsSortBy, setItemsSortBy] = useState("date_asc");
+
   // Pending requests
   const [requests, setRequests] = useState({});
   const [requestsLoading, setRequestsLoading] = useState(true);
@@ -241,6 +246,13 @@ function StaffDashboard() {
     fetchApprovedItems();
     fetchPriests();
   }, []);
+
+  // Reset filters when switching tabs
+  useEffect(() => {
+    setItemsSearch("");
+    setItemsFilterType("All");
+    setItemsSortBy("date_asc");
+  }, [activeTab]);
 
   // Real-time refetch on new notification — debounced to prevent burst queries
   useEffect(() => {
@@ -538,11 +550,47 @@ function StaffDashboard() {
   };
 
   // ── Derived ───────────────────────────────────────────────────────────────
+
+  // ── NEW: Type options per tab ─────────────────────────────────────────────
+  const getTypeOptionsForTab = () => {
+    if (activeTab === "certificates") return ["All", "Baptism", "Wedding"];
+    return ["All", "Baptism", "Wedding", "Parish Event"];
+  };
+
+  // ── NEW: getVisibleItems with filter + sort + search ──────────────────────
   const getVisibleItems = () => {
+    let result = [...items];
+
+    // Base filter by tab
     if (activeTab === "certificates") {
-      return items.filter(i => i.request_type === "Baptism" || i.request_type === "Wedding");
+      result = result.filter(i => i.request_type === "Baptism" || i.request_type === "Wedding");
     }
-    return items;
+
+    // Type filter
+    if (itemsFilterType !== "All") {
+      result = result.filter(i => i.request_type === itemsFilterType);
+    }
+
+    // Search filter
+    if (itemsSearch.trim()) {
+      const q = itemsSearch.toLowerCase();
+      result = result.filter(i =>
+        (i.display_name || "").toLowerCase().includes(q) ||
+        (i.request_type || "").toLowerCase().includes(q) ||
+        (i.location || "").toLowerCase().includes(q)
+      );
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      if (itemsSortBy === "date_asc")  return new Date(a.display_date) - new Date(b.display_date);
+      if (itemsSortBy === "date_desc") return new Date(b.display_date) - new Date(a.display_date);
+      if (itemsSortBy === "name_asc")  return (a.display_name || "").localeCompare(b.display_name || "");
+      if (itemsSortBy === "name_desc") return (b.display_name || "").localeCompare(a.display_name || "");
+      return 0;
+    });
+
+    return result;
   };
 
   const totalPending = TAB_NAMES.reduce((sum, t) => sum + (requests[t]?.length || 0), 0);
@@ -761,24 +809,100 @@ function StaffDashboard() {
                 <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div></div>
               ) : (
                 <div className="animate-fade-in-up">
-                  {/* Toolbar */}
-                  <div className="flex justify-end mb-4">
-                    <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white">
-                      <button
-                        onClick={() => setStaffViewMode("card")}
-                        title="Card view"
-                        className={`px-3 py-2.5 text-sm transition-colors ${staffViewMode === "card" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
-                      >⊞</button>
-                      <button
-                        onClick={() => setStaffViewMode("table")}
-                        title="Table view"
-                        className={`px-3 py-2.5 text-sm transition-colors ${staffViewMode === "table" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
-                      >≡</button>
+
+                  {/* ── NEW: Filter / Sort / Search Toolbar ── */}
+                  <div className="flex flex-col sm:flex-row gap-3 mb-6 pb-6 border-b border-gray-100">
+
+                    {/* Search */}
+                    <div className="relative flex-1 min-w-0">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔍</span>
+                      <input
+                        type="text"
+                        placeholder="Search by name or location…"
+                        value={itemsSearch}
+                        onChange={e => setItemsSearch(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:bg-white transition-colors"
+                      />
+                    </div>
+
+                    {/* Type filter */}
+                    <select
+                      value={itemsFilterType}
+                      onChange={e => setItemsFilterType(e.target.value)}
+                      className="py-2.5 px-3 rounded-xl border-2 border-[#B59E74]/40 hover:border-[#B59E74] text-sm font-bold uppercase tracking-widest text-[#B59E74] focus:outline-none focus:ring-2 focus:ring-[#B59E74] cursor-pointer bg-white shrink-0"
+                    >
+                      {getTypeOptionsForTab().map(opt => (
+                        <option key={opt} value={opt}>{opt === "All" ? `All Types` : opt}</option>
+                      ))}
+                    </select>
+
+                    {/* Sort */}
+                    <select
+                      value={itemsSortBy}
+                      onChange={e => setItemsSortBy(e.target.value)}
+                      className="py-2.5 px-3 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74] cursor-pointer shrink-0"
+                    >
+                      <option value="date_asc">Date — Oldest First</option>
+                      <option value="date_desc">Date — Newest First</option>
+                      <option value="name_asc">Name — A → Z</option>
+                      <option value="name_desc">Name — Z → A</option>
+                    </select>
+
+                    {/* Results count + view toggle */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-gray-400 font-medium whitespace-nowrap hidden sm:inline">
+                        {getVisibleItems().length} result{getVisibleItems().length !== 1 ? "s" : ""}
+                      </span>
+                      <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white">
+                        <button
+                          onClick={() => setStaffViewMode("card")}
+                          title="Card view"
+                          className={`px-3 py-2.5 text-sm transition-colors ${staffViewMode === "card" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+                        >⊞</button>
+                        <button
+                          onClick={() => setStaffViewMode("table")}
+                          title="Table view"
+                          className={`px-3 py-2.5 text-sm transition-colors ${staffViewMode === "table" ? "bg-[#B59E74] text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+                        >≡</button>
+                      </div>
                     </div>
                   </div>
 
+                  {/* Active filter chips */}
+                  {(itemsFilterType !== "All" || itemsSearch.trim()) && (
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {itemsFilterType !== "All" && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#B59E74]/10 border border-[#B59E74]/30 text-xs font-bold text-[#B59E74] uppercase tracking-wide">
+                          {itemsFilterType}
+                          <button onClick={() => setItemsFilterType("All")} className="hover:text-[#9c8760] transition-colors">✕</button>
+                        </span>
+                      )}
+                      {itemsSearch.trim() && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-100 border border-gray-200 text-xs font-bold text-gray-600 uppercase tracking-wide">
+                          "{itemsSearch}"
+                          <button onClick={() => setItemsSearch("")} className="hover:text-gray-800 transition-colors">✕</button>
+                        </span>
+                      )}
+                      <button
+                        onClick={() => { setItemsFilterType("All"); setItemsSearch(""); setItemsSortBy("date_asc"); }}
+                        className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2 transition-colors"
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                  )}
+
                   {getVisibleItems().length === 0 ? (
-                    <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center"><div className="text-4xl mb-4">📭</div><h3 className="text-xl font-serif text-gray-800">No active records found.</h3></div>
+                    <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center">
+                      <div className="text-4xl mb-4">📭</div>
+                      <h3 className="text-xl font-serif text-gray-800">No records match your filters.</h3>
+                      <button
+                        onClick={() => { setItemsFilterType("All"); setItemsSearch(""); }}
+                        className="mt-4 text-sm text-[#B59E74] hover:underline font-medium"
+                      >
+                        Clear filters
+                      </button>
+                    </div>
                   ) : staffViewMode === "table" ? (
                     <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-x-auto">
                       <table className="w-full text-left border-collapse">
@@ -839,7 +963,7 @@ function StaffDashboard() {
               )
             )}
 
-            {/* ── USERS REPOSITORY (✨ FIXED: Moved inside the unified white card) ── */}
+            {/* ── USERS REPOSITORY ── */}
             {activeTab === "user-repository" && (
               <div className="animate-fade-in-up">
                 <div className="mb-6 border-b border-gray-200 pb-4">
