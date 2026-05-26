@@ -195,7 +195,6 @@ function AdminSchedules() {
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState([]);
   
-  // State to hold the dynamic list of priests
   const [priestNames, setPriestNames] = useState([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -203,6 +202,8 @@ function AdminSchedules() {
 
   const [activeTab, setActiveTab] = useState("Upcoming");
   const [eventSearch, setEventSearch] = useState("");
+  // ✨ NEW: State for sorting specifically on the Active Today tab
+  const [activeSort, setActiveSort] = useState("time_asc");
 
   const [rejectingEvent, setRejectingEvent] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -211,7 +212,6 @@ function AdminSchedules() {
   const [deletingEvent, setDeletingEvent] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
 
-  // Map search state
   const [mapSearch, setMapSearch] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -285,7 +285,6 @@ function AdminSchedules() {
       }
     } catch (err) {
       console.error("Failed to load priests:", err);
-      // Fallback list
       setPriestNames([
         "Rev. Fr. Pedro Bautista",
         "Rev. Fr. Juan Dela Cruz",
@@ -529,6 +528,22 @@ function AdminSchedules() {
       return true;
     })
     .sort((a, b) => {
+      // ✨ NEW: Apply specific sorting if "Active Today" tab is selected
+      if (activeTab === "Active") {
+        if (activeSort === "created_desc") {
+          return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+        }
+        if (activeSort === "created_asc") {
+          return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+        }
+        if (activeSort === "time_desc") {
+          return String(b.event_time || "00:00:00").localeCompare(String(a.event_time || "00:00:00"));
+        }
+        // Default: time_asc
+        return String(a.event_time || "00:00:00").localeCompare(String(b.event_time || "00:00:00"));
+      }
+
+      // Default logic for other tabs
       const dateA = a.event_date || "9999-12-31";
       const timeA = a.event_time || "00:00:00";
       const dateB = b.event_date || "9999-12-31";
@@ -596,18 +611,43 @@ function AdminSchedules() {
           </div>
         </div>
 
-        {/* Search bar */}
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-[#B59E74] mb-4 max-w-md shadow-sm">
-          <span className="text-gray-400 text-sm">🔍</span>
-          <input
-            type="text"
-            value={eventSearch}
-            onChange={e => setEventSearch(e.target.value)}
-            placeholder="Search events by title or location..."
-            className="flex-1 outline-none text-sm text-gray-700 bg-transparent"
-          />
-          {eventSearch && (
-            <button type="button" onClick={() => setEventSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+        {/* ✨ NEW: Search bar and Sort Filter row */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-[#B59E74] w-full max-w-md shadow-sm">
+            <span className="text-gray-400 text-sm">🔍</span>
+            <input
+              type="text"
+              value={eventSearch}
+              onChange={e => setEventSearch(e.target.value)}
+              placeholder="Search events by title or location..."
+              className="flex-1 outline-none text-sm text-gray-700 bg-transparent"
+            />
+            {eventSearch && (
+              <button type="button" onClick={() => setEventSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+            )}
+          </div>
+
+          {/* Sort Dropdown (Visible only for Active tab) */}
+          {activeTab === "Active" && (
+            <div className="flex items-center gap-3 animate-fade-in">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Sort By:</label>
+              <div className="relative">
+                <select
+                  value={activeSort}
+                  onChange={(e) => setActiveSort(e.target.value)}
+                  className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer shadow-sm transition-colors"
+                >
+                  <option value="time_asc">Time (Earliest First)</option>
+                  <option value="time_desc">Time (Latest First)</option>
+                  <option value="created_desc">Newest Created</option>
+                  <option value="created_asc">Oldest Created</option>
+                </select>
+                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
           )}
         </div>
 
@@ -1110,7 +1150,7 @@ function AdminSchedules() {
                       )}
                     </div>
 
-                    <p className="text-[11px] text-gray-400 italic -mt-1">
+                    <p className="text-[10px] text-gray-400 italic -mt-1">
                       Search to find a location, or click directly on the map to drop a pin.
                     </p>
                   </>
