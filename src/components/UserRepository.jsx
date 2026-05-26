@@ -3,7 +3,6 @@ import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/useAuth";
 
 const BUCKET = "user-documents";
-const PAGE_SIZE = 5;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatBytes(bytes) {
@@ -22,28 +21,17 @@ function getFileIcon(mimeType) {
   return "📄";
 }
 
-const ROLE_FILTERS = [
-  { label: "All", value: "all" },
-  { label: "Parishioners", value: "parishioner" },
-  { label: "Staff", value: "staff" },
-  { label: "Admin", value: "admin" },
-  { label: "Priests", value: "priest" },
-  { label: "Ministry", value: "ministry" },
-];
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function UserRepository() {
   const { user: staffUser } = useAuth();
 
   // Users list
   const [users, setUsers] = useState([]);
-  const [userRoles, setUserRoles] = useState({}); // { userId: role }
+  const [userRoles, setUserRoles] = useState({});
   const [usersLoading, setUsersLoading] = useState(true);
 
-  // Filters + search + pagination
+  // Search
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Expanded user state
   const [expandedUserId, setExpandedUserId] = useState(null);
@@ -69,37 +57,32 @@ export default function UserRepository() {
   const fetchUsers = async () => {
     setUsersLoading(true);
     try {
-      // 1. Fetch profiles
       const profilesRes = await supabase
         .from("profiles")
-        .select("id, full_name, first_name, email, updated_at")
-        .order("updated_at", { ascending: false });
+        .select("id, full_name, first_name, email, updated_at");
 
       if (profilesRes.error) throw profilesRes.error;
-      setUsers(profilesRes.data || []);
 
-      // 2. Fetch roles — try with ministry column first, fall back without it
+      // Sort alphabetically by display name
+      const sorted = (profilesRes.data || []).sort((a, b) => {
+        const nameA = getUserName(a).toLowerCase();
+        const nameB = getUserName(b).toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+      setUsers(sorted);
+
       let rolesData = [];
       const rolesWithMinistry = await supabase
         .from("user_roles")
         .select("user_id, role, ministry");
 
       if (rolesWithMinistry.error) {
-        // ministry column might not exist yet — retry without it
-        console.warn("UserRepository: ministry column missing, retrying without it:", rolesWithMinistry.error.message);
-        const rolesBasic = await supabase
-          .from("user_roles")
-          .select("user_id, role");
-        if (rolesBasic.error) {
-          console.error("UserRepository: could not read user_roles:", rolesBasic.error.message);
-        } else {
-          rolesData = rolesBasic.data || [];
-        }
+        const rolesBasic = await supabase.from("user_roles").select("user_id, role");
+        if (!rolesBasic.error) rolesData = rolesBasic.data || [];
       } else {
         rolesData = rolesWithMinistry.data || [];
       }
 
-      // 3. Build role map: userId → { role, ministry }
       const roleMap = {};
       rolesData.forEach((r) => {
         roleMap[r.user_id] = {
@@ -108,7 +91,6 @@ export default function UserRepository() {
         };
       });
       setUserRoles(roleMap);
-
     } catch (err) {
       console.error("UserRepository: failed to fetch users:", err);
     }
@@ -162,7 +144,10 @@ export default function UserRepository() {
       .from(BUCKET)
       .upload(storagePath, pendingFile, { upsert: false });
 
-    if (storageErr) { setUploading(false); return alert("Upload failed: " + storageErr.message); }
+    if (storageErr) {
+      setUploading(false);
+      return alert("Upload failed: " + storageErr.message);
+    }
 
     const { error: dbErr } = await supabase.from("user_documents").insert({
       user_id: userId,
@@ -217,7 +202,7 @@ export default function UserRepository() {
     setRenaming(false);
   };
 
-  // ── Derived ───────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
   const getUserName = (u) => {
     if (u.full_name?.trim()) return u.full_name.trim();
     if (u.first_name?.trim()) return u.first_name.trim();
@@ -235,92 +220,43 @@ export default function UserRepository() {
     }
   };
 
-  // Filter pipeline
+  // ── Filtered list (search only, already sorted alphabetically) ────────────
   const filteredUsers = users.filter((u) => {
-    const name  = getUserName(u).toLowerCase();
-    const email = (u.email || "").toLowerCase();
-    const q     = search.toLowerCase();
-    const matchesSearch = name.includes(q) || email.includes(q);
-
-    if (!matchesSearch) return false;
-    if (roleFilter === "all") return true;
-
-    const { role, ministry } = getRoleInfo(u.id);
-    if (roleFilter === "ministry") return !!ministry;
-    return (role || "parishioner").toLowerCase() === roleFilter;
+    const q = search.toLowerCase();
+    return (
+      getUserName(u).toLowerCase().includes(q) ||
+      (u.email || "").toLowerCase().includes(q)
+    );
   });
-
-  // Pagination
-  const totalPages   = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
-  const safePage     = Math.min(currentPage, totalPages);
-  const pagedUsers   = filteredUsers.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  // Reset to page 1 when filter/search changes
-  const handleSearch = (val) => { setSearch(val); setCurrentPage(1); };
-  const handleFilter = (val) => { setRoleFilter(val); setCurrentPage(1); };
-
-  // Pagination window (show up to 5 page buttons)
-  const pageWindow = () => {
-    const delta = 2;
-    const start = Math.max(1, safePage - delta);
-    const end   = Math.min(totalPages, safePage + delta);
-    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-  };
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="animate-fade-in-up">
 
-      {/* ── Controls row ── */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6 items-start sm:items-center justify-between">
-
-        {/* Search */}
-        <div className="relative w-full sm:max-w-xs">
+      {/* ── Search bar ── */}
+      <div className="flex items-center gap-3 mb-5">
+        <div className="relative flex-1 max-w-sm">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm">🔍</span>
           <input
             type="text"
             placeholder="Search by name or email…"
             value={search}
-            onChange={(e) => handleSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-3 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] outline-none text-sm bg-white"
           />
         </div>
-
-        {/* Role filter pills */}
-        <div className="flex flex-wrap gap-2">
-          {ROLE_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => handleFilter(f.value)}
-              className={`px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-widest border transition-all ${
-                roleFilter === f.value
-                  ? "bg-[#B59E74] text-white border-[#B59E74] shadow-sm"
-                  : "bg-white text-gray-500 border-gray-200 hover:border-[#B59E74] hover:text-[#B59E74]"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <p className="text-xs text-gray-400 font-medium shrink-0">
+          <span className="text-gray-700 font-bold">{filteredUsers.length}</span>{" "}
+          {filteredUsers.length === 1 ? "user" : "users"}
+        </p>
       </div>
 
-      {/* Results count */}
-      <p className="text-xs text-gray-400 mb-3 font-medium">
-        Showing <span className="text-gray-600 font-bold">{pagedUsers.length}</span> of{" "}
-        <span className="text-gray-600 font-bold">{filteredUsers.length}</span> users
-        {roleFilter !== "all" && (
-          <span className="ml-1 text-[#B59E74] font-bold">
-            · {ROLE_FILTERS.find((f) => f.value === roleFilter)?.label}
-          </span>
-        )}
-      </p>
-
-      {/* ── Table shell ── */}
+      {/* ── User list ── */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
 
         {/* Header */}
         <div className="grid grid-cols-[1fr_auto] px-6 py-3 border-b border-gray-100 bg-gray-50/60">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">User Profile</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">User</span>
           <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Actions</span>
         </div>
 
@@ -329,60 +265,61 @@ export default function UserRepository() {
           <div className="flex justify-center py-16">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#B59E74]" />
           </div>
-        ) : pagedUsers.length === 0 ? (
+        ) : filteredUsers.length === 0 ? (
           <div className="text-center py-12 text-gray-400 italic font-serif">
-            {search || roleFilter !== "all"
-              ? "No users match your search or filter."
-              : "No users found."}
+            {search ? "No users match your search." : "No users found."}
           </div>
         ) : (
           <ul className="divide-y divide-gray-100">
-            {pagedUsers.map((u) => {
-              const isExpanded  = expandedUserId === u.id;
-              const userDocs    = documents[u.id] || [];
+            {filteredUsers.map((u) => {
+              const isExpanded    = expandedUserId === u.id;
+              const userDocs      = documents[u.id] || [];
               const isDocsLoading = docsLoading[u.id];
               const { role, ministry } = getRoleInfo(u.id);
+
+              // Avatar initials
+              const initials = getUserName(u)
+                .split(" ")
+                .map((w) => w[0])
+                .slice(0, 2)
+                .join("")
+                .toUpperCase();
 
               return (
                 <li key={u.id}>
 
                   {/* ── User row ── */}
-                  <div className={`grid grid-cols-[1fr_auto] items-center px-6 py-4 transition-colors ${
+                  <div className={`flex items-center gap-4 px-6 py-4 transition-colors ${
                     isExpanded ? "bg-[#F6F5ED]" : "hover:bg-gray-50/60"
                   }`}>
 
-                    {/* Profile */}
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="font-semibold text-gray-800 text-sm leading-tight truncate">
-                        {getUserName(u)}
-                      </span>
-                      <span className="text-xs text-gray-400 truncate">{u.email || "—"}</span>
+                    {/* Avatar */}
+                    <div className="w-10 h-10 rounded-full bg-[#B59E74]/15 border border-[#B59E74]/30 flex items-center justify-center shrink-0">
+                      <span className="text-[11px] font-bold text-[#B59E74]">{initials}</span>
+                    </div>
 
-                      {/* Badges row */}
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                          Joined:{" "}
-                          {u.updated_at ? new Date(u.updated_at).toLocaleDateString() : "—"}
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-gray-800 text-sm leading-tight">
+                          {getUserName(u)}
                         </span>
-
-                        {/* Role badge */}
                         <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border ${getRoleBadgeStyle(role)}`}>
                           {role || "parishioner"}
                         </span>
-
-                        {/* Ministry badge */}
                         {ministry && (
                           <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-purple-100 text-purple-600 border border-purple-200">
                             {ministry}
                           </span>
                         )}
                       </div>
+                      <span className="text-xs text-gray-400 mt-0.5 block truncate">{u.email || "—"}</span>
                     </div>
 
-                    {/* Action button */}
+                    {/* Expand button */}
                     <button
                       onClick={() => handleToggleExpand(u.id)}
-                      className={`flex flex-col items-center justify-center gap-0.5 ml-4 transition-all ${
+                      className={`shrink-0 flex flex-col items-center justify-center gap-0.5 transition-all ${
                         isExpanded ? "text-[#B59E74]" : "text-gray-400 hover:text-[#B59E74]"
                       }`}
                     >
@@ -537,72 +474,6 @@ export default function UserRepository() {
           </ul>
         )}
       </div>
-
-      {/* ── Pagination ── */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-6">
-          {/* Prev */}
-          <button
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={safePage === 1}
-            className="px-4 py-2 rounded-xl border border-gray-200 text-xs font-bold uppercase tracking-widest text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-          >
-            ← Prev
-          </button>
-
-          {/* Page number buttons */}
-          <div className="flex items-center gap-1.5">
-            {/* First page shortcut */}
-            {pageWindow()[0] > 1 && (
-              <>
-                <button onClick={() => setCurrentPage(1)}
-                  className="w-9 h-9 rounded-xl border border-gray-200 text-xs font-bold text-gray-500 hover:bg-gray-50 transition-all">
-                  1
-                </button>
-                {pageWindow()[0] > 2 && (
-                  <span className="text-gray-400 text-xs px-1">…</span>
-                )}
-              </>
-            )}
-
-            {pageWindow().map((p) => (
-              <button
-                key={p}
-                onClick={() => setCurrentPage(p)}
-                className={`w-9 h-9 rounded-xl text-xs font-bold transition-all border ${
-                  p === safePage
-                    ? "bg-[#B59E74] text-white border-[#B59E74] shadow-sm"
-                    : "border-gray-200 text-gray-600 hover:border-[#B59E74] hover:text-[#B59E74]"
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-
-            {/* Last page shortcut */}
-            {pageWindow()[pageWindow().length - 1] < totalPages && (
-              <>
-                {pageWindow()[pageWindow().length - 1] < totalPages - 1 && (
-                  <span className="text-gray-400 text-xs px-1">…</span>
-                )}
-                <button onClick={() => setCurrentPage(totalPages)}
-                  className="w-9 h-9 rounded-xl border border-gray-200 text-xs font-bold text-gray-500 hover:bg-gray-50 transition-all">
-                  {totalPages}
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* Next */}
-          <button
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={safePage === totalPages}
-            className="px-4 py-2 rounded-xl border border-gray-200 text-xs font-bold uppercase tracking-widest text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-          >
-            Next →
-          </button>
-        </div>
-      )}
     </div>
   );
 }
