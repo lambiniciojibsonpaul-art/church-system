@@ -21,13 +21,180 @@ function getFileIcon(mimeType) {
   return "📄";
 }
 
+// ─── Create User Modal ────────────────────────────────────────────────────────
+function CreateUserModal({ onClose, onSuccess }) {
+  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", contact_number: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!form.first_name.trim() && !form.last_name.trim()) {
+      setError("Please enter at least a first or last name.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const newId = crypto.randomUUID();
+      const { error: insertErr } = await supabase.from("profiles").upsert({
+        id: newId,
+        first_name: form.first_name.trim() || null,
+        last_name: form.last_name.trim() || null,
+        email: form.email.trim() || null,
+        contact_number: form.contact_number.trim() || null,
+        is_manual_entry: true,
+      }, { onConflict: "id", ignoreDuplicates: false });
+
+      if (insertErr) throw insertErr;
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+
+        {/* Header */}
+        <div className="bg-[#F6F5ED] px-8 py-6 border-b border-[#B59E74]/20 flex justify-between items-center">
+          <div>
+            <h2 className="text-xl font-serif text-gray-800 font-medium uppercase tracking-widest">
+              Add to Repository
+            </h2>
+            <p className="text-xs text-gray-500 italic mt-1">
+              Create a document folder for this person.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors text-lg"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-8 space-y-5">
+          {error && (
+            <div className="p-3 bg-red-50 text-red-600 border border-red-100 rounded-xl text-xs font-bold text-center">
+              {error}
+            </div>
+          )}
+
+          {/* Name row */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                First Name
+              </label>
+              <input
+                type="text"
+                value={form.first_name}
+                onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+                className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
+                placeholder="Juan"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                Last Name
+              </label>
+              <input
+                type="text"
+                value={form.last_name}
+                onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+                className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
+                placeholder="Dela Cruz"
+              />
+            </div>
+          </div>
+
+          {/* Email */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+              Email Address <span className="text-gray-400 normal-case font-normal">(optional)</span>
+            </label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
+              placeholder="name@email.com"
+            />
+          </div>
+
+          {/* Contact Number */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+              Contact Number <span className="text-gray-400 normal-case font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={form.contact_number}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, "");
+                setForm({ ...form, contact_number: val });
+              }}
+              className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
+              placeholder="09XX XXX XXXX"
+              maxLength={15}
+            />
+          </div>
+
+          {/* Info note */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
+            <span className="text-amber-500 text-sm shrink-0 mt-0.5">ℹ</span>
+            <p className="text-[11px] text-amber-700 leading-relaxed">
+              This creates a <strong>document folder only</strong> — not a system account.
+              This person will not be able to log in.
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div className="pt-2 flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-3 rounded-xl bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-xs uppercase tracking-widest transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
+                  Creating…
+                </span>
+              ) : (
+                "Create Folder"
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function UserRepository() {
   const { user: staffUser } = useAuth();
 
   // Users list
   const [users, setUsers] = useState([]);
-  const [userRoles, setUserRoles] = useState({});
   const [usersLoading, setUsersLoading] = useState(true);
 
   // Search
@@ -49,7 +216,10 @@ export default function UserRepository() {
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
 
-  // ── Fetch users + their roles ─────────────────────────────────────────────
+  // Create user modal
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // ── Fetch users ───────────────────────────────────────────────────────────
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -57,40 +227,19 @@ export default function UserRepository() {
   const fetchUsers = async () => {
     setUsersLoading(true);
     try {
-      const profilesRes = await supabase
+      const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, first_name, email, updated_at");
+        .select("id, full_name, first_name, last_name, email, updated_at, is_manual_entry");
 
-      if (profilesRes.error) throw profilesRes.error;
+      if (error) throw error;
 
-      // Sort alphabetically by display name
-      const sorted = (profilesRes.data || []).sort((a, b) => {
+      const sorted = (data || []).sort((a, b) => {
         const nameA = getUserName(a).toLowerCase();
         const nameB = getUserName(b).toLowerCase();
         return nameA.localeCompare(nameB);
       });
+
       setUsers(sorted);
-
-      let rolesData = [];
-      const rolesWithMinistry = await supabase
-        .from("user_roles")
-        .select("user_id, role, ministry");
-
-      if (rolesWithMinistry.error) {
-        const rolesBasic = await supabase.from("user_roles").select("user_id, role");
-        if (!rolesBasic.error) rolesData = rolesBasic.data || [];
-      } else {
-        rolesData = rolesWithMinistry.data || [];
-      }
-
-      const roleMap = {};
-      rolesData.forEach((r) => {
-        roleMap[r.user_id] = {
-          role: (r.role || "parishioner").toLowerCase(),
-          ministry: r.ministry || null,
-        };
-      });
-      setUserRoles(roleMap);
     } catch (err) {
       console.error("UserRepository: failed to fetch users:", err);
     }
@@ -204,23 +353,13 @@ export default function UserRepository() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const getUserName = (u) => {
+    const full = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
+    if (full) return full;
     if (u.full_name?.trim()) return u.full_name.trim();
-    if (u.first_name?.trim()) return u.first_name.trim();
-    return u.email || "Unknown User";
+    return u.email || "Unknown";
   };
 
-  const getRoleInfo = (userId) => userRoles[userId] || { role: "parishioner", ministry: null };
-
-  const getRoleBadgeStyle = (role) => {
-    switch ((role || "").toLowerCase()) {
-      case "admin":      return "bg-red-100 text-red-600 border-red-200";
-      case "staff":      return "bg-blue-100 text-blue-600 border-blue-200";
-      case "superadmin": return "bg-purple-100 text-purple-600 border-purple-200";
-      default:           return "bg-gray-100 text-gray-500 border-gray-200";
-    }
-  };
-
-  // ── Filtered list (search only, already sorted alphabetically) ────────────
+  // ── Filtered list ─────────────────────────────────────────────────────────
   const filteredUsers = users.filter((u) => {
     const q = search.toLowerCase();
     return (
@@ -233,7 +372,7 @@ export default function UserRepository() {
   return (
     <div className="animate-fade-in-up">
 
-      {/* ── Search bar ── */}
+      {/* ── Toolbar: search + create button ── */}
       <div className="flex items-center gap-3 mb-5">
         <div className="relative flex-1 max-w-sm">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm">🔍</span>
@@ -245,10 +384,20 @@ export default function UserRepository() {
             className="w-full pl-10 pr-4 py-3 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] outline-none text-sm bg-white"
           />
         </div>
+
         <p className="text-xs text-gray-400 font-medium shrink-0">
           <span className="text-gray-700 font-bold">{filteredUsers.length}</span>{" "}
           {filteredUsers.length === 1 ? "user" : "users"}
         </p>
+
+        {/* Create User Button */}
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="shrink-0 flex items-center gap-2 px-4 py-3 bg-[#B59E74] hover:bg-[#9c8760] text-white rounded-2xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm"
+        >
+          <span className="text-base leading-none">＋</span>
+          <span className="hidden sm:inline">Add Person</span>
+        </button>
       </div>
 
       {/* ── User list ── */}
@@ -275,7 +424,6 @@ export default function UserRepository() {
               const isExpanded    = expandedUserId === u.id;
               const userDocs      = documents[u.id] || [];
               const isDocsLoading = docsLoading[u.id];
-              const { role, ministry } = getRoleInfo(u.id);
 
               // Avatar initials
               const initials = getUserName(u)
@@ -298,22 +446,17 @@ export default function UserRepository() {
                       <span className="text-[11px] font-bold text-[#B59E74]">{initials}</span>
                     </div>
 
-                    {/* Info */}
+                    {/* Info — name + email only */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-gray-800 text-sm leading-tight">
                           {getUserName(u)}
                         </span>
-                        <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border ${getRoleBadgeStyle(role)}`}>
-                          {role || "parishioner"}
-                        </span>
-                        {ministry && (
-                          <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-purple-100 text-purple-600 border border-purple-200">
-                            {ministry}
-                          </span>
-                        )}
+
                       </div>
-                      <span className="text-xs text-gray-400 mt-0.5 block truncate">{u.email || "—"}</span>
+                      <span className="text-xs text-gray-400 mt-0.5 block truncate">
+                        {u.email || "—"}
+                      </span>
                     </div>
 
                     {/* Expand button */}
@@ -474,6 +617,14 @@ export default function UserRepository() {
           </ul>
         )}
       </div>
+
+      {/* ── Create User Modal ── */}
+      {showCreateModal && (
+        <CreateUserModal
+          onClose={() => setShowCreateModal(false)}
+          onSuccess={fetchUsers}
+        />
+      )}
     </div>
   );
 }

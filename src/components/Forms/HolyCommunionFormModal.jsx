@@ -43,7 +43,6 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
     date_of_birth: "",
     place_of_birth: "",
     gender: "",
-    current_age: "",
     date_of_baptism: "",
     baptism_parish: "",
     father_name: "",
@@ -101,8 +100,8 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
 
-    // ✨ Enforce numbers-only for contact and age fields
-    if (name === "contact_number_1" || name === "contact_number_2" || name === "current_age") {
+    // ✨ Enforce numbers-only for contact fields
+    if (name === "contact_number_1" || name === "contact_number_2") {
       const numbersOnly = value.replace(/\D/g, "");
       setFormData((prev) => ({ ...prev, [name]: numbersOnly }));
       return;
@@ -130,7 +129,6 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
         date_of_birth:      formData.date_of_birth,
         place_of_birth:     formData.place_of_birth,
         gender:             formData.gender,
-        current_age:        formData.current_age,
         date_of_baptism:    formData.date_of_baptism,
         baptism_parish:     formData.baptism_parish,
         father_name:        formData.father_name,
@@ -257,21 +255,15 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Gender <span className="text-[11px] text-gray-400 normal-case font-normal">(Kasarian)</span></label>
-                    <div className="flex items-center gap-6 mt-1">
-                      <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                        <input type="radio" name="gender" value="Male" checked={formData.gender === "Male"} onChange={handleChange} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74] rounded border-gray-300" /> Male <span className="text-gray-400">(Lalake)</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                        <input type="radio" name="gender" value="Female" checked={formData.gender === "Female"} onChange={handleChange} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74] rounded border-gray-300" /> Female <span className="text-gray-400">(Babae)</span>
-                      </label>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Current Age</label>
-                    <input type="text" name="current_age" value={formData.current_age} onChange={handleChange} className={inputClass} />
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600">Gender <span className="text-[11px] text-gray-400 normal-case font-normal">(Kasarian)</span></label>
+                  <div className="flex items-center gap-6 mt-1">
+                    <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                      <input type="radio" name="gender" value="Male" checked={formData.gender === "Male"} onChange={handleChange} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74] rounded border-gray-300" /> Male <span className="text-gray-400">(Lalake)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                      <input type="radio" name="gender" value="Female" checked={formData.gender === "Female"} onChange={handleChange} className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74] rounded border-gray-300" /> Female <span className="text-gray-400">(Babae)</span>
+                    </label>
                   </div>
                 </div>
               </div>
