@@ -202,8 +202,18 @@ function AdminSchedules() {
 
   const [activeTab, setActiveTab] = useState("Upcoming");
   const [eventSearch, setEventSearch] = useState("");
-  // ✨ NEW: State for sorting specifically on the Active Today tab
-  const [activeSort, setActiveSort] = useState("time_asc");
+  
+  // ✨ NEW: State for sorting across all tabs
+  const [activeSort, setActiveSort] = useState("date_asc");
+
+  // ✨ NEW: Smart default sorting when tabs change
+  useEffect(() => {
+    if (activeTab === "Past" || activeTab === "Cancelled") {
+      setActiveSort("date_desc");
+    } else {
+      setActiveSort("date_asc");
+    }
+  }, [activeTab]);
 
   const [rejectingEvent, setRejectingEvent] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -285,6 +295,7 @@ function AdminSchedules() {
       }
     } catch (err) {
       console.error("Failed to load priests:", err);
+      // Fallback list
       setPriestNames([
         "Rev. Fr. Pedro Bautista",
         "Rev. Fr. Juan Dela Cruz",
@@ -528,31 +539,31 @@ function AdminSchedules() {
       return true;
     })
     .sort((a, b) => {
-      // ✨ NEW: Apply specific sorting if "Active Today" tab is selected
-      if (activeTab === "Active") {
-        if (activeSort === "created_desc") {
-          return String(b.created_at || "").localeCompare(String(a.created_at || ""));
-        }
-        if (activeSort === "created_asc") {
-          return String(a.created_at || "").localeCompare(String(b.created_at || ""));
-        }
-        if (activeSort === "time_desc") {
-          return String(b.event_time || "00:00:00").localeCompare(String(a.event_time || "00:00:00"));
-        }
-        // Default: time_asc
-        return String(a.event_time || "00:00:00").localeCompare(String(b.event_time || "00:00:00"));
+      // ✨ NEW: Master Sorting Logic applied to all tabs
+      if (activeSort === "created_desc") {
+        return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+      }
+      if (activeSort === "created_asc") {
+        return String(a.created_at || "").localeCompare(String(b.created_at || ""));
       }
 
-      // Default logic for other tabs
-      const dateA = a.event_date || "9999-12-31";
+      // Combine Date and Time for accurate chronological sorting
+      const dateA = a.event_date || (activeSort === "date_asc" ? "9999-12-31" : "0000-00-00");
       const timeA = a.event_time || "00:00:00";
-      const dateB = b.event_date || "9999-12-31";
+      const dateB = b.event_date || (activeSort === "date_asc" ? "9999-12-31" : "0000-00-00");
       const timeB = b.event_time || "00:00:00";
+      
       const dtA = new Date(`${dateA}T${timeA}`).getTime();
       const dtB = new Date(`${dateB}T${timeB}`).getTime();
-      const dir = activeTab === "Past" ? -1 : 1;
-      if (isNaN(dtA) || isNaN(dtB)) return dir * `${dateA}T${timeA}`.localeCompare(`${dateB}T${timeB}`);
-      return dir * (dtA - dtB);
+
+      if (activeSort === "date_desc") {
+        if (isNaN(dtA) || isNaN(dtB)) return `${dateB}T${timeB}`.localeCompare(`${dateA}T${timeA}`);
+        return dtB - dtA;
+      }
+      
+      // Default: date_asc
+      if (isNaN(dtA) || isNaN(dtB)) return `${dateA}T${timeA}`.localeCompare(`${dateB}T${timeB}`);
+      return dtA - dtB;
     });
 
   const pendingCount   = events.filter(ev => ev.status === "Pending").length;
@@ -611,7 +622,7 @@ function AdminSchedules() {
           </div>
         </div>
 
-        {/* ✨ NEW: Search bar and Sort Filter row */}
+        {/* ✨ NEW: Search bar and Sort Filter row (Available on ALL tabs) */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
           
           <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-[#B59E74] w-full max-w-md shadow-sm">
@@ -628,27 +639,25 @@ function AdminSchedules() {
             )}
           </div>
 
-          {/* Sort Dropdown (Visible only for Active tab) */}
-          {activeTab === "Active" && (
-            <div className="flex items-center gap-3 animate-fade-in">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Sort By:</label>
-              <div className="relative">
-                <select
-                  value={activeSort}
-                  onChange={(e) => setActiveSort(e.target.value)}
-                  className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer shadow-sm transition-colors"
-                >
-                  <option value="time_asc">Time (Earliest First)</option>
-                  <option value="time_desc">Time (Latest First)</option>
-                  <option value="created_desc">Newest Created</option>
-                  <option value="created_asc">Oldest Created</option>
-                </select>
-                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
+          {/* Sort Dropdown */}
+          <div className="flex items-center gap-3 animate-fade-in">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Sort By:</label>
+            <div className="relative">
+              <select
+                value={activeSort}
+                onChange={(e) => setActiveSort(e.target.value)}
+                className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer shadow-sm transition-colors"
+              >
+                <option value="date_asc">Event Date (Earliest First)</option>
+                <option value="date_desc">Event Date (Latest First)</option>
+                <option value="created_desc">Newest Created</option>
+                <option value="created_asc">Oldest Created</option>
+              </select>
+              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+              </svg>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Time-based tabs */}
