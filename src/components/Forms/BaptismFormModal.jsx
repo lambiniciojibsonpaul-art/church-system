@@ -175,6 +175,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
     setLoading(true);
 
     try {
+      let insertedRequestId = null;
       const fatherFull = [formData.fatherFirstName, formData.fatherMiddleName, formData.fatherLastName].filter(Boolean).join(" ");
       const motherFull = [formData.motherFirstName, formData.motherMiddleName, formData.motherMaidenLastName].filter(Boolean).join(" ");
       const godfatherFull = [formData.godfatherFirstName, formData.godfatherMiddleName, formData.godfatherLastName].filter(Boolean).join(" ");
@@ -225,6 +226,9 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         await submitGuestViaEdgeFunction("baptisms", payload);
       } else {
         const first = await restInsert("baptisms", [payload]);
+        if (!first.error && Array.isArray(first.data) && first.data[0]?.id) {
+          insertedRequestId = first.data[0].id;
+        }
 
         if (first.error) {
           const fallbackPayload = { ...payload };
@@ -233,12 +237,18 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
           delete fallbackPayload.submitter_phone;
 
           const retry = await restInsert("baptisms", [fallbackPayload]);
+          if (!retry.error && Array.isArray(retry.data) && retry.data[0]?.id) {
+            insertedRequestId = retry.data[0].id;
+          }
           if (retry.error) {
             const minPayload = { ...fallbackPayload };
             delete minPayload.is_guest;
             delete minPayload.guest_name;
             delete minPayload.guest_contact;
             const lastRetry = await restInsert("baptisms", [minPayload]);
+            if (!lastRetry.error && Array.isArray(lastRetry.data) && lastRetry.data[0]?.id) {
+              insertedRequestId = lastRetry.data[0].id;
+            }
             if (lastRetry.error) throw new Error(parseErr(lastRetry.error));
           }
         }
@@ -256,7 +266,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         notif_title: `New Baptism Request`,
         notif_message: `${submitterName} submitted a baptism request for ${childName || "a child"}.`,
         notif_link: '/staff-dashboard',
-        p_source_id: null,
+        p_source_id: insertedRequestId,
         p_source_table: 'baptisms',
       });
 

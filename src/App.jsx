@@ -52,6 +52,7 @@ function GlobalNotificationListener() {
         (payload) => {
           // When a new row is detected, pop up a beautiful toast!
           const newNotif = payload.new;
+          if (newNotif?.source_table === "announcements" || newNotif?.link === "/announcements") return;
           
           toast.success(
             <div className="flex flex-col gap-1">

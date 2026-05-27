@@ -95,9 +95,71 @@ function RolePill({ role, isSolid }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED NOTIFICATION LOGIC HOOK
 // ─────────────────────────────────────────────────────────────────────────────
-function useNotifications(userId) {
+function useNotifications(userId, role) {
   const [notifications, setNotifications] = useState([]);
+  const [dismissedIds, setDismissedIds] = useState([]);
   const navigate = useNavigate();
+
+  const dismissedKey = userId ? `notif-dismissed-${userId}` : null;
+
+  useEffect(() => {
+    if (!dismissedKey) {
+      setDismissedIds([]);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(dismissedKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setDismissedIds(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setDismissedIds([]);
+    }
+  }, [dismissedKey]);
+
+  const persistDismissed = (ids) => {
+    setDismissedIds(ids);
+    if (!dismissedKey) return;
+    try {
+      localStorage.setItem(dismissedKey, JSON.stringify(ids));
+    } catch {
+      // ignore storage failures
+    }
+  };
+
+  const isAnnouncementNotif = (n) =>
+    n?.source_table === "announcements" || n?.link === "/announcements";
+
+  const isDismissed = (n) => dismissedIds.includes(n.id);
+
+  const sanitizeLinkForRole = (notif) => {
+    const link = notif?.link || "";
+    const sourceTable = notif?.source_table || "";
+    const roleHome = {
+      admin: "/admin",
+      superadmin: "/admin",
+      staff: "/staff-dashboard",
+      priest: "/priest-dashboard",
+      minister: "/profile",
+      parishioner: "/profile",
+    };
+    const allowedPrefixByRole = {
+      admin: ["/admin", "/profile"],
+      superadmin: ["/admin", "/profile"],
+      staff: ["/staff-dashboard", "/profile"],
+      priest: ["/priest-dashboard", "/profile"],
+      minister: ["/profile"],
+      parishioner: ["/profile"],
+    };
+    const routeForSource = {
+      events: role === "admin" || role === "superadmin" ? "/admin/schedules" : (roleHome[role] || "/profile"),
+    };
+    if (link === "/announcements" || sourceTable === "announcements") return null;
+    const fallback = routeForSource[sourceTable] || roleHome[role] || "/profile";
+    if (!link) return fallback;
+    const allowed = allowedPrefixByRole[role] || ["/profile"];
+    if (allowed.some((prefix) => link.startsWith(prefix))) return link;
+    return fallback;
+  };
 
   useEffect(() => {
     if (!userId) return;
@@ -108,8 +170,12 @@ function useNotifications(userId) {
         .select("*")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
-        .limit(20);
-      if (data) setNotifications(data);
+        .limit(100);
+      if (data) {
+        setNotifications(
+          data.filter((n) => !isAnnouncementNotif(n)).filter((n) => !isDismissed(n))
+        );
+      }
     };
 
     fetchNotifications();
@@ -119,19 +185,17 @@ function useNotifications(userId) {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "notifications",
           filter: `user_id=eq.${userId}`,
         },
-        (payload) => {
-          setNotifications((prev) => [payload.new, ...prev].slice(0, 20));
-        }
+        () => fetchNotifications()
       )
       .subscribe();
 
     return () => supabase.removeChannel(channel);
-  }, [userId]);
+  }, [userId, dismissedIds]);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
@@ -146,8 +210,9 @@ function useNotifications(userId) {
       );
     }
     onClose?.();
-    if (notif.link) {
-      navigate(notif.link, {
+    const link = sanitizeLinkForRole(notif);
+    if (link) {
+      navigate(link, {
         state: {
           highlightId: notif.source_id,
           highlightTable: notif.source_table,
@@ -159,15 +224,23 @@ function useNotifications(userId) {
   const markAllAsRead = async () => {
     const unreadIds = notifications.filter((n) => !n.is_read).map((n) => n.id);
     if (unreadIds.length === 0) return;
-    await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
+    const { error } = await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
+    if (error) return;
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
   };
 
   const clearRead = async () => {
     const readIds = notifications.filter((n) => n.is_read).map((n) => n.id);
     if (readIds.length === 0) return;
-    await supabase.from("notifications").delete().in("id", readIds);
-    setNotifications((prev) => prev.filter((n) => !n.is_read));
+    const { error } = await supabase.from("notifications").delete().in("id", readIds);
+    if (error) {
+      // RLS-safe fallback: persist hidden read IDs locally to prevent reappearing on refresh.
+      persistDismissed(Array.from(new Set([...dismissedIds, ...readIds])));
+    } else {
+      // Keep local storage in sync when DB delete succeeds.
+      persistDismissed(dismissedIds.filter((id) => !readIds.includes(id)));
+    }
+    setNotifications((prev) => prev.filter((n) => !readIds.includes(n.id)));
   };
 
   return { notifications, unreadCount, handleNotificationClick, markAllAsRead, clearRead };
@@ -319,8 +392,9 @@ function NotificationList({ notifications, unreadCount, onNotifClick, onMarkAll,
 function NotificationBell({ isSolid, userId }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const { role } = useAuth();
   const { notifications, unreadCount, handleNotificationClick, markAllAsRead, clearRead } =
-    useNotifications(userId);
+    useNotifications(userId, role);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -372,8 +446,9 @@ function NotificationBell({ isSolid, userId }) {
 // MOBILE NOTIFICATION DRAWER (full-screen slide-up)
 // ─────────────────────────────────────────────────────────────────────────────
 function MobileNotificationDrawer({ isOpen, onClose, userId }) {
+  const { role } = useAuth();
   const { notifications, unreadCount, handleNotificationClick, markAllAsRead, clearRead } =
-    useNotifications(userId);
+    useNotifications(userId, role);
 
   useEffect(() => {
     if (isOpen) {
@@ -434,23 +509,40 @@ function MobileUnreadDot({ userId }) {
   useEffect(() => {
     if (!userId) return;
     const fetchCount = async () => {
-      const { count: c } = await supabase
+      const dismissedKey = `notif-dismissed-${userId}`;
+      let dismissedIds = [];
+      try {
+        const raw = localStorage.getItem(dismissedKey);
+        dismissedIds = raw ? JSON.parse(raw) : [];
+      } catch {
+        dismissedIds = [];
+      }
+
+      const { data } = await supabase
         .from("notifications")
-        .select("id", { count: "exact", head: true })
+        .select("id,is_read,source_table,link")
         .eq("user_id", userId)
-        .eq("is_read", false);
-      setCount(c || 0);
+        .eq("is_read", false)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      const filtered = (data || []).filter(
+        (n) =>
+          !dismissedIds.includes(n.id) &&
+          n.source_table !== "announcements" &&
+          n.link !== "/announcements"
+      );
+      setCount(filtered.length);
     };
     fetchCount();
 
     const channel = supabase
       .channel(`mobile-dot-${userId}`)
       .on("postgres_changes", {
-        event: "INSERT",
+        event: "*",
         schema: "public",
         table: "notifications",
         filter: `user_id=eq.${userId}`,
-      }, () => setCount((n) => n + 1))
+      }, fetchCount)
       .subscribe();
 
     return () => supabase.removeChannel(channel);

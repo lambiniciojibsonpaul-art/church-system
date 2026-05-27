@@ -303,6 +303,7 @@ export async function submitRequest({
   };
 
   let submitSuccess = false;
+  let insertedRequestId = null;
 
   if (guestInfo && !user) {
     await submitGuestViaEdgeFunction(table, fullPayload);
@@ -316,6 +317,9 @@ export async function submitRequest({
     };
 
     let attempt = await restInsert(table, [fullPayload]);
+    if (!attempt.error && Array.isArray(attempt.data) && attempt.data[0]?.id) {
+      insertedRequestId = attempt.data[0].id;
+    }
 
     if (attempt.error) {
       const fallback = { ...fullPayload };
@@ -324,6 +328,9 @@ export async function submitRequest({
       delete fallback.submitter_phone;
 
       const retry = await restInsert(table, [fallback]);
+      if (!retry.error && Array.isArray(retry.data) && retry.data[0]?.id) {
+        insertedRequestId = retry.data[0].id;
+      }
 
       if (retry.error) {
         const minFallback = { ...fallback };
@@ -332,6 +339,9 @@ export async function submitRequest({
         delete minFallback.guest_contact;
 
         const lastRetry = await restInsert(table, [minFallback]);
+        if (!lastRetry.error && Array.isArray(lastRetry.data) && lastRetry.data[0]?.id) {
+          insertedRequestId = lastRetry.data[0].id;
+        }
         if (lastRetry.error) throw new Error(parseErr(lastRetry.error));
       }
     }
@@ -348,7 +358,7 @@ export async function submitRequest({
       notif_title: `New ${serviceName} Request`,
       notif_message: `${submitterName} submitted a new ${serviceName} request.`,
       notif_link: '/staff-dashboard',
-      p_source_id: null,
+      p_source_id: insertedRequestId,
       p_source_table: table,
     });
 
