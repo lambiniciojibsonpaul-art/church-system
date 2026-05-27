@@ -342,7 +342,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2 mt-2">
                   <label className="text-xs font-bold text-gray-600 mb-2">Contact Numbers:</label>
-                  <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} className={`${inputClass} md:w-1/2`} placeholder="Contact Number" />
+                  <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} maxLength={11} className={`${inputClass} md:w-1/2`} placeholder="Contact Number" />
                 </div>
               </div>
             </div>

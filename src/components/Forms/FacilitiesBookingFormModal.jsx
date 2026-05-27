@@ -208,7 +208,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">Contact Number</label>
-                    <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} required className={inputClass} placeholder="09XX XXX XXXX" />
+                    <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} required maxLength={11} className={inputClass} placeholder="09XX XXX XXXX" />
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">Email Address (Optional)</label>

@@ -421,7 +421,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Contact Numbers *</label>
-                  <input type="tel" name="contactNumbers" value={formData.contactNumbers} onChange={handleChange} required placeholder="Primary phone number"
+                  <input type="tel" name="contactNumbers" value={formData.contactNumbers} onChange={handleChange} required placeholder="Primary phone number" maxLength={11}
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1">

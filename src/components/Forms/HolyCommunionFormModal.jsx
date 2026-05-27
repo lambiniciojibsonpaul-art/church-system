@@ -310,8 +310,8 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
                 <div className="flex flex-col gap-1 md:col-span-2 mt-2">
                   <label className="text-xs font-bold text-gray-600 mb-2">Contact Numbers <span className="text-[11px] text-gray-400 normal-case font-normal">(Provide up to two)</span></label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="tel" name="contact_number_1" value={formData.contact_number_1} onChange={handleChange} className={inputClass} placeholder="Primary Contact Number" />
-                    <input type="tel" name="contact_number_2" value={formData.contact_number_2} onChange={handleChange} className={inputClass} placeholder="Secondary Contact Number" />
+                    <input type="tel" name="contact_number_1" value={formData.contact_number_1} onChange={handleChange} maxLength={11} className={inputClass} placeholder="Primary Contact Number" />
+                    <input type="tel" name="contact_number_2" value={formData.contact_number_2} onChange={handleChange} maxLength={11} className={inputClass} placeholder="Secondary Contact Number" />
                   </div>
                 </div>
               </div>

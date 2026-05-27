@@ -211,6 +211,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                     name="contact_number"
                     value={formData.contact_number}
                     onChange={handleChange}
+                    maxLength={11}
                     className={inputClass}
                   />
                 </div>

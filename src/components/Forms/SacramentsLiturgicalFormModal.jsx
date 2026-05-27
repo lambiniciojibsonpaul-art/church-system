@@ -246,7 +246,7 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
                   <label className="text-xs font-bold text-gray-600">Contact Nos.:</label>
-                  <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} className={inputClass} placeholder="Phone Number/s" />
+                  <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} maxLength={11} className={inputClass} placeholder="Phone Number/s" />
                 </div>
               </div>
             </div>

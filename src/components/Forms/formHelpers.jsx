@@ -48,7 +48,10 @@ export function useProfileAutofill(user) {
 // eslint-disable-next-line react-refresh/only-export-components
 export function applyFieldFilter(name, value) {
   // Numbers-only fields
-  if (/contact_number|contactNumbers|groom_contact|bride_contact|expected_attendees|number_of_copies|groom_age|bride_age/i.test(name)) {
+  if (/contact_number|contactNumbers|groom_contact|bride_contact/i.test(name)) {
+    return value.replace(/\D/g, "").slice(0, 11);
+  }
+  if (/expected_attendees|number_of_copies|groom_age|bride_age/i.test(name)) {
     return value.replace(/\D/g, "");
   }
   // Letters-only fields (person names)

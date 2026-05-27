@@ -210,7 +210,7 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                   <div className="flex flex-col gap-1 md:col-span-4">
                     <label className="text-xs font-bold text-gray-600">Contact Nos.</label>
-                    <input type="tel" name="groom_contact" value={formData.groom_contact} onChange={handleChange} className={inputClass} placeholder="Phone Number/s" />
+                    <input type="tel" name="groom_contact" value={formData.groom_contact} onChange={handleChange} maxLength={11} className={inputClass} placeholder="Phone Number/s" />
                   </div>
                 </div>
               </div>
@@ -238,7 +238,7 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                   <div className="flex flex-col gap-1 md:col-span-4">
                     <label className="text-xs font-bold text-gray-600">Contact Nos.</label>
-                    <input type="tel" name="bride_contact" value={formData.bride_contact} onChange={handleChange} className={inputClass} placeholder="Phone Number/s" />
+                    <input type="tel" name="bride_contact" value={formData.bride_contact} onChange={handleChange} maxLength={11} className={inputClass} placeholder="Phone Number/s" />
                   </div>
                 </div>
               </div>
