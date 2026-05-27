@@ -1445,12 +1445,7 @@ function StatusBadge({ status }) {
     status === "Past"            ? "bg-gray-100 text-gray-500"       :
     status === "Cancelled"       ? "bg-orange-100 text-orange-700"   :
                                    "bg-red-100 text-red-700";
-  const label =
-    status === "Active Today"    ? "Active"          :
-    status === "Staff Approved"  ? "Staff Aprvd"     :
-    status === "Priest Approved" ? "Priest Aprvd"    :
-    status === "Priest Rejected" ? "Priest Rejtd"    :
-    status;
+  const label = status === "Active Today" ? "Active" : status;
   return (
     <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider whitespace-nowrap ${cls}`}>{label}</span>
   );
