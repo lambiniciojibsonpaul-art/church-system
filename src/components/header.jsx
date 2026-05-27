@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
 import { supabase } from "../supabaseClient";
@@ -17,6 +17,7 @@ const SOLID_BG_PREFIXES = [
   "/ministries",
   "/events",
   "/services",
+  "/announcements",
 ];
 
 const ROLE_CONFIG = {
@@ -170,6 +171,52 @@ function useNotifications(userId) {
   };
 
   return { notifications, unreadCount, handleNotificationClick, markAllAsRead, clearRead };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ANNOUNCEMENT UNREAD COUNT HOOK
+// ─────────────────────────────────────────────────────────────────────────────
+function useAnnouncementUnread(userId, userRole) {
+  const [count, setCount] = useState(0);
+
+  const fetchCount = useCallback(async () => {
+    if (!userId || !userRole) { setCount(0); return; }
+    try {
+      const { data: anns } = await supabase
+        .from("announcements")
+        .select("id, target_roles")
+        .eq("status", "Published");
+      if (!anns?.length) { setCount(0); return; }
+      const targeted = anns
+        .filter((a) => !a.target_roles?.length || a.target_roles.includes(userRole))
+        .map((a) => a.id);
+      if (!targeted.length) { setCount(0); return; }
+      const { data: reads } = await supabase
+        .from("announcement_reads")
+        .select("announcement_id")
+        .eq("user_id", userId)
+        .eq("is_dismissed", false)
+        .in("announcement_id", targeted);
+      setCount(targeted.length - (reads?.length || 0));
+    } catch {
+      setCount(0);
+    }
+  }, [userId, userRole]);
+
+  useEffect(() => {
+    fetchCount();
+    const ch = supabase
+      .channel(`ann-unread-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "announcement_reads", filter: `user_id=eq.${userId}` },
+        fetchCount
+      )
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [userId, userRole, fetchCount]);
+
+  return count;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -430,6 +477,8 @@ function Header({ forceSolidBg = false }) {
   const isStaff       = role === "staff";
   const isMinister    = role === "minister";
 
+  const annUnread = useAnnouncementUnread(user?.id, role);
+
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
     window.addEventListener("scroll", handleScroll);
@@ -493,6 +542,16 @@ function Header({ forceSolidBg = false }) {
                 <Link to="/events"    className={navLinkClass}>Calendar</Link>
                 <Link to="/services"  className={navLinkClass}>Services</Link>
                 <Link to="/ministries" className={navLinkClass}>Ministries</Link>
+                {user && (
+                  <Link to="/announcements" className={`${navLinkClass} relative`}>
+                    Announcements
+                    {annUnread > 0 && (
+                      <span className="absolute -top-1.5 -right-3 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                        {annUnread > 9 ? "9+" : annUnread}
+                      </span>
+                    )}
+                  </Link>
+                )}
               </div>
             ) : (
               <div className="flex gap-5 xl:gap-7 items-center">
@@ -502,6 +561,16 @@ function Header({ forceSolidBg = false }) {
                 <Link to="/events"    className={serifLinkClass}>Calendar</Link>
                 <Link to="/ministries" className={serifLinkClass}>Ministries</Link>
                 <Link to="/give"      className={serifLinkClass}>Give</Link>
+                {user && (
+                  <Link to="/announcements" className={`${serifLinkClass} relative`}>
+                    Announcements
+                    {annUnread > 0 && (
+                      <span className="absolute -top-1.5 -right-3 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                        {annUnread > 9 ? "9+" : annUnread}
+                      </span>
+                    )}
+                  </Link>
+                )}
                 <a href="https://www.google.com/maps/dir/?api=1&destination=69+San+Pedro+Bautista+St.%2C+San+Francisco+del+Monte%2C+Quezon+City%2C+Philippines%2C+1104" target="_blank" rel="noopener noreferrer" className={serifLinkClass}>Visit Us</a>
               </div>
             )}
@@ -575,6 +644,13 @@ function Header({ forceSolidBg = false }) {
                   <li><Link to="/events"     onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Calendar</Link></li>
                   <li><Link to="/services"   onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Services</Link></li>
                   <li><Link to="/ministries" onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Ministries</Link></li>
+                  {user && (
+                    <li>
+                      <Link to="/announcements" onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">
+                        📣 Announcements {annUnread > 0 && `(${annUnread})`}
+                      </Link>
+                    </li>
+                  )}
                 </>
               ) : (
                 <>
@@ -583,6 +659,13 @@ function Header({ forceSolidBg = false }) {
                   <li><Link to="/services"   onClick={() => setIsOpen(false)}>Services</Link></li>
                   <li><Link to="/events"     onClick={() => setIsOpen(false)}>Calendar</Link></li>
                   <li><Link to="/ministries" onClick={() => setIsOpen(false)}>Ministries</Link></li>
+                  {user && (
+                    <li>
+                      <Link to="/announcements" onClick={() => setIsOpen(false)}>
+                        📣 Announcements {annUnread > 0 && `(${annUnread})`}
+                      </Link>
+                    </li>
+                  )}
                 </>
               )}
 

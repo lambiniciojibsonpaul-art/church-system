@@ -24,6 +24,7 @@ import StaffDashboard from "./components/StaffDashboard";
 import ManageUsers from './components/ManageUsers';
 import UserProfile from './components/UserProfile';
 import AnnouncementsPage from './components/AnnouncementsPage';
+import AnnouncementsInbox from './components/AnnouncementsInbox';
 
 // --- Auth Folder Imports ---
 import CheckInPage from './components/Auth/CheckInPage';
@@ -118,6 +119,9 @@ function App() {
             <Route path="/ministries" element={<MinistriesPage />} />
             <Route path="/give" element={<GivePage />} />
             
+            {/* Announcements inbox — all authenticated users */}
+            <Route path="/announcements" element={<AnnouncementsInbox />} />
+
             {/* Staff */}
             <Route path="/staff-dashboard" element={<StaffDashboard />} />
 

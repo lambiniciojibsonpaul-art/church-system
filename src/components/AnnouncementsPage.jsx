@@ -33,6 +33,14 @@ function formatDate(d) {
   } catch { return ""; }
 }
 
+// ─── Role options for target_roles ───────────────────────────────────────────
+const ROLE_OPTIONS = [
+  { value: "parishioner", label: "Parishioners" },
+  { value: "staff",       label: "Staff" },
+  { value: "priest",      label: "Priests" },
+  { value: "ministry",    label: "Ministers / Ministry" },
+];
+
 // ─── Empty form — matches SQL columns exactly ─────────────────────────────────
 function emptyForm() {
   return {
@@ -42,6 +50,7 @@ function emptyForm() {
     is_pinned:           false,
     notify_parishioners: false, // client-only toggle, not persisted
     status:              "Draft",
+    target_roles:        ["parishioner", "staff", "priest", "ministry"],
   };
 }
 
@@ -97,6 +106,9 @@ function AnnouncementsPage() {
       is_pinned:           ann.is_pinned           || false,
       notify_parishioners: false,  // always reset on open — never re-notify
       status:              ann.status              || "Draft",
+      target_roles:        Array.isArray(ann.target_roles) && ann.target_roles.length
+                             ? ann.target_roles
+                             : ["parishioner", "staff", "priest", "ministry"],
     });
     setIsDirty(false);
   }, []);
@@ -121,12 +133,13 @@ function AnnouncementsPage() {
 
     // Only columns that exist in the SQL schema
     const payload = {
-      title:      form.title.trim(),
-      body:       form.body.trim(),
-      category:   form.category,
-      is_pinned:  form.is_pinned,
-      status:     "Draft",
-      updated_at: new Date().toISOString(),
+      title:        form.title.trim(),
+      body:         form.body.trim(),
+      category:     form.category,
+      is_pinned:    form.is_pinned,
+      target_roles: form.target_roles.length ? form.target_roles : ["parishioner", "staff", "priest", "ministry"],
+      status:       "Draft",
+      updated_at:   new Date().toISOString(),
     };
 
     if (selectedId) {
@@ -173,12 +186,13 @@ function AnnouncementsPage() {
 
     // Only columns that exist in the SQL schema
     const payload = {
-      title:      form.title.trim(),
-      body:       form.body.trim(),
-      category:   form.category,
-      is_pinned:  form.is_pinned,
-      status:     "Published",
-      updated_at: new Date().toISOString(),
+      title:        form.title.trim(),
+      body:         form.body.trim(),
+      category:     form.category,
+      is_pinned:    form.is_pinned,
+      target_roles: form.target_roles.length ? form.target_roles : ["parishioner", "staff", "priest", "ministry"],
+      status:       "Published",
+      updated_at:   new Date().toISOString(),
     };
 
     let savedId = selectedId;
@@ -489,6 +503,52 @@ function AnnouncementsPage() {
                   rows={8}
                   className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm transition-colors resize-y font-serif leading-relaxed"
                 />
+              </div>
+
+              {/* Target Roles */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">
+                  Visible To <span className="text-red-400">*</span>
+                </label>
+                <div className="border-2 border-gray-200 hover:border-gray-300 rounded-xl px-4 py-3 space-y-2">
+                  {/* Select All toggle */}
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded accent-[#B59E74] cursor-pointer"
+                      checked={form.target_roles.length === ROLE_OPTIONS.length}
+                      onChange={(e) => {
+                        handleChange(
+                          "target_roles",
+                          e.target.checked ? ROLE_OPTIONS.map((r) => r.value) : [ROLE_OPTIONS[0].value]
+                        );
+                      }}
+                    />
+                    <span className="text-xs font-bold text-gray-600 uppercase tracking-widest">Select All</span>
+                  </label>
+                  <div className="border-t border-gray-100 my-1" />
+                  {ROLE_OPTIONS.map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-2.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded accent-[#B59E74] cursor-pointer"
+                        checked={form.target_roles.includes(opt.value)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...form.target_roles, opt.value]
+                            : form.target_roles.filter((r) => r !== opt.value);
+                          // enforce at least one selected
+                          if (next.length === 0) return;
+                          handleChange("target_roles", next);
+                        }}
+                      />
+                      <span className="text-sm text-gray-700">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+                {form.target_roles.length === 0 && (
+                  <p className="text-xs text-red-500 mt-1">At least one audience must be selected.</p>
+                )}
               </div>
 
               {/* Toggles */}
