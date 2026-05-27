@@ -76,6 +76,10 @@ function EventDetailsModal({ event, onClose }) {
   const baseUrl = window.location.href.split("#")[0].replace(/\/$/, "");
   const checkInUrl = `${baseUrl}/#/check-in/${event.id}`;
 
+  const _now = new Date();
+  const todayStr = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`;
+  const canShowQR = event.event_date ? event.event_date <= todayStr : false;
+
   useEffect(() => {
     if (activePanel !== "attendance") return;
     setAttendanceLoading(true);
@@ -111,12 +115,15 @@ function EventDetailsModal({ event, onClose }) {
         </div>
 
         <div className="flex gap-1 px-8 pt-5">
-          {["details", "qr", "attendance"].map((p) => (
-            <button key={p} onClick={() => setActivePanel(p)}
-              className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${activePanel === p ? "bg-[#B59E74] text-white shadow" : "text-gray-400 hover:text-gray-600 bg-gray-100"}`}>
-              {p === "details" ? "Details" : p === "qr" ? "QR Code" : "Attendance"}
-            </button>
-          ))}
+          {["details", "qr", "attendance"].map((p) => {
+            if (p === "qr" && !canShowQR) return null;
+            return (
+              <button key={p} onClick={() => setActivePanel(p)}
+                className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${activePanel === p ? "bg-[#B59E74] text-white shadow" : "text-gray-400 hover:text-gray-600 bg-gray-100"}`}>
+                {p === "details" ? "Details" : p === "qr" ? "QR Code" : "Attendance"}
+              </button>
+            );
+          })}
         </div>
 
         <div className="p-8">

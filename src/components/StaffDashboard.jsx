@@ -1017,7 +1017,13 @@ function StaffDashboard() {
                                 <div className="flex gap-1">
                                   {activeTab === "events" && <button onClick={() => setViewingDetails(item)} className="px-2 py-1 bg-gray-50 hover:bg-[#B59E74] text-gray-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">View</button>}
                                   {activeTab === "certificates" && <button onClick={() => generateCertificate(item)} className="px-2 py-1 bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">📜 Download</button>}
-                                  {activeTab === "qr-generator" && <button onClick={() => setActiveQR(item)} className="px-2 py-1 bg-gray-800 hover:bg-black text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">🔳 QR</button>}
+                                  {activeTab === "qr-generator" && (() => {
+                                    const _n = new Date(); const _t = `${_n.getFullYear()}-${String(_n.getMonth()+1).padStart(2,'0')}-${String(_n.getDate()).padStart(2,'0')}`;
+                                    const canQR = item.display_date ? item.display_date <= _t : false;
+                                    return canQR
+                                      ? <button onClick={() => setActiveQR(item)} className="px-2 py-1 bg-gray-800 hover:bg-black text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">🔳 QR</button>
+                                      : <span className="px-2 py-1 bg-gray-100 text-gray-400 rounded-lg text-[10px] font-bold uppercase tracking-wide">Not Yet</span>;
+                                  })()}
                                   <button onClick={() => { setCancellingItem(item); setCancelItemReason(""); }} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors" title="Revoke">✕</button>
                                 </div>
                               </td>
@@ -1043,7 +1049,13 @@ function StaffDashboard() {
                           <div className="mt-auto border-t border-gray-100 pt-4 flex gap-2">
                             {activeTab === "events" && <button onClick={() => setViewingDetails(item)} className="flex-1 bg-gray-50 text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors">View Details</button>}
                             {activeTab === "certificates" && <button onClick={() => generateCertificate(item)} className="flex-1 bg-white border-2 border-[#B59E74] text-[#B59E74] hover:bg-[#B59E74] hover:text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2">📜 Download</button>}
-                            {activeTab === "qr-generator" && <button onClick={() => setActiveQR(item)} className="flex-1 bg-gray-800 hover:bg-black text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2"><span>🔳</span> Show QR</button>}
+                            {activeTab === "qr-generator" && (() => {
+                              const _n = new Date(); const _t = `${_n.getFullYear()}-${String(_n.getMonth()+1).padStart(2,'0')}-${String(_n.getDate()).padStart(2,'0')}`;
+                              const canQR = item.display_date ? item.display_date <= _t : false;
+                              return canQR
+                                ? <button onClick={() => setActiveQR(item)} className="flex-1 bg-gray-800 hover:bg-black text-white font-bold py-3 rounded-xl uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2"><span>🔳</span> Show QR</button>
+                                : <div className="flex-1 bg-gray-100 text-gray-400 font-bold py-3 rounded-xl uppercase tracking-widest text-xs flex items-center justify-center">QR available on event date</div>;
+                            })()}
                             <button onClick={() => { setCancellingItem(item); setCancelItemReason(""); }} className="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors flex items-center justify-center" title="Revoke / Cancel">✕ Revoke</button>
                           </div>
                         </div>
