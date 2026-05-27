@@ -221,6 +221,9 @@ function StaffDashboard() {
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [activeServiceTab, setActiveServiceTab] = useState("All Services");
   const [staffSortBy, setStaffSortBy] = useState("submitted_asc");
+  const [staffSubTab, setStaffSubTab] = useState("All");
+  const [staffPageSize, setStaffPageSize] = useState(10);
+  const [staffCurrentPage, setStaffCurrentPage] = useState(1);
 
   // Approval/Rejection Modals
   const [staffViewMode, setStaffViewMode] = useState("card"); // "card" | "table"
@@ -242,7 +245,7 @@ function StaffDashboard() {
   const refetchTimerRef = useRef(null);
 
   useEffect(() => {
-    fetchPendingRequests();
+    fetchRequests();
     fetchApprovedItems();
     fetchPriests();
   }, []);
@@ -252,7 +255,8 @@ function StaffDashboard() {
     setItemsSearch("");
     setItemsFilterType("All");
     setItemsSortBy("date_asc");
-  }, [activeTab]);
+    setStaffCurrentPage(1);
+  }, [activeServiceTab, staffSubTab, staffSortBy, staffPageSize]);
 
   // Real-time refetch on new notification — debounced to prevent burst queries
   useEffect(() => {
@@ -264,7 +268,7 @@ function StaffDashboard() {
         filter: `user_id=eq.${user.id}`,
       }, () => {
         clearTimeout(refetchTimerRef.current);
-        refetchTimerRef.current = setTimeout(() => fetchPendingRequests(), 800);
+        refetchTimerRef.current = setTimeout(() => fetchRequests(), 800);
       })
       .subscribe();
     return () => {
@@ -319,20 +323,13 @@ function StaffDashboard() {
     } catch (err) { console.error("Failed to load priests:", err); }
   };
 
-  const fetchPendingRequests = async () => {
+  const fetchRequests = async () => {
     setRequestsLoading(true);
     const entries = Object.entries(TAB_CONFIG);
     const results = await Promise.allSettled(
-      entries.map(async ([, cfg]) => {
-        if (cfg.requiresPriest) {
-          const [pendingRes, priestRejectedRes] = await Promise.all([
-            restSelect(cfg.table, { match: { status: "Pending" }, order: "created_at.asc", timeoutMs: 12000 }),
-            restSelect(cfg.table, { match: { status: "Priest Rejected" }, order: "created_at.asc", timeoutMs: 12000 }),
-          ]);
-          return { data: [...(pendingRes.data || []), ...(priestRejectedRes.data || [])] };
-        }
-        return restSelect(cfg.table, { match: { status: "Pending" }, order: "created_at.asc", timeoutMs: 12000 });
-      })
+      entries.map(([, cfg]) =>
+        restSelect(cfg.table, { order: "created_at.desc", timeoutMs: 12000 })
+      )
     );
     const merged = {};
     entries.forEach(([tabName], idx) => {
@@ -441,7 +438,14 @@ function StaffDashboard() {
       }
     }
 
-    setRequests((prev) => ({ ...prev, [reqTab]: prev[reqTab].filter((r) => r.id !== acceptingRequest.id) }));
+    setRequests((prev) => ({
+      ...prev,
+      [reqTab]: prev[reqTab].map((r) =>
+        r.id === acceptingRequest.id
+          ? { ...r, status: "Staff Approved", preferred_priest: assignedPriest || null }
+          : r
+      ),
+    }));
     fetchApprovedItems();
     setAcceptingRequest(null);
     setAssignedPriest("");
@@ -469,7 +473,14 @@ function StaffDashboard() {
       });
     }
 
-    setRequests((prev) => ({ ...prev, [reqTab]: prev[reqTab].filter((r) => r.id !== rejectingRequest.id) }));
+    setRequests((prev) => ({
+      ...prev,
+      [reqTab]: prev[reqTab].map((r) =>
+        r.id === rejectingRequest.id
+          ? { ...r, status: "Rejected", rejection_remarks: rejectionReason }
+          : r
+      ),
+    }));
     setRejectingRequest(null);
     setRejectionReason("");
     setRejectSubmitting(false);
@@ -593,18 +604,33 @@ function StaffDashboard() {
     return result;
   };
 
-  const totalPending = TAB_NAMES.reduce((sum, t) => sum + (requests[t]?.length || 0), 0);
+  const totalPending = TAB_NAMES.reduce((sum, t) =>
+    sum + (requests[t] || []).filter(r =>
+      r.status === "Pending" || r.status === "Priest Rejected"
+    ).length, 0
+  );
 
-  const pendingData = (activeServiceTab === "All Services"
+  const allServiceData = activeServiceTab === "All Services"
     ? TAB_NAMES.flatMap(t => (requests[t] || []).map(r => ({ ...r, _tab: t, _config: TAB_CONFIG[t] })))
-    : (requests[activeServiceTab] || []).map(r => ({ ...r, _tab: activeServiceTab, _config: TAB_CONFIG[activeServiceTab] }))
+    : (requests[activeServiceTab] || []).map(r => ({ ...r, _tab: activeServiceTab, _config: TAB_CONFIG[activeServiceTab] }));
+
+  const pendingData = (staffSubTab === "All"
+    ? allServiceData
+    : allServiceData.filter(r => r.status === staffSubTab)
   ).sort((a, b) => {
-    if (staffSortBy === "submitted_asc")   return new Date(a.created_at) - new Date(b.created_at);
-    if (staffSortBy === "submitted_desc")  return new Date(b.created_at) - new Date(a.created_at);
-    if (staffSortBy === "date_desc")       return new Date(b.display_date || b.created_at) - new Date(a.display_date || a.created_at);
-    if (staffSortBy === "date_asc")        return new Date(a.display_date || a.created_at) - new Date(b.display_date || b.created_at);
+    if (staffSortBy === "submitted_asc")  return new Date(a.created_at) - new Date(b.created_at);
+    if (staffSortBy === "submitted_desc") return new Date(b.created_at) - new Date(a.created_at);
+    if (staffSortBy === "date_desc")      return new Date(b.display_date || b.created_at) - new Date(a.display_date || a.created_at);
+    if (staffSortBy === "date_asc")       return new Date(a.display_date || a.created_at) - new Date(b.display_date || b.created_at);
     return 0;
   });
+
+  const staffTotalRecords = pendingData.length;
+  const staffTotalPages   = Math.max(1, Math.ceil(staffTotalRecords / staffPageSize));
+  const staffSafePage     = Math.min(staffCurrentPage, staffTotalPages);
+  const staffPageStart    = (staffSafePage - 1) * staffPageSize;
+  const staffPageEnd      = Math.min(staffPageStart + staffPageSize, staffTotalRecords);
+  const staffPageData     = pendingData.slice(staffPageStart, staffPageEnd);
 
   const getViewingEntries = () => {
     if (!viewingDetails) return [];
@@ -661,10 +687,25 @@ function StaffDashboard() {
                   className="w-full sm:w-auto p-3 rounded-xl border-2 border-[#B59E74]/40 hover:border-[#B59E74] outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold uppercase tracking-widest text-[#B59E74] cursor-pointer"
                 >
                   <option value="All Services">All Services ({totalPending})</option>
-                  {TAB_NAMES.map(tab => (
-                    <option key={tab} value={tab}>{tab} ({(requests[tab] || []).length})</option>
+                  {TAB_NAMES.map(tab => {
+                    const tabPending = (requests[tab] || []).filter(r =>
+                      r.status === "Pending" || r.status === "Priest Rejected"
+                    ).length;
+                    return <option key={tab} value={tab}>{tab} ({tabPending} pending)</option>;
+                  })}
+                </select>
+                {/* Status filter */}
+                <select
+                  value={staffSubTab}
+                  onChange={e => setStaffSubTab(e.target.value)}
+                  className="w-full sm:w-auto p-3 rounded-xl border-2 border-gray-200 hover:border-[#B59E74] bg-white text-sm font-bold uppercase tracking-widest text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#B59E74] cursor-pointer"
+                >
+                  {["All", "Pending", "Staff Approved", "Priest Approved", "Priest Rejected", "Approved", "Rejected", "Cancelled"].map(s => (
+                    <option key={s} value={s}>{s === "All" ? "All Statuses" : s}</option>
                   ))}
                 </select>
+
+                {/* Sort */}
                 <select
                   value={staffSortBy}
                   onChange={e => setStaffSortBy(e.target.value)}
@@ -674,6 +715,15 @@ function StaffDashboard() {
                   <option value="submitted_desc">Submitted — Newest</option>
                   <option value="date_asc">Preferred Date — Oldest</option>
                   <option value="date_desc">Preferred Date — Newest</option>
+                </select>
+
+                {/* Rows per page */}
+                <select
+                  value={staffPageSize}
+                  onChange={e => setStaffPageSize(Number(e.target.value))}
+                  className="w-full sm:w-auto p-3 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74] cursor-pointer"
+                >
+                  {[5, 10, 25].map(n => <option key={n} value={n}>{n} rows</option>)}
                 </select>
                 <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white shrink-0">
                   <button
@@ -694,7 +744,7 @@ function StaffDashboard() {
                 <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div></div>
               ) : pendingData.length === 0 ? (
                 <div className="text-center py-16 text-gray-400 italic font-serif">
-                  No pending requests for {activeServiceTab}.
+                  No {staffSubTab === "All" ? "" : staffSubTab.toLowerCase() + " "}requests for {activeServiceTab}.
                 </div>
               ) : staffViewMode === "table" ? (
                 <div className="overflow-x-auto">
@@ -709,7 +759,7 @@ function StaffDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {pendingData.map((req) => (
+                      {staffPageData.map((req) => (
                         <tr
                           id={`request-card-${req.id}`}
                           key={`${req._tab}-${req.id}`}
@@ -739,9 +789,20 @@ function StaffDashboard() {
                           </td>
                           <td className="p-3 text-xs text-gray-400 whitespace-nowrap">{new Date(req.created_at).toLocaleDateString()}</td>
                           <td className="p-3">
-                            <div className="flex gap-1">
-                              <button onClick={() => setAcceptingRequest(req)} className="px-2 py-1 bg-green-50 hover:bg-green-600 text-green-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✓</button>
-                              <button onClick={() => setRejectingRequest(req)} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✕</button>
+                            <div className="flex gap-1 flex-wrap">
+                              <button
+                                onClick={() => setViewingDetails({ ...req, request_type: req._tab, display_name: req._config.title(req) })}
+                                className="px-2 py-1 bg-gray-50 hover:bg-[#B59E74] text-gray-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors"
+                              >View</button>
+                              {(req.status === "Pending" || req.status === "Priest Rejected") && (
+                                <>
+                                  <button onClick={() => setAcceptingRequest(req)} className="px-2 py-1 bg-green-50 hover:bg-green-600 text-green-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✓</button>
+                                  <button onClick={() => setRejectingRequest(req)} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✕</button>
+                                </>
+                              )}
+                              {req.status && !["Pending", "Priest Rejected"].includes(req.status) && (
+                                <StatusBadge status={req.status} />
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -751,7 +812,7 @@ function StaffDashboard() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {pendingData.map((req) => (
+                  {staffPageData.map((req) => (
                     <div
                       id={`request-card-${req.id}`}
                       key={`${req._tab}-${req.id}`}
@@ -792,19 +853,49 @@ function StaffDashboard() {
                           <p className="mt-1 text-orange-600">Please select a different priest below.</p>
                         </div>
                       )}
-                      <div className="mt-auto flex gap-2 pt-4 border-t border-gray-200">
-                        <button onClick={() => setAcceptingRequest(req)} className="flex-1 bg-green-50 hover:bg-green-600 text-green-700 hover:text-white py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✓ {req.status === "Priest Rejected" ? "Reassign" : "Accept"}</button>
-                        <button onClick={() => setRejectingRequest(req)} className="flex-1 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✕ Reject</button>
+                      <div className="mt-auto flex gap-2 pt-4 border-t border-gray-200 flex-wrap">
+                        <button
+                          onClick={() => setViewingDetails({ ...req, request_type: req._tab, display_name: req._config.title(req) })}
+                          className="flex-1 bg-gray-50 hover:bg-[#B59E74] text-gray-600 hover:text-white py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors"
+                        >View Details</button>
+                        {(req.status === "Pending" || req.status === "Priest Rejected") && (
+                          <>
+                            <button onClick={() => setAcceptingRequest(req)} className="flex-1 bg-green-50 hover:bg-green-600 text-green-700 hover:text-white py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✓ {req.status === "Priest Rejected" ? "Reassign" : "Accept"}</button>
+                            <button onClick={() => setRejectingRequest(req)} className="flex-1 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✕ Reject</button>
+                          </>
+                        )}
+                        {req.status && !["Pending", "Priest Rejected"].includes(req.status) && (
+                          <div className="w-full flex justify-center">
+                            <StatusBadge status={req.status} />
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            
+            
+            {/* Pagination */}
+              {staffTotalRecords > 0 && (
+                <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <p className="text-xs text-gray-500 font-medium">
+                    Showing <span className="font-bold text-gray-700">{staffPageStart + 1}</span>–<span className="font-bold text-gray-700">{staffPageEnd}</span> of <span className="font-bold text-gray-700">{staffTotalRecords}</span> requests
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setStaffCurrentPage(1)} disabled={staffSafePage === 1} className="px-3 py-2 text-xs font-bold rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">«</button>
+                    <button onClick={() => setStaffCurrentPage(p => Math.max(1, p - 1))} disabled={staffSafePage === 1} className="px-3 py-2 text-xs font-bold rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Prev</button>
+                    <span className="px-3 py-2 text-xs font-bold text-gray-700">Page {staffSafePage} / {staffTotalPages}</span>
+                    <button onClick={() => setStaffCurrentPage(p => Math.min(staffTotalPages, p + 1))} disabled={staffSafePage === staffTotalPages} className="px-3 py-2 text-xs font-bold rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Next</button>
+                    <button onClick={() => setStaffCurrentPage(staffTotalPages)} disabled={staffSafePage === staffTotalPages} className="px-3 py-2 text-xs font-bold rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">»</button>
+                  </div>
                 </div>
               )}
             </div>
           )}
 
             {/* ── APPROVED EVENTS / CERTIFICATES / QR ── */}
-            {(activeTab === "events" || activeTab === "certificates" || activeTab === "qr-generator") && (
+        {(activeTab === "events" || activeTab === "certificates" || activeTab === "qr-generator") && (
               itemsLoading ? (
                 <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#B59E74]"></div></div>
               ) : (
@@ -1117,6 +1208,22 @@ function StaffDashboard() {
       )}
 
     </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const cls =
+    status === "Pending"         ? "bg-yellow-100 text-yellow-700"  :
+    status === "Staff Approved"  ? "bg-blue-100 text-blue-700"      :
+    status === "Priest Approved" ? "bg-purple-100 text-purple-700"  :
+    status === "Priest Rejected" ? "bg-orange-100 text-orange-700"  :
+    status === "Approved"        ? "bg-green-100 text-green-700"    :
+    status === "Cancelled"       ? "bg-orange-100 text-orange-700"  :
+                                   "bg-red-100 text-red-700";
+  return (
+    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${cls}`}>
+      {status}
+    </span>
   );
 }
 

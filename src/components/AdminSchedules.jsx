@@ -235,6 +235,8 @@ function AdminSchedules() {
     title: "",
     eventClass: "Mass",
     priestName: "",
+    eventStartDate: "",  // ← was eventDate
+    eventEndDate: "",
     eventDate: "",
     eventTime: "",
     location: CHURCH_ADDRESS,
@@ -378,6 +380,8 @@ function AdminSchedules() {
       title: "",
       eventClass: "Mass",
       priestName: "",
+      eventStartDate: "",  // ← was eventDate
+      eventEndDate: "",
       eventDate: "",
       eventTime: "",
       location: CHURCH_ADDRESS,
@@ -451,8 +455,13 @@ function AdminSchedules() {
     // 1. DATE VALIDATION: Prevent past dates
     const _td = new Date();
     const today = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,'0')}-${String(_td.getDate()).padStart(2,'0')}`;
-    if (formData.eventDate < today) {
+    if (formData.eventStartDate < today) {
       alert("Error: You cannot schedule an event in the past. Please select today or a future date.");
+      return;
+    }
+
+    if (formData.eventEndDate && formData.eventEndDate < formData.eventStartDate) {
+      alert("Error: End date cannot be before the start date.");
       return;
     }
 
@@ -465,7 +474,12 @@ function AdminSchedules() {
     // 3. CONFLICT DETECTION
     const conflict = events.find(ev => {
       if (ev.status === "Cancelled" || ev.status === "Rejected") return false;
-      if (ev.event_date !== formData.eventDate || ev.event_time !== formData.eventTime) return false;
+      // Conflict if any day in the new event's range overlaps with existing event's date
+      const newStart = formData.eventStartDate;
+      const newEnd   = formData.eventEndDate || formData.eventStartDate;
+      const evDate   = ev.event_date;
+      const rangeOverlaps = evDate >= newStart && evDate <= newEnd;
+      if (!rangeOverlaps || ev.event_time !== formData.eventTime) return false;
       // Only flag priest conflict if a priest was actually chosen
       const isSamePriest = formData.priestName && ev.priest_name === formData.priestName;
       const isSameRoom   = formData.isInside && formData.setting && ev.setting === formData.setting;
@@ -487,7 +501,8 @@ function AdminSchedules() {
         priest_name:  formData.priestName  || null,
         ministry:     formData.ministry    || null,
         collaborators: formData.collaborators,
-        event_date:   formData.eventDate,
+        event_date:      formData.eventStartDate,
+        event_end_date:  formData.eventEndDate || null,
         event_time:   formData.eventTime,
         location:     formData.location,
         description:  formData.description,
@@ -731,7 +746,12 @@ function AdminSchedules() {
                           <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">{ev.event_class}</span>
                         </td>
                         <td className="p-3 text-sm text-gray-600">{ev.ministry || (ev.priest_name ? `Fr. ${ev.priest_name}` : "—")}</td>
-                        <td className="p-3 text-sm text-gray-600 whitespace-nowrap">{new Date(ev.event_date).toLocaleDateString()}</td>
+                        <td className="p-3 text-sm text-gray-600 whitespace-nowrap">
+                          {new Date(ev.event_date + "T00:00:00").toLocaleDateString()}
+                          {ev.event_end_date && ev.event_end_date !== ev.event_date && (
+                            <span className="text-gray-400 ml-1">→ {new Date(ev.event_end_date + "T00:00:00").toLocaleDateString()}</span>
+                          )}
+                        </td>
                         <td className="p-3 text-sm text-gray-600 whitespace-nowrap">{ev.event_time || "—"}</td>
                         <td className="p-3 text-sm text-gray-500 max-w-[160px] truncate">{ev.location || "—"}</td>
                         <td className="p-3">
@@ -793,7 +813,13 @@ function AdminSchedules() {
                   </p>
 
                   <div className="space-y-2 text-sm text-gray-600 border-t border-gray-50 pt-4 flex-1">
-                    <div className="flex items-center gap-2"><span>🗓️</span> {new Date(ev.event_date).toLocaleDateString()}</div>
+                    <div className="flex items-center gap-2">
+                    <span>🗓️</span>
+                    {new Date(ev.event_date + "T00:00:00").toLocaleDateString()}
+                      {ev.event_end_date && ev.event_end_date !== ev.event_date && (
+                        <span className="text-gray-400">→ {new Date(ev.event_end_date + "T00:00:00").toLocaleDateString()}</span>
+                      )}
+                  </div>
                     <div className="flex items-center gap-2"><span>⏰</span> {ev.event_time}</div>
                     
                     {ev.setting && <div className="flex items-center gap-2"><span>🚪</span> {ev.setting}</div>}
@@ -943,15 +969,29 @@ function AdminSchedules() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Date *</label>
+                  <label className="text-xs font-bold text-gray-600 uppercase">Start Date *</label>
                   <input
-                    type="date" name="eventDate" required
+                    type="date" name="eventStartDate" required
                     min={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })()}
-                    value={formData.eventDate} onChange={handleChange}
+                    value={formData.eventStartDate} onChange={handleChange}
                     className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                   />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600 uppercase">
+                    End Date <span className="text-gray-400 normal-case font-normal text-[10px]">(optional — for multi-day)</span>
+                  </label>
+                  <input
+                    type="date" name="eventEndDate"
+                    min={formData.eventStartDate || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })()}
+                    value={formData.eventEndDate} onChange={handleChange}
+                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
+                  />
+                  {formData.eventEndDate && formData.eventEndDate < formData.eventStartDate && (
+                    <p className="text-[10px] text-red-500 mt-0.5">End date must be on or after the start date.</p>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">Start Time *</label>

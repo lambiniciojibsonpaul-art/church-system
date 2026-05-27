@@ -79,7 +79,8 @@ function EventsPage() {
     title: "",
     ministry: "",
     collaborators: [],
-    eventDate: "",
+    eventStartDate: "",
+    eventEndDate: "",
     eventTime: "",
     location: "",
     description: "",
@@ -165,7 +166,8 @@ function EventsPage() {
 
     setFormData({
       ...formData,
-      eventDate: `${yyyy}-${mm}-${dd}`,
+      eventStartDate: `${yyyy}-${mm}-${dd}`,
+      eventEndDate: "",
       isInside: true,
       setting: "",
       isPublic: true,
@@ -197,7 +199,8 @@ function EventsPage() {
         priest_name:  formData.ministry,
         ministry:     formData.ministry,
         collaborators: isCollaborating ? formData.collaborators : [],
-        event_date:   formData.eventDate,
+        event_date:      formData.eventStartDate,
+        event_end_date:  formData.eventEndDate || null,
         event_time:   formData.eventTime,
         location:     formData.location,
         description:  finalDescription,
@@ -310,8 +313,15 @@ function EventsPage() {
 
   const getEventsForDate = (dateToMatch) => {
     return visibleEvents.filter((e) => {
-      const eventDate = new Date(e.event_date + "T00:00:00");
-      return eventDate.toDateString() === dateToMatch.toDateString();
+      const start = new Date(e.event_date + "T00:00:00");
+      const end   = e.event_end_date
+        ? new Date(e.event_end_date + "T00:00:00")
+        : start;
+      const target = new Date(dateToMatch);
+      target.setHours(0, 0, 0, 0);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(0, 0, 0, 0);
+      return target >= start && target <= end;
     });
   };
 
@@ -609,10 +619,16 @@ function EventsPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Date *</label>
-                  <input type="date" name="eventDate" required min={new Date().toISOString().split('T')[0]} value={formData.eventDate} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" />
+                  <label className="text-xs font-bold text-gray-600 uppercase">Start Date *</label>
+                  <input type="date" name="eventStartDate" required min={new Date().toISOString().split('T')[0]} value={formData.eventStartDate} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600 uppercase">
+                    End Date <span className="text-gray-400 normal-case font-normal text-[10px]">(optional — multi-day)</span>
+                  </label>
+                  <input type="date" name="eventEndDate" min={formData.eventStartDate || new Date().toISOString().split('T')[0]} value={formData.eventEndDate} onChange={handleChange} className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">Time *</label>
