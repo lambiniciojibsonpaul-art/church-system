@@ -547,9 +547,9 @@ function AdminSchedules() {
       if (q && !ev.title?.toLowerCase().includes(q) && !ev.location?.toLowerCase().includes(q) && !ev.setting?.toLowerCase().includes(q)) return false;
       const isCancelledOrRejected = ev.status === "Cancelled" || ev.status === "Rejected";
       if (activeTab === "All") return true;
-      if (activeTab === "Active") return ev.event_date === today && !isCancelledOrRejected;
+      if (activeTab === "Active") { const end = ev.event_end_date || ev.event_date; return ev.event_date <= today && end >= today && !isCancelledOrRejected; }
       if (activeTab === "Upcoming") return ev.event_date > today && !isCancelledOrRejected;
-      if (activeTab === "Past") return ev.event_date < today && !isCancelledOrRejected;
+      if (activeTab === "Past") { const end = ev.event_end_date || ev.event_date; return end < today && !isCancelledOrRejected; }
       if (activeTab === "Pending") return ev.status === "Pending";
       if (activeTab === "Cancelled") return isCancelledOrRejected;
       return true;
@@ -583,9 +583,9 @@ function AdminSchedules() {
     });
 
   const pendingCount   = events.filter(ev => ev.status === "Pending").length;
-  const activeCount    = events.filter(ev => ev.event_date === today && ev.status !== "Cancelled" && ev.status !== "Rejected").length;
-  const upcomingCount  = events.filter(ev => ev.event_date > today).length;
-  const pastCount      = events.filter(ev => ev.event_date < today).length;
+  const activeCount    = events.filter(ev => { const end = ev.event_end_date || ev.event_date; return ev.event_date <= today && end >= today && ev.status !== "Cancelled" && ev.status !== "Rejected"; }).length;
+  const upcomingCount  = events.filter(ev => ev.event_date > today && ev.status !== "Cancelled" && ev.status !== "Rejected").length;
+  const pastCount      = events.filter(ev => { const end = ev.event_end_date || ev.event_date; return end < today && ev.status !== "Cancelled" && ev.status !== "Rejected"; }).length;
   const cancelledCount = events.filter(ev => ev.status === "Cancelled" || ev.status === "Rejected").length;
 
   if (loading)

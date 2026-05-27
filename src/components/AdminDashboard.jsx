@@ -223,9 +223,10 @@ function getEventDisplayStatus(ev) {
   if (s === "Cancelled") return "Cancelled";
   if (s === "Pending") return "Pending";
   const d = String(ev.event_date || "");
+  const endD = String(ev.event_end_date || d);
   const today = getTodayKey();
   if (!d) return s;
-  if (d === today) return "Active";
+  if (d <= today && endD >= today) return "Active Today";
   if (d > today) return "Upcoming";
   return "Past";
 }
@@ -764,8 +765,8 @@ function AdminDashboard() {
 
   const saveEventEdits = async (ev, updates) => {
     const displayStatus = getEventDisplayStatus(ev);
-    if (!(displayStatus === "Upcoming" || displayStatus === "Active")) {
-      alert("Only Upcoming or Active events can be edited.");
+    if (!(displayStatus === "Upcoming" || displayStatus === "Active Today")) {
+      alert("Only Upcoming or Active Today events can be edited.");
       return { ok: false };
     }
     setEventEditSubmitting(true);
@@ -1491,7 +1492,7 @@ function EventViewModal({ event, onClose, onSave, saveSubmitting }) {
   }, [event]);
 
   const displayStatus = getEventDisplayStatus(event);
-  const canEdit = displayStatus === "Upcoming" || displayStatus === "Active";
+  const canEdit = displayStatus === "Upcoming" || displayStatus === "Active Today";
 
   const formatTime = (t) => {
     if (!t) return "—";
