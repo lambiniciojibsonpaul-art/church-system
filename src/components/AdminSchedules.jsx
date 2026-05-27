@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css";
 import { QRCodeCanvas } from "qrcode.react";
 import { restSelect, restInsert, restUpdate, restDelete } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
+import { supabase } from "../supabaseClient";
 
 // Gold teardrop pin — avoids Vite asset path issues with default Leaflet icons
 const PIN_ICON = new L.DivIcon({
@@ -260,6 +261,39 @@ function AdminSchedules() {
     latitude: "",
     longitude: "",
   });
+
+  const notifyHostMinistryForPrivateEvent = async ({ eventId, title, hostMinistry }) => {
+    if (!hostMinistry) return;
+    try {
+      const { data: profiles, error: profErr } = await supabase
+        .from("profiles")
+        .select("id, ministries")
+        .overlaps("ministries", [hostMinistry]);
+      if (profErr) throw profErr;
+
+      const targetIds = (profiles || [])
+        .map((p) => p.id)
+        .filter(Boolean)
+        .filter((id) => id !== user?.id);
+
+      if (targetIds.length === 0) return;
+
+      await Promise.all(
+        targetIds.map((targetId) =>
+          supabase.rpc("notify_parishioner", {
+            target_user_id: targetId,
+            notif_title: "Private Ministry Event Assigned",
+            notif_message: `A private event "${title || "Untitled Event"}" was assigned to your ministry (${hostMinistry}).`,
+            notif_link: "/events",
+            p_source_id: eventId || null,
+            p_source_table: "events",
+          })
+        )
+      );
+    } catch (err) {
+      console.error("Private host ministry notification error:", err?.message || err);
+    }
+  };
 
   useEffect(() => {
     Promise.all([fetchEvents(), fetchPriests(), fetchActiveMinistries()]).finally(() => {
@@ -551,7 +585,9 @@ function AdminSchedules() {
         longitude:    formData.isInside ? PARISH_LNG : (formData.longitude !== "" ? parseFloat(formData.longitude) : null),
       };
 
-      let { error } = await restInsert("events", [basePayload]);
+      let insertedEventId = null;
+      let { data, error } = await restInsert("events", [basePayload]);
+      if (!error && Array.isArray(data) && data[0]?.id) insertedEventId = data[0].id;
 
       // Retry without new columns if the DB migration hasn't been run yet
       if (error && (error.code === "PGRST204" || error.message?.includes("column"))) {
@@ -560,9 +596,18 @@ function AdminSchedules() {
         delete fallback.is_public;
         delete fallback.event_end_date;
         const retry = await restInsert("events", [fallback]);
+        if (!retry.error && Array.isArray(retry.data) && retry.data[0]?.id) insertedEventId = retry.data[0].id;
         if (retry.error) throw new Error(retry.error.message);
       } else if (error) {
         throw new Error(error.message);
+      }
+
+      if (formData.isPublic === false && formData.ministry) {
+        await notifyHostMinistryForPrivateEvent({
+          eventId: insertedEventId,
+          title: formData.title,
+          hostMinistry: formData.ministry,
+        });
       }
 
       setIsModalOpen(false);
