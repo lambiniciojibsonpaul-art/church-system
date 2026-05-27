@@ -209,7 +209,7 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
                     <input type="text" name="groom_address" value={formData.groom_address} onChange={handleChange} className={inputClass} placeholder="Complete Address" />
                   </div>
                   <div className="flex flex-col gap-1 md:col-span-4">
-                    <label className="text-xs font-bold text-gray-600">Contact Nos.</label>
+                    <label className="text-xs font-bold text-gray-600">Contact Nos. <span className="text-[11px] text-gray-400 normal-case font-normal">(Numero ng Telepono)</span></label>
                     <input type="tel" name="groom_contact" value={formData.groom_contact} onChange={handleChange} maxLength={11} className={inputClass} placeholder="Phone Number/s" />
                   </div>
                 </div>
@@ -237,7 +237,7 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
                     <input type="text" name="bride_address" value={formData.bride_address} onChange={handleChange} className={inputClass} placeholder="Complete Address" />
                   </div>
                   <div className="flex flex-col gap-1 md:col-span-4">
-                    <label className="text-xs font-bold text-gray-600">Contact Nos.</label>
+                    <label className="text-xs font-bold text-gray-600">Contact Nos. <span className="text-[11px] text-gray-400 normal-case font-normal">(Numero ng Telepono)</span></label>
                     <input type="tel" name="bride_contact" value={formData.bride_contact} onChange={handleChange} maxLength={11} className={inputClass} placeholder="Phone Number/s" />
                   </div>
                 </div>
@@ -246,7 +246,7 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
 
             {/* WEDDING DETAILS */}
             <div>
-              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4 mt-8">Wedding & Reservation Details</h3>
+              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4 mt-8">Wedding & Reservation Details <span className="text-[11px] text-gray-400 normal-case">(Detalye ng Kasal at Reserbasyon)</span></h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Date of Wedding <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa ng Kasal)</span></label>
@@ -263,7 +263,7 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
                 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Preferred Priest (Optional)</label>
+                  <label className="text-xs font-bold text-gray-600">Preferred Priest (Optional) <span className="text-[11px] text-gray-400 normal-case font-normal">(Nais na Pari - Opsyonal)</span></label>
                   <select
                     name="preferred_priest"
                     value={formData.preferred_priest}
@@ -280,12 +280,12 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
 
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Reservation Fee <span className="text-[11px] text-gray-400 normal-case font-normal">(Non-refundable)</span></label>
+                  <label className="text-xs font-bold text-gray-600">Reservation Fee <span className="text-[11px] text-gray-400 normal-case font-normal">(Bayad sa Reserbasyon - Hindi Mababalik)</span></label>
                   <input type="text" name="reservation_fee" value={formData.reservation_fee} onChange={handleChange} className={`${inputClass} bg-gray-50`} placeholder="₱" />
                 </div>
                 <div className="grid grid-cols-1 gap-4">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Date of Reservation</label>
+                    <label className="text-xs font-bold text-gray-600">Date of Reservation <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa ng Reserbasyon)</span></label>
                     <input type="date" name="reservation_date" value={formData.reservation_date} onChange={handleChange} min={new Date().toISOString().split("T")[0]} className={`${inputClass} bg-gray-50`} />
                   </div>
                 </div>

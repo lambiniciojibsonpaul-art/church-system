@@ -228,11 +228,11 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
                   <textarea rows="3" name="address" value={formData.address} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Complete address of the activity..." />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Date:</label>
+                  <label className="text-xs font-bold text-gray-600">Date: <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa)</span></label>
                   <input type="date" name="request_date" value={formData.request_date} onChange={handleChange} required min={new Date().toISOString().split("T")[0]} className={inputClass} />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Time:</label>
+                  <label className="text-xs font-bold text-gray-600">Time: <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras)</span></label>
                   <select name="request_time" value={formData.request_time} onChange={handleChange} required className={inputClass}>
                     <option value="" disabled>Select Time</option>
                     {TIME_SLOTS.map((slot) => (
@@ -254,11 +254,11 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* 3. MINISTER & NOTES */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                Additional Details
+                Additional Details <span className="text-[11px] text-gray-400 normal-case">(Karagdagang Detalye)</span>
               </h3>
               <div className="grid grid-cols-1 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Preferred Minister / Priest (Optional):</label>
+                  <label className="text-xs font-bold text-gray-600">Preferred Minister / Priest (Optional): <span className="text-[11px] text-gray-400 normal-case font-normal">(Nais na Pari - Opsyonal)</span></label>
                   <select
                     name="preferred_priest"
                     value={formData.preferred_priest}
@@ -275,7 +275,7 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
                 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Notes:</label>
+                  <label className="text-xs font-bold text-gray-600">Notes: <span className="text-[11px] text-gray-400 normal-case font-normal">(Tala)</span></label>
                   <textarea rows="4" name="notes" value={formData.notes} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Any special instructions or additional context..." />
                 </div>
               </div>

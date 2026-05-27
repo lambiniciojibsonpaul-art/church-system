@@ -223,7 +223,7 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
               <div className="grid grid-cols-1 gap-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Certificate Type</label>
+                    <label className="text-xs font-bold text-gray-600">Certificate Type <span className="text-[11px] text-gray-400 normal-case font-normal">(Uri ng Sertipiko)</span></label>
                     <select name="certificate_type" value={formData.certificate_type} onChange={handleChange} required className={inputClass}>
                       <option value="" disabled>Select a certificate…</option>
                       {CERT_TYPES.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -231,7 +231,7 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                   {formData.certificate_type === "Other" && (
                     <div className="flex flex-col gap-1 animate-fade-in-up">
-                      <label className="text-xs font-bold text-gray-600">Specify Certificate</label>
+                      <label className="text-xs font-bold text-gray-600">Specify Certificate <span className="text-[11px] text-gray-400 normal-case font-normal">(Ipaliwanag ang Uri ng Sertipiko)</span></label>
                       <input type="text" name="certificate_other" value={formData.certificate_other} onChange={handleChange} required className={inputClass} />
                     </div>
                   )}
@@ -252,7 +252,7 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
                     <input type="date" name="record_date" value={formData.record_date} onChange={handleChange} className={inputClass} />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Parish Where Sacrament Was Received</label>
+                    <label className="text-xs font-bold text-gray-600">Parish Where Sacrament Was Received <span className="text-[11px] text-gray-400 normal-case font-normal">(Parokya kung saan natanggap ang Sakramento)</span></label>
                     <input type="text" name="record_parish" value={formData.record_parish} onChange={handleChange} className={inputClass} placeholder="e.g., San Pedro Bautista Parish, Quezon City" />
                   </div>
                 </div>
@@ -278,7 +278,7 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
               <div className="grid grid-cols-1 gap-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Purpose</label>
+                    <label className="text-xs font-bold text-gray-600">Purpose <span className="text-[11px] text-gray-400 normal-case font-normal">(Layunin)</span></label>
                     <select name="purpose" value={formData.purpose} onChange={handleChange} required className={inputClass}>
                       <option value="" disabled>Select purpose…</option>
                       {PURPOSES.map((p) => <option key={p} value={p}>{p}</option>)}
@@ -286,7 +286,7 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                   {formData.purpose === "Other" && (
                     <div className="flex flex-col gap-1 animate-fade-in-up">
-                      <label className="text-xs font-bold text-gray-600">Specify Purpose</label>
+                      <label className="text-xs font-bold text-gray-600">Specify Purpose <span className="text-[11px] text-gray-400 normal-case font-normal">(Ipaliwanag ang Layunin)</span></label>
                       <input type="text" name="purpose_other" value={formData.purpose_other} onChange={handleChange} required className={inputClass} />
                     </div>
                   )}
@@ -294,11 +294,11 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Number of Copies</label>
+                    <label className="text-xs font-bold text-gray-600">Number of Copies <span className="text-[11px] text-gray-400 normal-case font-normal">(Bilang ng Kopya)</span></label>
                     <input type="number" name="number_of_copies" value={formData.number_of_copies} onChange={handleChange} min={1} max={20} className={inputClass} />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Delivery Method</label>
+                    <label className="text-xs font-bold text-gray-600">Delivery Method <span className="text-[11px] text-gray-400 normal-case font-normal">(Paraan ng Paghahatid)</span></label>
                     <select name="delivery_method" value={formData.delivery_method} onChange={handleChange} required className={inputClass}>
                       <option value="" disabled>Select delivery method…</option>
                       {DELIVERY_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -308,7 +308,7 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
 
                 {formData.delivery_method === "Email Scan" && (
                   <div className="flex flex-col gap-1 animate-fade-in-up">
-                    <label className="text-xs font-bold text-gray-600">Email Address for Delivery</label>
+                    <label className="text-xs font-bold text-gray-600">Email Address for Delivery <span className="text-[11px] text-gray-400 normal-case font-normal">(Email para sa Paghahatid)</span></label>
                     <input 
                       type="email" 
                       name="email_address" 
@@ -322,7 +322,7 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
                 )}
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Additional Notes</label>
+                  <label className="text-xs font-bold text-gray-600">Additional Notes <span className="text-[11px] text-gray-400 normal-case font-normal">(Karagdagang Tala)</span></label>
                   <textarea rows="3" name="additional_notes" value={formData.additional_notes} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Any additional context, urgency, or special instructions." />
                 </div>
               </div>

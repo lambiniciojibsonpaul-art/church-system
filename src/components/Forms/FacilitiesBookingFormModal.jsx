@@ -200,7 +200,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Organization / Ministry / Group</label>
+                  <label className="text-xs font-bold text-gray-600">Organization / Ministry / Group <span className="text-[11px] text-gray-400 normal-case font-normal">(Organisasyon / Ministeryo / Grupo)</span></label>
                   <input type="text" name="organization" value={formData.organization} onChange={handleChange} className={inputClass} placeholder="e.g., Youth Ministry" />
                 </div>
 
@@ -215,7 +215,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                     <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} required maxLength={11} className={inputClass} placeholder="09XX XXX XXXX" />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Email Address (Optional)</label>
+                    <label className="text-xs font-bold text-gray-600">Email Address (Optional) <span className="text-[11px] text-gray-400 normal-case font-normal">(Email - Opsyonal)</span></label>
                     <input type="email" name="email_address" value={formData.email_address} onChange={handleChange} className={inputClass} placeholder="email@example.com" />
                   </div>
                 </div>
@@ -230,7 +230,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
               <div className="grid grid-cols-1 gap-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Facility Requested</label>
+                    <label className="text-xs font-bold text-gray-600">Facility Requested <span className="text-[11px] text-gray-400 normal-case font-normal">(Hiniling na Pasilidad)</span></label>
                     <select name="facility" value={formData.facility} onChange={handleChange} required className={inputClass}>
                       <option value="" disabled>Select a facility…</option>
                       {FACILITIES.map((f) => <option key={f} value={f}>{f}</option>)}
@@ -238,40 +238,40 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                   {formData.facility === "Other" && (
                     <div className="flex flex-col gap-1 animate-fade-in-up">
-                      <label className="text-xs font-bold text-gray-600">Specify Facility</label>
+                      <label className="text-xs font-bold text-gray-600">Specify Facility <span className="text-[11px] text-gray-400 normal-case font-normal">(Ipaliwanag ang Pasilidad)</span></label>
                       <input type="text" name="facility_other" value={formData.facility_other} onChange={handleChange} className={inputClass} required />
                     </div>
                   )}
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Event Type</label>
+                  <label className="text-xs font-bold text-gray-600">Event Type <span className="text-[11px] text-gray-400 normal-case font-normal">(Uri ng Kaganapan)</span></label>
                   <input type="text" name="event_type" value={formData.event_type} onChange={handleChange} className={inputClass} placeholder="e.g., Family Reunion, Seminar" />
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Event Purpose</label>
+                  <label className="text-xs font-bold text-gray-600">Event Purpose <span className="text-[11px] text-gray-400 normal-case font-normal">(Layunin ng Kaganapan)</span></label>
                   <textarea rows="3" name="event_purpose" value={formData.event_purpose} onChange={handleChange} required className={`${inputClass} resize-none`} placeholder="Briefly describe the purpose..." />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Start Date</label>
+                    <label className="text-xs font-bold text-gray-600">Start Date <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa ng Simula)</span></label>
                     <input type="date" name="start_date" value={formData.start_date} onChange={handleChange} required min={new Date().toISOString().split("T")[0]} className={inputClass} />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Start Time</label>
+                    <label className="text-xs font-bold text-gray-600">Start Time <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Simula)</span></label>
                     <select name="start_time" value={formData.start_time} onChange={handleChange} required className={inputClass}>
                       <option value="" disabled>Select Time</option>
                       {TIME_SLOTS.map((slot) => <option key={slot.value} value={slot.value}>{slot.label}</option>)}
                     </select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">End Date</label>
+                    <label className="text-xs font-bold text-gray-600">End Date <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa ng Katapusan)</span></label>
                     <input type="date" name="end_date" value={formData.end_date} onChange={handleChange} required min={new Date().toISOString().split("T")[0]} className={inputClass} />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">End Time</label>
+                    <label className="text-xs font-bold text-gray-600">End Time <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Katapusan)</span></label>
                     <select name="end_time" value={formData.end_time} onChange={handleChange} required className={inputClass}>
                       <option value="" disabled>Select Time</option>
                       {TIME_SLOTS.map((slot) => <option key={slot.value} value={slot.value}>{slot.label}</option>)}
@@ -280,7 +280,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
 
                 <div className="flex flex-col gap-1 md:w-1/3">
-                  <label className="text-xs font-bold text-gray-600">Expected Number of Attendees</label>
+                  <label className="text-xs font-bold text-gray-600">Expected Number of Attendees <span className="text-[11px] text-gray-400 normal-case font-normal">(Inaasahang Bilang ng Dadalo)</span></label>
                   <input type="text" name="expected_attendees" value={formData.expected_attendees} onChange={handleChange} className={inputClass} placeholder="e.g., 50" />
                 </div>
               </div>
@@ -293,15 +293,15 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
               </h3>
               <div className="grid grid-cols-1 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Setup Requirements</label>
+                  <label className="text-xs font-bold text-gray-600">Setup Requirements <span className="text-[11px] text-gray-400 normal-case font-normal">(Mga Pangangailangan sa Pag-aayos)</span></label>
                   <textarea rows="2" name="setup_requirements" value={formData.setup_requirements} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Tables, chairs, etc." />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Equipment Needed</label>
+                  <label className="text-xs font-bold text-gray-600">Equipment Needed <span className="text-[11px] text-gray-400 normal-case font-normal">(Mga Kagamitang Kailangan)</span></label>
                   <textarea rows="2" name="equipment_needed" value={formData.equipment_needed} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Microphone, projector, etc." />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Additional Notes</label>
+                  <label className="text-xs font-bold text-gray-600">Additional Notes <span className="text-[11px] text-gray-400 normal-case font-normal">(Karagdagang Tala)</span></label>
                   <textarea rows="3" name="additional_notes" value={formData.additional_notes} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Anything else the parish office should know." />
                 </div>
               </div>

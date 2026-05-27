@@ -262,7 +262,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
 
                 {formData.intention_type === "Others" && (
                   <div className="flex flex-col gap-1 animate-fade-in-up">
-                    <label className="text-xs font-bold text-gray-600">Specify Intention</label>
+                    <label className="text-xs font-bold text-gray-600">Specify Intention <span className="text-[11px] text-gray-400 normal-case font-normal">(Ipaliwanag ang Intensyon)</span></label>
                     <input
                       type="text"
                       name="specify_intention"
@@ -276,7 +276,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
 
                 {formData.intention_type === "For the Dead" && (
                   <div className="flex flex-col gap-1 animate-fade-in-up">
-                    <label className="text-xs font-bold text-gray-600">Date of Death (If applicable)</label>
+                    <label className="text-xs font-bold text-gray-600">Date of Death (If applicable) <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa ng Kamatayan - kung naaangkop)</span></label>
                     <input
                       type="date"
                       name="date_of_death"
@@ -300,7 +300,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
 
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Special Prayer Request / Occasion (Optional)</label>
+                  <label className="text-xs font-bold text-gray-600">Special Prayer Request / Occasion (Optional) <span className="text-[11px] text-gray-400 normal-case font-normal">(Espesyal na Kahilingan - Opsyonal)</span></label>
                   <input
                     type="text"
                     name="special_prayer_request"
@@ -341,7 +341,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Mass Type</label>
+                  <label className="text-xs font-bold text-gray-600">Mass Type <span className="text-[11px] text-gray-400 normal-case font-normal">(Uri ng Misa)</span></label>
                   <select
                     name="mass_type"
                     value={formData.mass_type}

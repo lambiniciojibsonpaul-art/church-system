@@ -186,11 +186,11 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* TOP DETAILS */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-white rounded-xl border border-gray-100 shadow-sm">
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-bold text-gray-600">Date of Holy Communion:</label>
+                <label className="text-sm font-bold text-gray-600">Date of Holy Communion: <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa ng Unang Pakikinabang)</span></label>
                 <input type="date" name="date_of_communion" value={formData.date_of_communion} onChange={handleChange} required min={new Date().toISOString().split("T")[0]} className={inputClass} />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-bold text-gray-600">Time:</label>
+                <label className="text-sm font-bold text-gray-600">Time: <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras)</span></label>
                 <select name="time_of_communion" value={formData.time_of_communion} onChange={handleChange} required className={inputClass}>
                   <option value="" disabled>Select Time</option>
                   {TIME_SLOTS.map((slot) => (
@@ -200,7 +200,7 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
               </div>
               
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-bold text-gray-600">Preferred Priest (Optional):</label>
+                <label className="text-sm font-bold text-gray-600">Preferred Priest (Optional): <span className="text-[11px] text-gray-400 normal-case font-normal">(Nais na Pari - Opsyonal)</span></label>
                 <select
                   name="preferred_priest"
                   value={formData.preferred_priest}
@@ -267,7 +267,7 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
 
             {/* 2. Baptismal Details */}
             <div>
-              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Baptismal Details</h3>
+              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Baptismal Details <span className="text-[11px] text-gray-400 normal-case">(Mga Detalye ng Binyag)</span></h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Date of Baptism <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa ng Binyag)</span></label>
@@ -293,7 +293,7 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
                   <input type="text" name="mother_maiden_name" value={formData.mother_maiden_name} onChange={handleChange} className={inputClass} placeholder="Full Maiden Name" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Other Guardian Information</label>
+                  <label className="text-xs font-bold text-gray-600">Other Guardian Information <span className="text-[11px] text-gray-400 normal-case font-normal">(Iba pang Tagapag-alaga - kung naaangkop)</span></label>
                   <input type="text" name="other_guardian_info" value={formData.other_guardian_info} onChange={handleChange} className={inputClass} placeholder="If applicable" />
                 </div>
               </div>
@@ -301,7 +301,7 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
 
             {/* 4. Address & Contact */}
             <div>
-              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Address & Contact</h3>
+              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Address & Contact <span className="text-[11px] text-gray-400 normal-case">(Tirahan at Pakikipag-ugnayan)</span></h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1 md:col-span-2">
                   <label className="text-xs font-bold text-gray-600">Complete Address <span className="text-[11px] text-gray-400 normal-case font-normal">(Tirahan)</span></label>

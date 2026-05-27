@@ -218,11 +218,11 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* TOP DETAILS */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-white rounded-xl border border-gray-100 shadow-sm">
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-bold text-gray-600">Date of Confirmation:</label>
+                <label className="text-sm font-bold text-gray-600">Date of Confirmation: <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa ng Kumpil)</span></label>
                 <input type="date" name="date_of_confirmation" value={formData.date_of_confirmation} onChange={handleChange} required min={new Date().toISOString().split("T")[0]} className={inputClass} />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-bold text-gray-600">Time:</label>
+                <label className="text-sm font-bold text-gray-600">Time: <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras)</span></label>
                 <select name="time_of_confirmation" value={formData.time_of_confirmation} onChange={handleChange} required className={inputClass}>
                   <option value="" disabled>Select Time</option>
                   {TIME_SLOTS.map((slot) => (
@@ -232,7 +232,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
               </div>
               
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-bold text-gray-600">Preferred Priest (Optional):</label>
+                <label className="text-sm font-bold text-gray-600">Preferred Priest (Optional): <span className="text-[11px] text-gray-400 normal-case font-normal">(Nais na Pari - Opsyonal)</span></label>
                 <select name="preferred_priest" value={formData.preferred_priest} onChange={handleChange} className={inputClass}>
                   <option value="">No Preference / Any Available</option>
                   {priests.map((priest) => (
@@ -294,7 +294,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
 
             {/* 2. Baptismal Details */}
             <div>
-              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Baptismal Details</h3>
+              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Baptismal Details <span className="text-[11px] text-gray-400 normal-case">(Mga Detalye ng Binyag)</span></h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Date of Baptism <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa ng Binyag)</span></label>
@@ -309,7 +309,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
 
             {/* 3. Parents */}
             <div>
-              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Parents & Guardian Information</h3>
+              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Parents & Guardian Information <span className="text-[11px] text-gray-400 normal-case">(Impormasyon ng Magulang/Tagapag-alaga)</span></h3>
               <div className="grid grid-cols-1 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Father's Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ama)</span></label>
@@ -332,7 +332,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
 
             {/* 4. Address & Contact */}
             <div>
-              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Address & Contact</h3>
+              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Address & Contact <span className="text-[11px] text-gray-400 normal-case">(Tirahan at Pakikipag-ugnayan)</span></h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1 md:col-span-2">
                   <label className="text-xs font-bold text-gray-600">Complete Address <span className="text-[11px] text-gray-400 normal-case font-normal">(Tirahan)</span></label>
@@ -343,7 +343,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
                   <input type="text" name="residence_parish" value={formData.residence_parish} onChange={handleChange} className={inputClass} />
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2 mt-2">
-                  <label className="text-xs font-bold text-gray-600 mb-2">Contact Numbers:</label>
+                  <label className="text-xs font-bold text-gray-600 mb-2">Contact Numbers: <span className="text-[11px] text-gray-400 normal-case font-normal">(Numero ng Telepono)</span></label>
                   <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} maxLength={11} className={`${inputClass} md:w-1/2`} placeholder="Contact Number" />
                 </div>
               </div>
@@ -357,12 +357,12 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                 <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-xl">
-                  <label className="text-xs font-bold text-[#B59E74]">Primary Sponsor 1</label>
+                  <label className="text-xs font-bold text-[#B59E74]">Primary Sponsor 1 <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangunahing Ninong/Ninang 1)</span></label>
                   <input type="text" name="sponsor1_name" value={formData.sponsor1_name} onChange={handleChange} className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" placeholder="Full Name" />
                   <input type="text" name="sponsor1_address" value={formData.sponsor1_address} onChange={handleChange} className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm mt-1" placeholder="Address (Tirahan)" />
                 </div>
                 <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-xl">
-                  <label className="text-xs font-bold text-[#B59E74]">Primary Sponsor 2</label>
+                  <label className="text-xs font-bold text-[#B59E74]">Primary Sponsor 2 <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangunahing Ninong/Ninang 2)</span></label>
                   <input type="text" name="sponsor2_name" value={formData.sponsor2_name} onChange={handleChange} className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" placeholder="Full Name" />
                   <input type="text" name="sponsor2_address" value={formData.sponsor2_address} onChange={handleChange} className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm mt-1" placeholder="Address (Tirahan)" />
                 </div>
