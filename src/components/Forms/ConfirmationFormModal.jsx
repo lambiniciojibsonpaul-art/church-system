@@ -162,10 +162,11 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
     try {
       const fatherFull = [formData.father_first_name, formData.father_middle_name, formData.father_last_name].filter(Boolean).join(" ");
       const motherFull = [formData.mother_first_name, formData.mother_middle_name, formData.mother_last_name].filter(Boolean).join(" ");
+      const { father_first_name, father_middle_name, father_last_name, mother_first_name, mother_middle_name, mother_last_name, ...restFormData } = formData;
       await submitRequest({
         table: "confirmations",
         payload: {
-          ...formData,
+          ...restFormData,
           preferred_priest: formData.preferred_priest || null,
           father_name: fatherFull || null,
           mother_maiden_name: motherFull || null,
@@ -319,17 +320,17 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Father's Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ama)</span></label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <input type="text" name="father_first_name" value={formData.father_first_name} onChange={handleChange} className={inputClass} placeholder="First Name" />
+                    <input type="text" name="father_first_name" value={formData.father_first_name} onChange={handleChange} required className={inputClass} placeholder="First Name *" />
                     <input type="text" name="father_middle_name" value={formData.father_middle_name} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
-                    <input type="text" name="father_last_name" value={formData.father_last_name} onChange={handleChange} className={inputClass} placeholder="Last Name" />
+                    <input type="text" name="father_last_name" value={formData.father_last_name} onChange={handleChange} required className={inputClass} placeholder="Last Name *" />
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Mother's Maiden Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ina sa Pagkadalaga)</span></label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <input type="text" name="mother_first_name" value={formData.mother_first_name} onChange={handleChange} className={inputClass} placeholder="First Name" />
+                    <input type="text" name="mother_first_name" value={formData.mother_first_name} onChange={handleChange} required className={inputClass} placeholder="First Name *" />
                     <input type="text" name="mother_middle_name" value={formData.mother_middle_name} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
-                    <input type="text" name="mother_last_name" value={formData.mother_last_name} onChange={handleChange} className={inputClass} placeholder="Last Name (Maiden)" />
+                    <input type="text" name="mother_last_name" value={formData.mother_last_name} onChange={handleChange} required className={inputClass} placeholder="Last Name (Maiden) *" />
                   </div>
                 </div>
               </div>
