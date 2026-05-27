@@ -48,8 +48,12 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
     gender: "",
     date_of_baptism: "",
     baptism_parish: "",
-    father_name: "",
-    mother_maiden_name: "",
+    father_first_name: "",
+    father_middle_name: "",
+    father_last_name: "",
+    mother_first_name: "",
+    mother_middle_name: "",
+    mother_last_name: "",
     complete_address: "",
     residence_parish: "",
     contact_number: "",
@@ -156,9 +160,16 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
     }
     setLoading(true);
     try {
+      const fatherFull = [formData.father_first_name, formData.father_middle_name, formData.father_last_name].filter(Boolean).join(" ");
+      const motherFull = [formData.mother_first_name, formData.mother_middle_name, formData.mother_last_name].filter(Boolean).join(" ");
       await submitRequest({
         table: "confirmations",
-        payload: { ...formData, preferred_priest: formData.preferred_priest || null },
+        payload: {
+          ...formData,
+          preferred_priest: formData.preferred_priest || null,
+          father_name: fatherFull || null,
+          mother_maiden_name: motherFull || null,
+        },
         user,
         guestInfo,
         serviceName: "confirmation",
@@ -306,12 +317,20 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Parents & Guardian Information</h3>
               <div className="grid grid-cols-1 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Father's Full Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ama)</span></label>
-                  <input type="text" name="father_name" value={formData.father_name} onChange={handleChange} className={inputClass} placeholder="Full Name" />
+                  <label className="text-xs font-bold text-gray-600">Father's Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ama)</span></label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="text" name="father_first_name" value={formData.father_first_name} onChange={handleChange} className={inputClass} placeholder="First Name" />
+                    <input type="text" name="father_middle_name" value={formData.father_middle_name} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
+                    <input type="text" name="father_last_name" value={formData.father_last_name} onChange={handleChange} className={inputClass} placeholder="Last Name" />
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Mother's Full Maiden Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ina sa Pagkadalaga)</span></label>
-                  <input type="text" name="mother_maiden_name" value={formData.mother_maiden_name} onChange={handleChange} className={inputClass} placeholder="Full Maiden Name" />
+                  <label className="text-xs font-bold text-gray-600">Mother's Maiden Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ina sa Pagkadalaga)</span></label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="text" name="mother_first_name" value={formData.mother_first_name} onChange={handleChange} className={inputClass} placeholder="First Name" />
+                    <input type="text" name="mother_middle_name" value={formData.mother_middle_name} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
+                    <input type="text" name="mother_last_name" value={formData.mother_last_name} onChange={handleChange} className={inputClass} placeholder="Last Name (Maiden)" />
+                  </div>
                 </div>
               </div>
             </div>
