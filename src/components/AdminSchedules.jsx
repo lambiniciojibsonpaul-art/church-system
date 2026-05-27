@@ -520,6 +520,7 @@ function AdminSchedules() {
         const fallback = { ...basePayload };
         delete fallback.collaborators;
         delete fallback.is_public;
+        delete fallback.event_end_date;
         const retry = await restInsert("events", [fallback]);
         if (retry.error) throw new Error(retry.error.message);
       } else if (error) {
