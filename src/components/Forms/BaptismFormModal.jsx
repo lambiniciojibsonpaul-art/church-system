@@ -315,11 +315,11 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* 1. Schedule Selection */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                Baptism Schedule & Officiant
+                Baptism Schedule & Officiant <span className="text-[11px] text-gray-400 normal-case">(Iskedyul ng Binyag)</span>
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Type of Baptism *</label>
+                  <label className="text-xs font-bold text-gray-600">Type of Baptism * <span className="text-[11px] text-gray-400 normal-case font-normal">(Uri ng Binyag)</span></label>
                   <select name="baptismType" value={formData.baptismType} onChange={handleChange} required
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700">
                     <option value="Sunday">Sunday Baptism</option>
@@ -327,13 +327,13 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Preferred Date *</label>
+                  <label className="text-xs font-bold text-gray-600">Preferred Date * <span className="text-[11px] text-gray-400 normal-case font-normal">(Nais na Petsa)</span></label>
                   <input type="date" name="preferredDate" value={formData.preferredDate} onChange={handleChange} required
                     min={new Date().toISOString().split("T")[0]}
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Preferred Time *</label>
+                  <label className="text-xs font-bold text-gray-600">Preferred Time * <span className="text-[11px] text-gray-400 normal-case font-normal">(Nais na Oras)</span></label>
                   <select name="preferredTime" value={formData.preferredTime} onChange={handleChange} required
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700">
                     <option value="" disabled>Select Time</option>
@@ -343,7 +343,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Preferred Priest (Optional)</label>
+                  <label className="text-xs font-bold text-gray-600">Preferred Priest <span className="text-[11px] text-gray-400 normal-case font-normal">(Nais na Pari - Opsyonal)</span></label>
                   <select name="preferredPriest" value={formData.preferredPriest} onChange={handleChange}
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700">
                     <option value="">No Preference / Any Available</option>
@@ -355,14 +355,22 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
               </div>
             </div>
 
+            <p className="text-xs text-gray-500 italic leading-relaxed text-center max-w-2xl mx-auto border-t pt-4 border-gray-200">
+              Instructions: Answer all the blanks accordingly using ALL CAPS. Please write legibly. Copy necessary details as it is written in the Certificate of Live Birth of the one to be baptized.
+              <br />
+              <span className="text-[11px] text-gray-400">
+                Panuto: Sagutan ang mga blanko ng tama sa pamamagitan ng pagsusulat gamit ang MALALAKING LETRA. Sumulat ng maayos. Kopyahin ang mga detalye nang ayon sa nakasulat sa Certificate of Live Birth ng bata.
+              </span>
+            </p>
+
             {/* 2. Child's Info */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                Child's Information
+                Child's Information <span className="text-[11px] text-gray-400 normal-case">(Impormasyon ng Bata)</span>
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Full Name of Child *</label>
+                  <label className="text-xs font-bold text-gray-600">Full Name of Child * <span className="text-[11px] text-gray-400 normal-case font-normal">(Buong Pangalan ng Bata)</span></label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <input type="text" name="childFirstName" value={formData.childFirstName} onChange={handleChange} required placeholder="First Name"
                       className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
@@ -373,25 +381,25 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Date of Birth *</label>
+                  <label className="text-xs font-bold text-gray-600">Date of Birth * <span className="text-[11px] text-gray-400 normal-case font-normal">(Petsa ng Kapanganakan)</span></label>
                   <input type="date" name="childDob" value={formData.childDob} onChange={handleChange} required
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Place of Birth (City/Province) *</label>
+                  <label className="text-xs font-bold text-gray-600">Place of Birth * <span className="text-[11px] text-gray-400 normal-case font-normal">(Lugar ng Kapanganakan)</span></label>
                   <input type="text" name="childBirthplace" value={formData.childBirthplace} onChange={handleChange} required
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Gender *</label>
+                  <label className="text-xs font-bold text-gray-600">Gender * <span className="text-[11px] text-gray-400 normal-case font-normal">(Kasarian)</span></label>
                   <div className="flex items-center gap-6 mt-1">
                     <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
                       <input type="radio" name="childGender" value="Male" checked={formData.childGender === "Male"} onChange={handleChange} required
-                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" /> Male
+                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" /> Male <span className="text-gray-400">(Lalake)</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
                       <input type="radio" name="childGender" value="Female" checked={formData.childGender === "Female"} onChange={handleChange}
-                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" /> Female
+                        className="w-4 h-4 text-[#B59E74] focus:ring-[#B59E74]" /> Female <span className="text-gray-400">(Babae)</span>
                     </label>
                   </div>
                 </div>
@@ -401,31 +409,31 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* 3. Parents' Info */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                Parents' Information
+                Parents' Information <span className="text-[11px] text-gray-400 normal-case">(Impormasyon ng Magulang)</span>
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Father's Full Name *</label>
+                  <label className="text-xs font-bold text-gray-600">Father's Full Name * <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ama)</span></label>
                   <input type="text" name="fatherName" value={formData.fatherName} onChange={handleChange} required placeholder="First, Middle, Last Name"
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Mother's Full Maiden Name *</label>
+                  <label className="text-xs font-bold text-gray-600">Mother's Full Maiden Name * <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ina sa Pagkadalaga)</span></label>
                   <input type="text" name="motherMaidenName" value={formData.motherMaidenName} onChange={handleChange} required placeholder="First, Middle, Last Maiden Name"
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Complete Address *</label>
+                  <label className="text-xs font-bold text-gray-600">Complete Address * <span className="text-[11px] text-gray-400 normal-case font-normal">(Tirahan)</span></label>
                   <textarea rows="2" name="address" value={formData.address} onChange={handleChange} required placeholder="Street Address, City, Zip Code"
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 resize-none"></textarea>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Contact Numbers *</label>
+                  <label className="text-xs font-bold text-gray-600">Contact Numbers * <span className="text-[11px] text-gray-400 normal-case font-normal">(Numero ng Telepono)</span></label>
                   <input type="tel" name="contactNumbers" value={formData.contactNumbers} onChange={handleChange} required placeholder="Primary phone number" maxLength={11}
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Parents' Marriage Status *</label>
+                  <label className="text-xs font-bold text-gray-600">Parents' Marriage Status * <span className="text-[11px] text-gray-400 normal-case font-normal">(Katayuan sa Pag-aasawa ng Magulang)</span></label>
                   <select name="parentsMarriageStatus" value={formData.parentsMarriageStatus} onChange={handleChange} required
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700">
                     <option value="Married in Church">Married in Church</option>
@@ -439,7 +447,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* 4. Godparents Info */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                Sponsors / Godparents
+                Sponsors / Godparents <span className="text-[11px] text-gray-400 normal-case">(Ninong at Ninang)</span>
               </h3>
               <p className="text-xs text-gray-500 italic mb-4">
                 Note: 1 pair of sponsors is included in the base fee. Additional sponsors are Php 50.00 per head.
@@ -458,7 +466,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
               </div>
               
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-gray-600">Additional Sponsors</label>
+                <label className="text-xs font-bold text-gray-600">Additional Sponsors <span className="text-[11px] text-gray-400 normal-case font-normal">(Karagdagang Ninong at Ninang)</span></label>
                 {sponsorsList.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2">
                     {sponsorsList.map((sponsor, index) => (

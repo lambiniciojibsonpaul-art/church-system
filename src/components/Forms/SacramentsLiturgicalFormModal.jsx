@@ -186,7 +186,7 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* 1. REQUEST TYPE */}
             <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                Please check request:
+                Please check request: <span className="text-[11px] text-gray-400 normal-case">(Lagyan ng tsek ang hiling:)</span>
               </h3>
 
               <div className="flex flex-col gap-4">
@@ -220,11 +220,11 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* 2. DETAILS */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                Please provide the following details:
+                Please provide the following details: <span className="text-[11px] text-gray-400 normal-case">(Ibigay ang sumusunod na detalye:)</span>
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Address:</label>
+                  <label className="text-xs font-bold text-gray-600">Address <span className="text-[11px] text-gray-400 normal-case font-normal">(Tirahan):</span></label>
                   <textarea rows="3" name="address" value={formData.address} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Complete address of the activity..." />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -241,11 +241,11 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
                   </select>
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Requested by:</label>
+                  <label className="text-xs font-bold text-gray-600">Requested by <span className="text-[11px] text-gray-400 normal-case font-normal">(Hiniling ni):</span></label>
                   <input type="text" name="requested_by" value={formData.requested_by} onChange={handleChange} required className={inputClass} placeholder="Full Name" />
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Contact Nos.:</label>
+                  <label className="text-xs font-bold text-gray-600">Contact Nos. <span className="text-[11px] text-gray-400 normal-case font-normal">(Numero ng Telepono):</span></label>
                   <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} maxLength={11} className={inputClass} placeholder="Phone Number/s" />
                 </div>
               </div>

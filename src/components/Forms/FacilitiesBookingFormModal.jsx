@@ -178,16 +178,20 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
 
             <p className="text-xs text-gray-500 italic leading-relaxed text-center max-w-2xl mx-auto border-t pt-4 border-gray-200">
               Instructions: Answer all the blanks accordingly using ALL CAPS. Please write legibly.
+              <br />
+              <span className="text-[11px] text-gray-400">
+                Panuto: Sagutan ang mga blanko ng tama sa pamamagitan ng pagsusulat gamit ang MALALAKING LETRA. Sumulat ng maayos.
+              </span>
             </p>
 
             {/* A. REQUESTOR INFORMATION */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                A. Requestor Information
+                A. Requestor Information <span className="text-[11px] text-gray-400 normal-case">(Impormasyon ng Humihiling)</span>
               </h3>
               <div className="grid grid-cols-1 gap-6">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Full Name</label>
+                  <label className="text-xs font-bold text-gray-600">Full Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Buong Pangalan)</span></label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <input type="text" name="requestor_first_name" value={formData.requestor_first_name} onChange={handleChange} required className={inputClass} placeholder="First Name" />
                     <input type="text" name="requestor_middle_name" value={formData.requestor_middle_name} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
@@ -201,13 +205,13 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Address</label>
+                  <label className="text-xs font-bold text-gray-600">Address <span className="text-[11px] text-gray-400 normal-case font-normal">(Tirahan)</span></label>
                   <textarea rows="2" name="address" value={formData.address} onChange={handleChange} className={`${inputClass} resize-none`} placeholder="Street, Barangay, City" />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-600">Contact Number</label>
+                    <label className="text-xs font-bold text-gray-600">Contact Number <span className="text-[11px] text-gray-400 normal-case font-normal">(Numero ng Telepono)</span></label>
                     <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} required maxLength={11} className={inputClass} placeholder="09XX XXX XXXX" />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -221,7 +225,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* B. FACILITY DETAILS */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                B. Facility & Event Details
+                B. Facility & Event Details <span className="text-[11px] text-gray-400 normal-case">(Detalye ng Pasilidad at Kaganapan)</span>
               </h3>
               <div className="grid grid-cols-1 gap-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -285,7 +289,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* C. SETUP & EQUIPMENT */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                C. Setup & Equipment
+                C. Setup & Equipment <span className="text-[11px] text-gray-400 normal-case">(Pag-aayos at Kagamitan)</span>
               </h3>
               <div className="grid grid-cols-1 gap-6">
                 <div className="flex flex-col gap-1">

@@ -205,7 +205,7 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Contact Number</label>
+                  <label className="text-xs font-bold text-gray-600">Contact Number <span className="text-[11px] text-gray-400 normal-case font-normal">(Numero ng Telepono)</span></label>
                   <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleChange} required maxLength={11} className={inputClass} placeholder="09XX XXX XXXX" />
                 </div>
               </div>

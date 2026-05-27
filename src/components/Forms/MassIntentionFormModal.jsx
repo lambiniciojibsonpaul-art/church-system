@@ -119,7 +119,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
               Mass Intention Request
             </h2>
             <p className="text-gray-500 font-serif italic text-sm mt-1">
-              Please submit requests at least 1–3 days in advance.
+              Please submit requests at least 1–3 days in advance. <span className="text-[11px] text-gray-400">(Mangyaring mag-submit ng kahilingan nang hindi bababa sa 1–3 araw bago ang Misa.)</span>
             </p>
           </div>
           <button
@@ -179,11 +179,11 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* --- A. REQUESTOR INFORMATION --- */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                A. Requestor Information
+                A. Requestor Information <span className="text-[11px] text-gray-400 normal-case">(Impormasyon ng Humihiling)</span>
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Full Name</label>
+                  <label className="text-xs font-bold text-gray-600">Full Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Buong Pangalan)</span></label>
                   <input
                     type="text"
                     name="full_name"
@@ -195,7 +195,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                   />
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Address</label>
+                  <label className="text-xs font-bold text-gray-600">Address <span className="text-[11px] text-gray-400 normal-case font-normal">(Tirahan)</span></label>
                   <input
                     type="text"
                     name="address"
@@ -205,7 +205,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Contact Number</label>
+                  <label className="text-xs font-bold text-gray-600">Contact Number <span className="text-[11px] text-gray-400 normal-case font-normal">(Numero ng Telepono)</span></label>
                   <input
                     type="tel"
                     name="contact_number"
@@ -231,11 +231,11 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* --- B. INTENTION DETAILS --- */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                B. Intention Details
+                B. Intention Details <span className="text-[11px] text-gray-400 normal-case">(Detalye ng Intensyon)</span>
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Type of Mass Intention</label>
+                  <label className="text-xs font-bold text-gray-600">Type of Mass Intention <span className="text-[11px] text-gray-400 normal-case font-normal">(Uri ng Intensyon sa Misa)</span></label>
                   <select
                     name="intention_type"
                     value={formData.intention_type}
@@ -280,7 +280,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                 )}
 
                 <div className="flex flex-col gap-1 md:col-span-2 mt-2">
-                  <label className="text-xs font-bold text-gray-600">Name/s Included in the Intention</label>
+                  <label className="text-xs font-bold text-gray-600">Name/s Included in the Intention <span className="text-[11px] text-gray-400 normal-case font-normal">(Mga Pangalan sa Intensyon)</span></label>
                   <textarea
                     rows="3"
                     name="names_in_intention"
@@ -308,11 +308,11 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* --- C. SCHEDULE & LOCATION --- */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
-                C. Schedule & Location
+                C. Schedule & Location <span className="text-[11px] text-gray-400 normal-case">(Iskedyul at Lugar)</span>
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Preferred Date</label>
+                  <label className="text-xs font-bold text-gray-600">Preferred Date <span className="text-[11px] text-gray-400 normal-case font-normal">(Nais na Petsa)</span></label>
                   <input
                     type="date"
                     name="preferred_date"
@@ -324,7 +324,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Preferred Time</label>
+                  <label className="text-xs font-bold text-gray-600">Preferred Time <span className="text-[11px] text-gray-400 normal-case font-normal">(Nais na Oras)</span></label>
                   <select name="preferred_time" value={formData.preferred_time} onChange={handleChange} required className={inputClass}>
                     <option value="" disabled>Select Time</option>
                     {TIME_SLOTS.map((slot) => (
@@ -345,7 +345,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600">Location</label>
+                  <label className="text-xs font-bold text-gray-600">Location <span className="text-[11px] text-gray-400 normal-case font-normal">(Lugar)</span></label>
                   <select
                     name="location"
                     value={formData.location}
@@ -363,7 +363,7 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* --- F. DONATION --- */}
             <div className="bg-white p-6 rounded-xl border border-gray-200">
               <div className="flex flex-col gap-1 md:w-1/2">
-                <label className="text-xs font-bold text-gray-600">Offering Amount (Voluntary)</label>
+                <label className="text-xs font-bold text-gray-600">Offering Amount (Voluntary) <span className="text-[11px] text-gray-400 normal-case font-normal">(Halaga ng Handog - Boluntaryo)</span></label>
                 <input
                   type="text"
                   name="offering_amount"

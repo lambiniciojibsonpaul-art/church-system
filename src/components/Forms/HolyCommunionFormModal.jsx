@@ -218,7 +218,11 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
             </div>
 
             <p className="text-xs text-gray-500 italic leading-relaxed text-center max-w-2xl mx-auto border-t pt-4 border-gray-200">
-              Instructions: Answer all the blanks accordingly using ALL CAPS. Please write legibly. Copy necessary details as it is written in the Certificate of Live Birth of the one to be confirmed.
+              Instructions: Answer all the blanks accordingly using ALL CAPS. Please write legibly. Copy necessary details as it is written in the Certificate of Live Birth of the one to receive Holy Communion.
+              <br />
+              <span className="text-[11px] text-gray-400">
+                Panuto: Sagutan ang mga blanko ng tama sa pamamagitan ng pagsusulat gamit ang MALALAKING LETRA. Sumulat ng maayos. Kopyahin ang mga detalye nang ayon sa nakasulat sa Certificate of Live Birth ng makakatanggap ng Unang Pakikinabang.
+              </span>
             </p>
 
             {/* 1. Student Information */}
@@ -278,7 +282,7 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
 
             {/* 3. Parents */}
             <div>
-              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Parents & Guardian Information</h3>
+              <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">Parents & Guardian Information <span className="text-[11px] text-gray-400 normal-case">(Impormasyon ng Magulang/Tagapag-alaga)</span></h3>
               <div className="grid grid-cols-1 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Father's Full Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ama)</span></label>
