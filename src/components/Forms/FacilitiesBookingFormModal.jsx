@@ -101,10 +101,22 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
     setLoading(true);
     try {
       const finalFacility = formData.facility === "Other" ? formData.facility_other : formData.facility;
+      const requestorFullName = [
+        formData.requestor_first_name,
+        formData.requestor_middle_name,
+        formData.requestor_surname,
+      ].filter(Boolean).join(" ");
+      const {
+        requestor_first_name,
+        requestor_middle_name,
+        requestor_surname,
+        ...restForm
+      } = formData;
       await submitRequest({
         table: "facilities_bookings",
         payload: {
-          ...formData,
+          ...restForm,
+          requestor_name: requestorFullName || null,
           facility: finalFacility,
           expected_attendees: formData.expected_attendees === "" ? null : Number(formData.expected_attendees),
         },

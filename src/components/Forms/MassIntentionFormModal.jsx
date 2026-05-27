@@ -31,7 +31,9 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
   const [error, setError] = useState(null);
 
   const [formData, setFormData] = useState({
-    full_name: "",
+    full_name_first: "",
+    full_name_middle: "",
+    full_name_last: "",
     address: "",
     contact_number: "",
     email_address: "",
@@ -54,7 +56,8 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
     if (!autofill || guestInfo) return;
     setFormData(prev => ({
       ...prev,
-      full_name:           prev.full_name           || autofill.fullName,
+      full_name_first:     prev.full_name_first     || autofill.firstName,
+      full_name_last:      prev.full_name_last      || autofill.lastName,
       contact_number:      prev.contact_number      || autofill.contactNumber,
       submitter_signature: prev.submitter_signature || autofill.fullName,
     }));
@@ -65,7 +68,8 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
     const fullName = `${guestInfo.firstName} ${guestInfo.lastName}`.trim();
     setFormData(prev => ({
       ...prev,
-      full_name:           prev.full_name           || fullName,
+      full_name_first:     prev.full_name_first     || guestInfo.firstName,
+      full_name_last:      prev.full_name_last      || guestInfo.lastName,
       contact_number:      prev.contact_number      || guestInfo.contactNumber,
       submitter_signature: prev.submitter_signature || fullName,
     }));
@@ -88,13 +92,15 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
     }
     setLoading(true);
     try {
+      const fullNameCombined = [formData.full_name_first, formData.full_name_middle, formData.full_name_last].filter(Boolean).join(" ");
+      const { full_name_first, full_name_middle, full_name_last, ...restForm } = formData;
       await submitRequest({
         table: "mass_intentions",
-        payload: formData,
+        payload: { ...restForm, full_name: fullNameCombined },
         user,
         guestInfo,
         serviceName: "mass intention",
-        summary: `${formData.intention_type} for ${formData.names_in_intention || formData.full_name}.`,
+        summary: `${formData.intention_type} for ${formData.names_in_intention || fullNameCombined}.`,
         restInsert,
         sendRequestEmail,
       });
@@ -191,16 +197,12 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Full Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Buong Pangalan)</span></label>
-                  <input
-                    type="text"
-                    name="full_name"
-                    value={formData.full_name}
-                    onChange={handleChange}
-                    required
-                    className={inputClass}
-                    placeholder="First, Middle, Last"
-                  />
+                  <label className="text-xs font-bold text-gray-600">Full Name (Buong Pangalan) <span className="text-[11px] text-gray-400 normal-case font-normal">(Buong Pangalan)</span></label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="text" name="full_name_first" value={formData.full_name_first} onChange={handleChange} required className={inputClass} placeholder="First Name" />
+                    <input type="text" name="full_name_middle" value={formData.full_name_middle} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
+                    <input type="text" name="full_name_last" value={formData.full_name_last} onChange={handleChange} required className={inputClass} placeholder="Surname" />
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
                   <label className="text-xs font-bold text-gray-600">Address <span className="text-[11px] text-gray-400 normal-case font-normal">(Tirahan)</span></label>

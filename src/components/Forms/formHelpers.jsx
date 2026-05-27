@@ -54,6 +54,10 @@ export function applyFieldFilter(name, value) {
   if (/expected_attendees|number_of_copies|groom_age|bride_age/i.test(name)) {
     return value.replace(/\D/g, "");
   }
+  // Letters-only fields — split name parts (first/middle/last/maiden)
+  if (/first_name|last_name|middle_name|_first$|_middle$|_last$|maiden_first|maiden_middle|maiden_last/i.test(name)) {
+    return value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "");
+  }
   // Letters-only fields (person names)
   if (
     /(^|_)(first|middle|last)_name$/.test(name) ||   // snake_case: child_first_name, etc.

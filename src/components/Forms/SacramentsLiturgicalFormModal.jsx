@@ -48,7 +48,9 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
     address: "",
     request_date: "",
     request_time: "",
-    requested_by: "",
+    requested_by_first: "",
+    requested_by_middle: "",
+    requested_by_last: "",
     contact_number: "",
     preferred_priest: "", // CHANGED from minister_name to match other forms
     notes: "",
@@ -79,7 +81,8 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
     if (!autofill || guestInfo) return;
     setFormData(prev => ({
       ...prev,
-      requested_by:         prev.requested_by         || autofill.fullName,
+      requested_by_first:   prev.requested_by_first   || autofill.firstName,
+      requested_by_last:    prev.requested_by_last    || autofill.lastName,
       contact_number:       prev.contact_number       || autofill.contactNumber,
       submitter_signature:  prev.submitter_signature  || autofill.fullName,
     }));
@@ -90,7 +93,8 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
     const fullName = `${guestInfo.firstName} ${guestInfo.lastName}`.trim();
     setFormData(prev => ({
       ...prev,
-      requested_by:         prev.requested_by         || fullName,
+      requested_by_first:   prev.requested_by_first   || guestInfo.firstName,
+      requested_by_last:    prev.requested_by_last    || guestInfo.lastName,
       contact_number:       prev.contact_number       || guestInfo.contactNumber,
       submitter_signature:  prev.submitter_signature  || fullName,
     }));
@@ -123,10 +127,13 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
     }
     setLoading(true);
     try {
+      const requestedByFull = [formData.requested_by_first, formData.requested_by_middle, formData.requested_by_last].filter(Boolean).join(" ");
+      const { requested_by_first, requested_by_middle, requested_by_last, ...restForm } = formData;
       await submitRequest({
         table: "sacraments_liturgical",
         payload: {
-          ...formData,
+          ...restForm,
+          requested_by: requestedByFull,
           // Map to database columns and ensure null if empty
           minister_name: formData.preferred_priest || null,
           preferred_priest: formData.preferred_priest || null,
@@ -242,7 +249,11 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
                   <label className="text-xs font-bold text-gray-600">Requested by <span className="text-[11px] text-gray-400 normal-case font-normal">(Hiniling ni):</span></label>
-                  <input type="text" name="requested_by" value={formData.requested_by} onChange={handleChange} required className={inputClass} placeholder="Full Name" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="text" name="requested_by_first" value={formData.requested_by_first} onChange={handleChange} required className={inputClass} placeholder="First Name" />
+                    <input type="text" name="requested_by_middle" value={formData.requested_by_middle} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
+                    <input type="text" name="requested_by_last" value={formData.requested_by_last} onChange={handleChange} required className={inputClass} placeholder="Surname" />
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
                   <label className="text-xs font-bold text-gray-600">Contact Nos. <span className="text-[11px] text-gray-400 normal-case font-normal">(Numero ng Telepono):</span></label>

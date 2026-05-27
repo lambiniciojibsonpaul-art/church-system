@@ -62,13 +62,21 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
     childDob: "",
     childBirthplace: "",
     childGender: "",
-    fatherName: "",
-    motherMaidenName: "",
+    fatherFirstName: "",
+    fatherMiddleName: "",
+    fatherLastName: "",
+    motherFirstName: "",
+    motherMiddleName: "",
+    motherMaidenLastName: "",
     address: "",
     contactNumbers: "",
     parentsMarriageStatus: "Married in Church",
-    godfatherName: "",
-    godmotherName: "",
+    godfatherFirstName: "",
+    godfatherMiddleName: "",
+    godfatherLastName: "",
+    godmotherFirstName: "",
+    godmotherMiddleName: "",
+    godmotherLastName: "",
     additionalSponsors: "",
     submitterName: "",
     submitter_signature: "",
@@ -121,7 +129,16 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) }));
+    if (type === "checkbox") {
+      setFormData(prev => ({ ...prev, [name]: checked }));
+      return;
+    }
+    // Letters-only filter for split name fields
+    if (/FirstName$|MiddleName$|LastName$|MaidenLastName$/.test(name)) {
+      setFormData(prev => ({ ...prev, [name]: value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "") }));
+      return;
+    }
+    setFormData(prev => ({ ...prev, [name]: applyFieldFilter(name, value) }));
   };
 
   const sponsorsList = formData.additionalSponsors 
@@ -158,6 +175,11 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
     setLoading(true);
 
     try {
+      const fatherFull = [formData.fatherFirstName, formData.fatherMiddleName, formData.fatherLastName].filter(Boolean).join(" ");
+      const motherFull = [formData.motherFirstName, formData.motherMiddleName, formData.motherMaidenLastName].filter(Boolean).join(" ");
+      const godfatherFull = [formData.godfatherFirstName, formData.godfatherMiddleName, formData.godfatherLastName].filter(Boolean).join(" ");
+      const godmotherFull = [formData.godmotherFirstName, formData.godmotherMiddleName, formData.godmotherLastName].filter(Boolean).join(" ");
+
       const payload = {
         baptism_type: formData.baptismType,
         preferred_date: formData.preferredDate,
@@ -169,13 +191,13 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         child_dob: formData.childDob,
         child_birthplace: formData.childBirthplace,
         child_gender: formData.childGender,
-        father_name: formData.fatherName,
-        mother_maiden_name: formData.motherMaidenName,
+        father_name: fatherFull,
+        mother_maiden_name: motherFull,
         address: formData.address,
         contact_numbers: formData.contactNumbers,
         parents_marriage_status: formData.parentsMarriageStatus,
-        godfather_name: formData.godfatherName,
-        godmother_name: formData.godmotherName,
+        godfather_name: godfatherFull,
+        godmother_name: godmotherFull,
         additional_sponsors: formData.additionalSponsors,
         submitter_name: formData.submitter_signature,
         status: "Pending",
@@ -413,14 +435,26 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Father's Full Name * <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ama)</span></label>
-                  <input type="text" name="fatherName" value={formData.fatherName} onChange={handleChange} required placeholder="First, Middle, Last Name"
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                  <label className="text-xs font-bold text-gray-600">Father's Name * <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ama)</span></label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="text" name="fatherFirstName" value={formData.fatherFirstName} onChange={handleChange} required placeholder="First Name"
+                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                    <input type="text" name="fatherMiddleName" value={formData.fatherMiddleName} onChange={handleChange} placeholder="Middle Name"
+                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                    <input type="text" name="fatherLastName" value={formData.fatherLastName} onChange={handleChange} required placeholder="Surname"
+                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
-                  <label className="text-xs font-bold text-gray-600">Mother's Full Maiden Name * <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ina sa Pagkadalaga)</span></label>
-                  <input type="text" name="motherMaidenName" value={formData.motherMaidenName} onChange={handleChange} required placeholder="First, Middle, Last Maiden Name"
-                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                  <label className="text-xs font-bold text-gray-600">Mother's Maiden Name * <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ina sa Pagkadalaga)</span></label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="text" name="motherFirstName" value={formData.motherFirstName} onChange={handleChange} required placeholder="First Name"
+                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                    <input type="text" name="motherMiddleName" value={formData.motherMiddleName} onChange={handleChange} placeholder="Middle Name"
+                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                    <input type="text" name="motherMaidenLastName" value={formData.motherMaidenLastName} onChange={handleChange} required placeholder="Surname"
+                      className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700" />
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
                   <label className="text-xs font-bold text-gray-600">Complete Address * <span className="text-[11px] text-gray-400 normal-case font-normal">(Tirahan)</span></label>
@@ -455,13 +489,25 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                 <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-xl">
                   <label className="text-xs font-bold text-[#B59E74]">Primary Godfather (Ninong) *</label>
-                  <input type="text" name="godfatherName" value={formData.godfatherName} onChange={handleChange} required placeholder="Full Name"
-                    className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <input type="text" name="godfatherFirstName" value={formData.godfatherFirstName} onChange={handleChange} required placeholder="First Name"
+                      className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" />
+                    <input type="text" name="godfatherMiddleName" value={formData.godfatherMiddleName} onChange={handleChange} placeholder="Middle Name"
+                      className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" />
+                    <input type="text" name="godfatherLastName" value={formData.godfatherLastName} onChange={handleChange} required placeholder="Surname"
+                      className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" />
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded-xl">
                   <label className="text-xs font-bold text-[#B59E74]">Primary Godmother (Ninang) *</label>
-                  <input type="text" name="godmotherName" value={formData.godmotherName} onChange={handleChange} required placeholder="Full Name"
-                    className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <input type="text" name="godmotherFirstName" value={formData.godmotherFirstName} onChange={handleChange} required placeholder="First Name"
+                      className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" />
+                    <input type="text" name="godmotherMiddleName" value={formData.godmotherMiddleName} onChange={handleChange} placeholder="Middle Name"
+                      className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" />
+                    <input type="text" name="godmotherLastName" value={formData.godmotherLastName} onChange={handleChange} required placeholder="Surname"
+                      className="p-2 border-b border-gray-300 focus:outline-none focus:border-[#B59E74] bg-transparent text-gray-700 text-sm" />
+                  </div>
                 </div>
               </div>
               

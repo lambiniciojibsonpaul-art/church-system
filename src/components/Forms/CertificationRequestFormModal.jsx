@@ -46,8 +46,12 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
     record_holder_surname: "",
     record_date: "",
     record_parish: "",
-    father_name: "",
-    mother_maiden_name: "",
+    father_first_name: "",
+    father_middle_name: "",
+    father_last_name: "",
+    mother_maiden_first: "",
+    mother_maiden_middle: "",
+    mother_maiden_last: "",
     purpose: "",
     purpose_other: "",
     number_of_copies: "1",
@@ -99,10 +103,41 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
     try {
       const finalCert = formData.certificate_type === "Other" ? formData.certificate_other : formData.certificate_type;
       const finalPurpose = formData.purpose === "Other" ? formData.purpose_other : formData.purpose;
+      const requestorFullName = [
+        formData.requestor_first_name,
+        formData.requestor_middle_name,
+        formData.requestor_surname,
+      ].filter(Boolean).join(" ");
+      const recordHolderFullName = [
+        formData.record_holder_first_name,
+        formData.record_holder_middle_name,
+        formData.record_holder_surname,
+      ].filter(Boolean).join(" ");
+      const fatherFull = [formData.father_first_name, formData.father_middle_name, formData.father_last_name].filter(Boolean).join(" ");
+      const motherFull = [formData.mother_maiden_first, formData.mother_maiden_middle, formData.mother_maiden_last].filter(Boolean).join(" ");
+      const {
+        requestor_first_name,
+        requestor_middle_name,
+        requestor_surname,
+        record_holder_first_name,
+        record_holder_middle_name,
+        record_holder_surname,
+        father_first_name,
+        father_middle_name,
+        father_last_name,
+        mother_maiden_first,
+        mother_maiden_middle,
+        mother_maiden_last,
+        ...restCert
+      } = formData;
       await submitRequest({
         table: "certification_requests",
         payload: {
-          ...formData,
+          ...restCert,
+          requestor_name: requestorFullName || null,
+          record_holder_name: recordHolderFullName || null,
+          father_name: fatherFull,
+          mother_maiden_name: motherFull,
           certificate_type: finalCert,
           purpose: finalPurpose,
           number_of_copies: formData.number_of_copies === "" ? 1 : Number(formData.number_of_copies),
@@ -257,14 +292,22 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-6">
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">Father's Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ama)</span></label>
-                    <input type="text" name="father_name" value={formData.father_name} onChange={handleChange} className={inputClass} placeholder="Full Name" />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <input type="text" name="father_first_name" value={formData.father_first_name} onChange={handleChange} className={inputClass} placeholder="First Name" required />
+                      <input type="text" name="father_middle_name" value={formData.father_middle_name} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
+                      <input type="text" name="father_last_name" value={formData.father_last_name} onChange={handleChange} className={inputClass} placeholder="Surname" required />
+                    </div>
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-600">Mother's Maiden Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ina sa Pagkadalaga)</span></label>
-                    <input type="text" name="mother_maiden_name" value={formData.mother_maiden_name} onChange={handleChange} className={inputClass} placeholder="Full Maiden Name" />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <input type="text" name="mother_maiden_first" value={formData.mother_maiden_first} onChange={handleChange} className={inputClass} placeholder="First Name" required />
+                      <input type="text" name="mother_maiden_middle" value={formData.mother_maiden_middle} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
+                      <input type="text" name="mother_maiden_last" value={formData.mother_maiden_last} onChange={handleChange} className={inputClass} placeholder="Surname" required />
+                    </div>
                   </div>
                 </div>
               </div>

@@ -45,8 +45,12 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
     gender: "",
     date_of_baptism: "",
     baptism_parish: "",
-    father_name: "",
-    mother_maiden_name: "",
+    father_first_name: "",
+    father_middle_name: "",
+    father_last_name: "",
+    mother_maiden_first: "",
+    mother_maiden_middle: "",
+    mother_maiden_last: "",
     other_guardian_info: "",
     complete_address: "",
     residence_parish: "",
@@ -111,6 +115,8 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
     }
     setLoading(true);
     try {
+      const fatherFull = [formData.father_first_name, formData.father_middle_name, formData.father_last_name].filter(Boolean).join(" ");
+      const motherFull = [formData.mother_maiden_first, formData.mother_maiden_middle, formData.mother_maiden_last].filter(Boolean).join(" ");
       const safePayload = {
         date_of_communion:  formData.date_of_communion,
         time_of_communion:  formData.time_of_communion,
@@ -123,8 +129,8 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
         gender:             formData.gender,
         date_of_baptism:    formData.date_of_baptism,
         baptism_parish:     formData.baptism_parish,
-        father_name:        formData.father_name,
-        mother_maiden_name: formData.mother_maiden_name,
+        father_name:        fatherFull,
+        mother_maiden_name: motherFull,
         complete_address:   formData.complete_address,
         residence_parish:   formData.residence_parish,
       };
@@ -286,11 +292,19 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
               <div className="grid grid-cols-1 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Father's Full Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ama)</span></label>
-                  <input type="text" name="father_name" value={formData.father_name} onChange={handleChange} className={inputClass} placeholder="Full Name" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="text" name="father_first_name" value={formData.father_first_name} onChange={handleChange} className={inputClass} placeholder="First Name" required />
+                    <input type="text" name="father_middle_name" value={formData.father_middle_name} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
+                    <input type="text" name="father_last_name" value={formData.father_last_name} onChange={handleChange} className={inputClass} placeholder="Surname" required />
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Mother's Full Maiden Name <span className="text-[11px] text-gray-400 normal-case font-normal">(Pangalan ng Ina sa Pagkadalaga)</span></label>
-                  <input type="text" name="mother_maiden_name" value={formData.mother_maiden_name} onChange={handleChange} className={inputClass} placeholder="Full Maiden Name" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="text" name="mother_maiden_first" value={formData.mother_maiden_first} onChange={handleChange} className={inputClass} placeholder="First Name" required />
+                    <input type="text" name="mother_maiden_middle" value={formData.mother_maiden_middle} onChange={handleChange} className={inputClass} placeholder="Middle Name" />
+                    <input type="text" name="mother_maiden_last" value={formData.mother_maiden_last} onChange={handleChange} className={inputClass} placeholder="Surname" required />
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600">Other Guardian Information <span className="text-[11px] text-gray-400 normal-case font-normal">(Iba pang Tagapag-alaga - kung naaangkop)</span></label>
