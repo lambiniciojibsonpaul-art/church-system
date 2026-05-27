@@ -136,6 +136,7 @@ export default function AnnouncementsInbox() {
         { onConflict: "announcement_id,user_id" }
       );
       setReads((prev) => ({ ...prev, [annId]: { is_dismissed: false } }));
+      window.dispatchEvent(new CustomEvent("announcement-reads-changed"));
     } catch (e) {
       console.warn("[AnnouncementsInbox] markAsRead exception:", e.message);
     }
@@ -153,6 +154,7 @@ export default function AnnouncementsInbox() {
       );
       const nextReads = { ...reads, [annId]: { is_dismissed: true } };
       setReads(nextReads);
+      window.dispatchEvent(new CustomEvent("announcement-reads-changed"));
       const remaining = getVisible(announcements, nextReads);
       setSelectedId(remaining.length > 0 ? remaining[0].id : null);
       setShowDetail(false);
@@ -166,7 +168,6 @@ export default function AnnouncementsInbox() {
   const handleSelect = (annId) => {
     setSelectedId(annId);
     setShowDetail(true);
-    if (isUnread(annId)) markAsRead(annId);
   };
 
   // ── Computed ───────────────────────────────────────────────────────────────

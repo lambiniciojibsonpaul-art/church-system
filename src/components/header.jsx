@@ -212,7 +212,12 @@ function useAnnouncementUnread(userId, userRole) {
         fetchCount
       )
       .subscribe();
-    return () => supabase.removeChannel(ch);
+    const handleReadsChanged = () => fetchCount();
+    window.addEventListener("announcement-reads-changed", handleReadsChanged);
+    return () => {
+      window.removeEventListener("announcement-reads-changed", handleReadsChanged);
+      supabase.removeChannel(ch);
+    };
   }, [userId, userRole, fetchCount]);
 
   return count;

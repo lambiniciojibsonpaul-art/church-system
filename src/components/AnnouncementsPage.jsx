@@ -68,6 +68,12 @@ function AnnouncementsPage() {
   const [deletingAnn,       setDeletingAnn]       = useState(null);
   const [deleteSubmitting,  setDeleteSubmitting]  = useState(false);
   const [toast,             setToast]             = useState(null);
+  const [searchQuery,       setSearchQuery]       = useState("");
+  const [pageByStatus,      setPageByStatus]      = useState({
+    Published: 1,
+    Draft: 1,
+    Archived: 1,
+  });
 
   // ── Fetch all announcements ────────────────────────────────────────────────
   useEffect(() => {
@@ -278,10 +284,19 @@ function AnnouncementsPage() {
   }, [deletingAnn, selectedId, showToast]);
 
   // ── Derived: grouped by status ─────────────────────────────────────────────
+  const q = searchQuery.trim().toLowerCase();
+  const filteredAnnouncements = q
+    ? announcements.filter((a) =>
+        [a.title, a.body, a.category, a.status]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q))
+      )
+    : announcements;
+
   const grouped = {
-    Published: announcements.filter((a) => a.status === "Published"),
-    Draft:     announcements.filter((a) => a.status === "Draft"),
-    Archived:  announcements.filter((a) => a.status === "Archived"),
+    Published: filteredAnnouncements.filter((a) => a.status === "Published"),
+    Draft:     filteredAnnouncements.filter((a) => a.status === "Draft"),
+    Archived:  filteredAnnouncements.filter((a) => a.status === "Archived"),
   };
 
   const selectedAnn = selectedId
@@ -337,23 +352,69 @@ function AnnouncementsPage() {
           </div>
         )}
 
+        <div className="mb-4">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPageByStatus({ Published: 1, Draft: 1, Archived: 1 });
+            }}
+            placeholder="Search all announcements (Published, Draft, Archived)..."
+            className="w-full md:w-[480px] px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm transition-colors bg-white"
+          />
+        </div>
+
         {/* ── Split Panel ── */}
-        <div className="flex gap-5 min-h-[680px]">
+        <div className="flex gap-5 items-start">
 
           {/* ── LEFT: Announcement List ── */}
-          <div className="w-72 flex-shrink-0 bg-white rounded-3xl shadow-sm border border-gray-200 overflow-y-auto flex flex-col">
+          <div className="w-72 flex-shrink-0 bg-white rounded-3xl shadow-sm border border-gray-200 overflow-y-auto flex flex-col max-h-[76vh]">
             {STATUS_ORDER.map((status) => {
               const items = grouped[status];
+              const currentPage = pageByStatus[status] || 1;
+              const pageSize = 5;
+              const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+              const safePage = Math.min(currentPage, totalPages);
+              const start = (safePage - 1) * pageSize;
+              const visibleItems = items.slice(start, start + pageSize);
               return (
                 <div key={status}>
                   {/* Section label */}
-                  <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                      {status}
-                    </span>
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#F6F5ED] text-[#B59E74] text-[10px] font-bold">
-                      {items.length}
-                    </span>
+                  <div className="sticky top-0 bg-white z-10 px-4 py-2.5 border-b border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        {status}
+                      </span>
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#F6F5ED] text-[#B59E74] text-[10px] font-bold">
+                        {items.length}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPageByStatus((prev) => ({ ...prev, [status]: Math.max(1, safePage - 1) }))
+                        }
+                        disabled={safePage <= 1}
+                        className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Prev
+                      </button>
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+                        {safePage}/{totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPageByStatus((prev) => ({ ...prev, [status]: Math.min(totalPages, safePage + 1) }))
+                        }
+                        disabled={safePage >= totalPages}
+                        className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
+                    </div>
                   </div>
 
                   {/* Items */}
@@ -362,7 +423,7 @@ function AnnouncementsPage() {
                       No {status.toLowerCase()} announcements.
                     </p>
                   ) : (
-                    items.map((ann) => (
+                    visibleItems.map((ann) => (
                       <button
                         key={ann.id}
                         type="button"
@@ -397,7 +458,7 @@ function AnnouncementsPage() {
           </div>
 
           {/* ── RIGHT: Form Panel ── */}
-          <div className="flex-1 bg-white rounded-3xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
+          <div className="flex-1 self-start bg-white rounded-3xl shadow-sm border border-gray-200 flex flex-col overflow-hidden max-h-[76vh]">
 
             {/* Form header */}
             <div className="px-8 py-5 border-b border-gray-100 flex items-center justify-between gap-4 bg-gray-50/50">
@@ -422,14 +483,14 @@ function AnnouncementsPage() {
                     onClick={() => setDeletingAnn(selectedAnn)}
                     className="ml-1 text-red-400 hover:text-red-600 text-xs font-bold uppercase tracking-widest px-3 py-2 rounded-lg hover:bg-red-50 transition-colors"
                   >
-                    Delete
+                    Delete Announcement
                   </button>
                 )}
               </div>
             </div>
 
             {/* Form body */}
-            <div className="flex-1 overflow-y-auto px-8 py-6 space-y-5">
+            <div className="flex-1 overflow-y-auto px-8 pt-6 pb-3 space-y-4">
 
               {/* Title */}
               <div>
@@ -550,7 +611,7 @@ function AnnouncementsPage() {
             </div>
 
             {/* Form actions footer */}
-            <div className="px-8 py-5 border-t border-gray-100 bg-gray-50/50 flex flex-wrap items-center gap-3">
+            <div className="px-8 py-4 border-t border-gray-100 bg-gray-50/50 flex flex-wrap items-center gap-3">
 
               {/* Save Draft */}
               <button
