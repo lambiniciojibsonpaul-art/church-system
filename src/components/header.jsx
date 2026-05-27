@@ -195,7 +195,6 @@ function useAnnouncementUnread(userId, userRole) {
         .from("announcement_reads")
         .select("announcement_id")
         .eq("user_id", userId)
-        .eq("is_dismissed", false)
         .in("announcement_id", targeted);
       setCount(targeted.length - (reads?.length || 0));
     } catch {
@@ -542,13 +541,11 @@ function Header({ forceSolidBg = false }) {
                 <Link to="/events"    className={navLinkClass}>Calendar</Link>
                 <Link to="/services"  className={navLinkClass}>Services</Link>
                 <Link to="/ministries" className={navLinkClass}>Ministries</Link>
-                {user && (
+                {user && !isAdmin && (
                   <Link to="/announcements" className={`${navLinkClass} relative`}>
                     Announcements
                     {annUnread > 0 && (
-                      <span className="absolute -top-1.5 -right-3 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                        {annUnread > 9 ? "9+" : annUnread}
-                      </span>
+                      <span className="absolute -top-1 -right-2 h-2 w-2 rounded-full bg-red-500" />
                     )}
                   </Link>
                 )}
@@ -565,9 +562,7 @@ function Header({ forceSolidBg = false }) {
                   <Link to="/announcements" className={`${serifLinkClass} relative`}>
                     Announcements
                     {annUnread > 0 && (
-                      <span className="absolute -top-1.5 -right-3 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                        {annUnread > 9 ? "9+" : annUnread}
-                      </span>
+                      <span className="absolute -top-1 -right-2 h-2 w-2 rounded-full bg-red-500" />
                     )}
                   </Link>
                 )}
@@ -644,10 +639,11 @@ function Header({ forceSolidBg = false }) {
                   <li><Link to="/events"     onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Calendar</Link></li>
                   <li><Link to="/services"   onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Services</Link></li>
                   <li><Link to="/ministries" onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Ministries</Link></li>
-                  {user && (
+                  {user && !isAdmin && (
                     <li>
-                      <Link to="/announcements" onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">
-                        📣 Announcements {annUnread > 0 && `(${annUnread})`}
+                      <Link to="/announcements" onClick={() => setIsOpen(false)} className="relative inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">
+                        Announcements
+                        {annUnread > 0 && <span className="h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />}
                       </Link>
                     </li>
                   )}
@@ -661,8 +657,9 @@ function Header({ forceSolidBg = false }) {
                   <li><Link to="/ministries" onClick={() => setIsOpen(false)}>Ministries</Link></li>
                   {user && (
                     <li>
-                      <Link to="/announcements" onClick={() => setIsOpen(false)}>
-                        📣 Announcements {annUnread > 0 && `(${annUnread})`}
+                      <Link to="/announcements" onClick={() => setIsOpen(false)} className="relative inline-flex items-center gap-1.5">
+                        Announcements
+                        {annUnread > 0 && <span className="h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />}
                       </Link>
                     </li>
                   )}

@@ -48,7 +48,6 @@ function emptyForm() {
     body:                "",
     category:            "General",
     is_pinned:           false,
-    notify_parishioners: false, // client-only toggle, not persisted
     status:              "Draft",
     target_roles:        ["parishioner", "staff", "priest", "ministry"],
   };
@@ -104,7 +103,6 @@ function AnnouncementsPage() {
       body:                ann.body                || "",
       category:            ann.category            || "General",
       is_pinned:           ann.is_pinned           || false,
-      notify_parishioners: false,  // always reset on open — never re-notify
       status:              ann.status              || "Draft",
       target_roles:        Array.isArray(ann.target_roles) && ann.target_roles.length
                              ? ann.target_roles
@@ -227,36 +225,11 @@ function AnnouncementsPage() {
       }
     }
 
-    // Fire notify_all_parishioners RPC if toggle is on
-    if (form.notify_parishioners) {
-      try {
-        const { error: rpcErr } = await supabase.rpc("notify_all_parishioners", {
-          notif_title:    form.title.trim(),
-          notif_message:  form.body.trim().slice(0, 200),
-          notif_link:     "/announcements",
-          p_source_id:    savedId,
-          p_source_table: "announcements",
-        });
-        
-        // ✨ NEW: Force an alert if the database rejects the notification
-        if (rpcErr) {
-          alert("⚠️ Notification Failed:\n" + rpcErr.message);
-          console.error("RPC Error Details:", rpcErr);
-        }
-      } catch (e) {
-        alert("⚠️ System Exception while notifying:\n" + e.message);
-        console.error("[AnnouncementsPage] notify RPC exception:", e);
-      }
-    }
-
-    // Reset notify toggle after publish — prevent accidental re-notify on next edit
-    setForm((prev) => ({ ...prev, notify_parishioners: false, status: "Published" }));
+    setForm((prev) => ({ ...prev, status: "Published" }));
     setIsDirty(false);
     setSaving(false);
     showToast(
-      form.notify_parishioners
-        ? "Published & parishioners notified! 🔔"
-        : "Announcement published."
+      "Announcement published."
     );
   };
 
@@ -402,11 +375,11 @@ function AnnouncementsPage() {
                       >
                         <span className="text-base mt-0.5 flex-shrink-0">{statusIcon(ann)}</span>
                         <div className="min-w-0 flex-1">
-                          <p className={`text-sm font-serif leading-snug truncate
-                            ${selectedId === ann.id ? "text-[#7a6530] font-semibold" : "text-gray-800"}`}>
+                          <p className={`text-sm leading-snug truncate font-medium
+                            ${selectedId === ann.id ? "text-[#7a6530]" : "text-gray-800"}`}>
                             {ann.title || "Untitled"}
                           </p>
-                          <p className="text-[10px] text-gray-400 mt-0.5">
+                          <p className="text-[10px] text-gray-400 mt-0.5 uppercase tracking-widest">
                             {ann.created_at ? formatDate(ann.created_at) : "—"}
                           </p>
                           {ann.category && (
@@ -468,7 +441,7 @@ function AnnouncementsPage() {
                   value={form.title}
                   onChange={(e) => handleChange("title", e.target.value)}
                   placeholder="e.g. Holy Week Schedule 2026"
-                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm transition-colors font-serif"
+                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm transition-colors"
                 />
               </div>
 
@@ -508,9 +481,10 @@ function AnnouncementsPage() {
               {/* Target Roles */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">
-                  Visible To <span className="text-red-400">*</span>
+                  Visible To {!selectedId && <span className="text-red-400">*</span>}
+                  {selectedId && <span className="ml-2 text-[10px] normal-case tracking-normal font-normal text-gray-400">(cannot be changed after creation)</span>}
                 </label>
-                <div className="border-2 border-gray-200 hover:border-gray-300 rounded-xl px-4 py-3 space-y-2">
+                <div className={`border-2 rounded-xl px-4 py-3 space-y-2 ${selectedId ? "border-gray-100 bg-gray-50 opacity-60 pointer-events-none select-none" : "border-gray-200 hover:border-gray-300"}`}>
                   {/* Select All toggle */}
                   <label className="flex items-center gap-2.5 cursor-pointer select-none">
                     <input
@@ -571,35 +545,7 @@ function AnnouncementsPage() {
                   />
                 </div>
 
-                {/* Notify parishioners */}
-                <div className="flex items-center justify-between px-5 py-4">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">🔔</span>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-700">Notify all parishioners</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        Sends a bell alert to every registered parishioner on publish.
-                      </p>
-                    </div>
-                  </div>
-                  <Toggle
-                    checked={form.notify_parishioners}
-                    onChange={(v) => handleChange("notify_parishioners", v)}
-                  />
-                </div>
               </div>
-
-              {/* Notify warning */}
-              {form.notify_parishioners && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700 font-serif flex gap-2">
-                  <span className="text-base flex-shrink-0">ℹ️</span>
-                  <span>
-                    Every registered parishioner will receive a notification bell alert when you
-                    click <strong>Publish</strong>. This cannot be undone — make sure the
-                    announcement is final.
-                  </span>
-                </div>
-              )}
 
             </div>
 

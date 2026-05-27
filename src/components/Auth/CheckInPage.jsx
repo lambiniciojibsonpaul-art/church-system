@@ -257,7 +257,7 @@ function CheckInPage() {
                   <input
                     type="text" required
                     value={guestForm.firstName}
-                    onChange={e => setGuestForm(p => ({ ...p, firstName: e.target.value }))}
+                    onChange={e => setGuestForm(p => ({ ...p, firstName: e.target.value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "") }))}
                     placeholder="First name"
                     className="w-full p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm"
                   />
@@ -267,7 +267,7 @@ function CheckInPage() {
                   <input
                     type="text" required
                     value={guestForm.lastName}
-                    onChange={e => setGuestForm(p => ({ ...p, lastName: e.target.value }))}
+                    onChange={e => setGuestForm(p => ({ ...p, lastName: e.target.value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "") }))}
                     placeholder="Last name"
                     className="w-full p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm"
                   />
@@ -277,7 +277,8 @@ function CheckInPage() {
                   <input
                     type="tel"
                     value={guestForm.contactNumber}
-                    onChange={e => setGuestForm(p => ({ ...p, contactNumber: e.target.value }))}
+                    onChange={e => setGuestForm(p => ({ ...p, contactNumber: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
+                    maxLength={11}
                     placeholder="e.g. 09XX XXX XXXX"
                     className="w-full p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm"
                   />

@@ -6,11 +6,11 @@ import { useAuth } from "../contexts/useAuth";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CATEGORY_STYLES = {
-  General:  { pill: "bg-blue-50 text-blue-700 border border-blue-100",  dot: "bg-blue-400"   },
-  Urgent:   { pill: "bg-red-50 text-red-700 border border-red-100",     dot: "bg-red-500"    },
-  Event:    { pill: "bg-green-50 text-green-700 border border-green-100", dot: "bg-green-500" },
-  Reminder: { pill: "bg-amber-50 text-amber-700 border border-amber-100", dot: "bg-amber-400" },
-  Holiday:  { pill: "bg-pink-50 text-pink-700 border border-pink-100",  dot: "bg-pink-400"   },
+  General:  { pill: "bg-blue-50 text-blue-700 border border-blue-100",    dot: "bg-blue-400"   },
+  Urgent:   { pill: "bg-red-50 text-red-700 border border-red-100",       dot: "bg-red-500"    },
+  Event:    { pill: "bg-green-50 text-green-700 border border-green-100", dot: "bg-green-500"  },
+  Reminder: { pill: "bg-amber-50 text-amber-700 border border-amber-100", dot: "bg-amber-400"  },
+  Holiday:  { pill: "bg-pink-50 text-pink-700 border border-pink-100",    dot: "bg-pink-400"   },
 };
 
 function formatDate(d) {
@@ -28,11 +28,11 @@ function timeAgo(dateStr) {
   const mins  = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days  = Math.floor(diff / 86400000);
-  if (mins < 1)    return "Just now";
-  if (mins < 60)   return `${mins}m ago`;
-  if (hours < 24)  return `${hours}h ago`;
-  if (days === 1)  return "Yesterday";
-  if (days < 7)    return `${days} days ago`;
+  if (mins < 1)   return "Just now";
+  if (mins < 60)  return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days === 1) return "Yesterday";
+  if (days < 7)   return `${days} days ago`;
   return formatDate(dateStr);
 }
 
@@ -41,21 +41,16 @@ export default function AnnouncementsInbox() {
   const { user, role } = useAuth();
   const navigate = useNavigate();
 
-  // State
-  const [announcements,  setAnnouncements]  = useState([]);
-  const [reads,          setReads]          = useState({}); // { [ann_id]: { is_dismissed } }
-  const [loading,        setLoading]        = useState(true);
-  const [selectedId,     setSelectedId]     = useState(null);
-  const [activeTab,      setActiveTab]      = useState("All"); // All | Unread
-  const [actionLoading,  setActionLoading]  = useState(false);
-  // Mobile: show detail panel instead of list
-  const [showDetail,     setShowDetail]     = useState(false);
+  const [announcements, setAnnouncements] = useState([]);
+  const [reads,         setReads]         = useState({}); // { [ann_id]: { is_dismissed } }
+  const [loading,       setLoading]       = useState(true);
+  const [selectedId,    setSelectedId]    = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showDetail,    setShowDetail]    = useState(false); // mobile
 
   // ── Auth gate ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!user) {
-      navigate("/login", { replace: true });
-    }
+    if (!user) navigate("/login", { replace: true });
   }, [user, navigate]);
 
   // ── Fetch published announcements targeted to this user's role ─────────────
@@ -72,12 +67,10 @@ export default function AnnouncementsInbox() {
         console.warn("[AnnouncementsInbox] fetch error:", error.message);
         setAnnouncements([]);
       } else {
-        // Filter by target_roles on the client (array column filtering in PostgREST requires cs.{} syntax)
         const filtered = (data || []).filter((ann) => {
           if (!ann.target_roles || ann.target_roles.length === 0) return true;
-          return ann.target_roles.includes(role) || ann.target_roles.includes("parishioner");
+          return ann.target_roles.includes(role);
         });
-        // Sort: pinned first, then by date desc
         filtered.sort((a, b) => {
           if (a.is_pinned && !b.is_pinned) return -1;
           if (!a.is_pinned && b.is_pinned) return 1;
@@ -115,35 +108,22 @@ export default function AnnouncementsInbox() {
     }
   }, [user?.id, role, fetchAnnouncements, fetchReads]);
 
-  // Auto-select first item
+  // Auto-select first visible item
   useEffect(() => {
     if (!loading && announcements.length > 0 && !selectedId) {
-      // Pick first non-dismissed item
-      const first = visibleAnnouncements(announcements, reads, "All")[0];
+      const first = getVisible(announcements, reads)[0];
       if (first) setSelectedId(first.id);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, announcements]);
 
-  // ── Derived helpers ────────────────────────────────────────────────────────
-  function visibleAnnouncements(anns, readsMap, tab) {
-    return anns.filter((ann) => {
-      const rec = readsMap[ann.id];
-      if (rec?.is_dismissed) return false; // dismissed → hidden
-      if (tab === "Unread") return !rec; // unread = no record at all
-      return true;
-    });
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function getVisible(anns, readsMap) {
+    return anns.filter((ann) => !readsMap[ann.id]?.is_dismissed);
   }
 
   function isUnread(annId) {
     return !reads[annId];
-  }
-
-  function unreadCount() {
-    return announcements.filter((ann) => {
-      const rec = reads[ann.id];
-      return !rec?.is_dismissed && !rec;
-    }).length;
   }
 
   // ── Mark as read ───────────────────────────────────────────────────────────
@@ -171,9 +151,9 @@ export default function AnnouncementsInbox() {
         { announcement_id: annId, user_id: user.id, is_dismissed: true, read_at: new Date().toISOString() },
         { onConflict: "announcement_id,user_id" }
       );
-      setReads((prev) => ({ ...prev, [annId]: { is_dismissed: true } }));
-      // Move selection to next item
-      const remaining = visibleAnnouncements(announcements, { ...reads, [annId]: { is_dismissed: true } }, activeTab);
+      const nextReads = { ...reads, [annId]: { is_dismissed: true } };
+      setReads(nextReads);
+      const remaining = getVisible(announcements, nextReads);
       setSelectedId(remaining.length > 0 ? remaining[0].id : null);
       setShowDetail(false);
     } catch (e) {
@@ -186,19 +166,16 @@ export default function AnnouncementsInbox() {
   const handleSelect = (annId) => {
     setSelectedId(annId);
     setShowDetail(true);
-    // Auto-mark as read when opened
-    if (isUnread(annId)) {
-      markAsRead(annId);
-    }
+    if (isUnread(annId)) markAsRead(annId);
   };
 
-  // ── Computed lists ─────────────────────────────────────────────────────────
-  const visible = visibleAnnouncements(announcements, reads, activeTab);
+  // ── Computed ───────────────────────────────────────────────────────────────
+  const visible  = getVisible(announcements, reads);
   const selected = visible.find((a) => a.id === selectedId) || null;
   const catStyle = selected ? (CATEGORY_STYLES[selected.category] || CATEGORY_STYLES.General) : null;
+  const unreadCount = visible.filter((a) => isUnread(a.id)).length;
 
-  // ── Loading ────────────────────────────────────────────────────────────────
-  if (!user) return null; // redirecting
+  if (!user) return null;
 
   if (loading) {
     return (
@@ -217,16 +194,16 @@ export default function AnnouncementsInbox() {
         <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-[#B59E74]/20 pb-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-serif text-[#B59E74] uppercase tracking-wide">
-              📣 Announcements
+              Announcements
             </h1>
             <p className="text-gray-500 text-sm font-serif italic mt-0.5">
               Parish news, updates, and notices for you.
             </p>
           </div>
-          {unreadCount() > 0 && (
+          {unreadCount > 0 && (
             <span className="inline-flex items-center gap-1.5 bg-red-500 text-white text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded-full self-start sm:self-auto">
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-              {unreadCount()} Unread
+              {unreadCount} Unread
             </span>
           )}
         </div>
@@ -240,40 +217,22 @@ export default function AnnouncementsInbox() {
             ${showDetail ? "hidden md:flex" : "flex"}
           `}>
 
-            {/* Tab bar */}
-            <div className="flex border-b border-gray-100 bg-gray-50/60 shrink-0">
-              {["All", "Unread"].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => { setActiveTab(tab); setSelectedId(null); setShowDetail(false); }}
-                  className={`flex-1 py-3 text-xs font-bold uppercase tracking-widest transition-colors relative
-                    ${activeTab === tab
-                      ? "text-[#B59E74] border-b-2 border-[#B59E74] bg-white"
-                      : "text-gray-400 hover:text-gray-600"
-                    }`}
-                >
-                  {tab}
-                  {tab === "Unread" && unreadCount() > 0 && (
-                    <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-[1rem] px-1 rounded-full bg-red-500 text-[9px] font-bold text-white">
-                      {unreadCount() > 9 ? "9+" : unreadCount()}
-                    </span>
-                  )}
-                </button>
-              ))}
+            {/* Sidebar header */}
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/60 shrink-0">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-500">
+                All Announcements
+                {visible.length > 0 && (
+                  <span className="ml-2 text-gray-300 font-normal normal-case tracking-normal">{visible.length}</span>
+                )}
+              </p>
             </div>
 
             {/* Announcement list */}
             <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
               {visible.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-                  <div className="text-5xl mb-4">
-                    {activeTab === "Unread" ? "✅" : "📭"}
-                  </div>
-                  <p className="text-sm text-gray-400 font-serif italic">
-                    {activeTab === "Unread"
-                      ? "You're all caught up!"
-                      : "No announcements yet."}
-                  </p>
+                  <div className="text-5xl mb-4">📭</div>
+                  <p className="text-sm text-gray-400 italic">No announcements yet.</p>
                 </div>
               ) : (
                 visible.map((ann) => {
@@ -290,23 +249,19 @@ export default function AnnouncementsInbox() {
                           : "hover:bg-gray-50 border-l-[3px] border-l-transparent"
                         }`}
                     >
-                      {/* Unread dot / category dot */}
-                      <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${unread ? "bg-red-500" : cs.dot} ${unread ? "" : "opacity-40"}`} />
+                      {/* Unread / category dot */}
+                      <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${unread ? "bg-red-500" : cs.dot + " opacity-40"}`} />
 
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className={`text-sm font-serif leading-snug line-clamp-2 ${unread ? "font-semibold text-gray-900" : "text-gray-600"}`}>
-                            {ann.is_pinned && <span className="mr-1 text-[#B59E74]">📌</span>}
-                            {ann.title || "Untitled"}
-                          </p>
-                        </div>
+                        <p className={`text-sm leading-snug line-clamp-2 ${unread ? "font-semibold text-gray-900" : "font-medium text-gray-500"}`}>
+                          {ann.is_pinned && <span className="mr-1 text-[#B59E74]">📌</span>}
+                          {ann.title || "Untitled"}
+                        </p>
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
                           <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${cs.pill}`}>
                             {ann.category}
                           </span>
-                          <span className="text-[10px] text-gray-400">
-                            {timeAgo(ann.created_at)}
-                          </span>
+                          <span className="text-[10px] text-gray-400">{timeAgo(ann.created_at)}</span>
                         </div>
                       </div>
                     </button>
@@ -325,10 +280,9 @@ export default function AnnouncementsInbox() {
               <>
                 {/* Detail header */}
                 <div className="px-6 md:px-8 py-5 border-b border-gray-100 bg-gray-50/40 shrink-0">
-                  {/* Mobile back button */}
                   <button
                     type="button"
-                    onClick={() => { setShowDetail(false); }}
+                    onClick={() => setShowDetail(false)}
                     className="md:hidden mb-3 flex items-center gap-1.5 text-[#B59E74] text-xs font-bold uppercase tracking-widest hover:text-[#9c8760] transition-colors"
                   >
                     ← Back
@@ -366,7 +320,7 @@ export default function AnnouncementsInbox() {
 
                     {/* Action buttons */}
                     <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-                      {isUnread(selected.id) && (
+                      {isUnread(selected.id) ? (
                         <button
                           type="button"
                           onClick={() => markAsRead(selected.id)}
@@ -375,8 +329,7 @@ export default function AnnouncementsInbox() {
                         >
                           ✓ Mark as Read
                         </button>
-                      )}
-                      {!isUnread(selected.id) && (
+                      ) : (
                         <button
                           type="button"
                           onClick={() => removeAnnouncement(selected.id)}
@@ -392,13 +345,12 @@ export default function AnnouncementsInbox() {
 
                 {/* Detail body */}
                 <div className="flex-1 overflow-y-auto px-6 md:px-8 py-6">
-                  <div className="prose prose-sm max-w-none font-serif text-gray-700 leading-relaxed whitespace-pre-wrap text-base">
+                  <div className="font-serif text-[15px] text-gray-700 leading-relaxed whitespace-pre-wrap">
                     {selected.body || <span className="text-gray-400 italic">No content.</span>}
                   </div>
                 </div>
               </>
             ) : (
-              /* Empty state */
               <div className="flex-1 flex flex-col items-center justify-center py-20 px-8 text-center">
                 <div className="text-6xl mb-5">📬</div>
                 <h3 className="text-lg font-serif text-gray-700 mb-2">
@@ -412,6 +364,7 @@ export default function AnnouncementsInbox() {
               </div>
             )}
           </div>
+
         </div>
       </main>
     </div>

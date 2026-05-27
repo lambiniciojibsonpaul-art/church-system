@@ -317,10 +317,15 @@ function LoginPage() {
   const handleRegisterChange = (e) => {
     const { name, value, type, checked } = e.target;
     
-    // ✨ Enforce numbers-only for the contact number field
     if (name === "contactNumber") {
-      const numbersOnly = value.replace(/\D/g, "");
-      setRegisterData((prev) => ({ ...prev, [name]: numbersOnly }));
+      const digitsOnly = value.replace(/\D/g, "").slice(0, 11);
+      setRegisterData((prev) => ({ ...prev, [name]: digitsOnly }));
+      return;
+    }
+
+    if (name === "firstName" || name === "lastName") {
+      const lettersOnly = value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "");
+      setRegisterData((prev) => ({ ...prev, [name]: lettersOnly }));
       return;
     }
 
@@ -740,6 +745,7 @@ function LoginPage() {
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Contact Number</label>
                     <input name="contactNumber" type="tel" required value={registerData.contactNumber} onChange={handleRegisterChange}
+                      maxLength={11}
                       className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
                       placeholder="09XX XXX XXXX" />
                     <p className="text-[11px] text-gray-400 italic ml-1">Saved with your account so the parish office can reach you.</p>

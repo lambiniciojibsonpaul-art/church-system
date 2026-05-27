@@ -94,7 +94,7 @@ function SignInPrompt({ onClose, serviceName = "this service", onGuest }) {
                     type="text"
                     required
                     value={guestData.firstName}
-                    onChange={e => setGuestData(p => ({ ...p, firstName: e.target.value }))}
+                    onChange={e => setGuestData(p => ({ ...p, firstName: e.target.value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "") }))}
                     placeholder="First name"
                     className="w-full p-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm"
                   />
@@ -105,7 +105,7 @@ function SignInPrompt({ onClose, serviceName = "this service", onGuest }) {
                     type="text"
                     required
                     value={guestData.lastName}
-                    onChange={e => setGuestData(p => ({ ...p, lastName: e.target.value }))}
+                    onChange={e => setGuestData(p => ({ ...p, lastName: e.target.value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "") }))}
                     placeholder="Last name"
                     className="w-full p-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm"
                   />
@@ -117,7 +117,8 @@ function SignInPrompt({ onClose, serviceName = "this service", onGuest }) {
                   type="tel"
                   required
                   value={guestData.contactNumber}
-                  onChange={e => setGuestData(p => ({ ...p, contactNumber: e.target.value }))}
+                  onChange={e => setGuestData(p => ({ ...p, contactNumber: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
+                  maxLength={11}
                   placeholder="e.g. 09XX XXX XXXX"
                   className="w-full p-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm"
                 />
