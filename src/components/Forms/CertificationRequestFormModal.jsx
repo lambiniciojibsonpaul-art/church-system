@@ -177,6 +177,10 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
 
             <p className="text-xs text-gray-500 italic leading-relaxed text-center max-w-2xl mx-auto border-t pt-4 border-gray-200">
               Instructions: Answer all the blanks accordingly using ALL CAPS. Please write legibly. Provide details exactly as recorded in the parish register.
+              <br />
+              <span className="text-[11px] text-gray-400">
+                Panuto: Sagutan ang mga blanko ng tama sa pamamagitan ng pagsusulat gamit ang MALALAKING LETRA. Sumulat ng maayos. Ibigay ang mga detalye nang ayon sa nakasulat sa talaan ng parokya.
+              </span>
             </p>
 
             {/* A. REQUESTOR INFORMATION */}

@@ -243,9 +243,11 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
             </div>
 
             <p className="text-xs text-gray-500 italic leading-relaxed text-center max-w-2xl mx-auto border-t pt-4 border-gray-200">
-              Instructions: Answer all the blanks accordingly using ALL CAPS.
-              Please write legibly. Copy necessary details as it is written in the
-              Certificate of Live Birth of the one to be confirmed.
+              Instructions: Answer all the blanks accordingly using ALL CAPS. Please write legibly. Copy necessary details as it is written in the Certificate of Live Birth of the one to be confirmed.
+              <br />
+              <span className="text-[11px] text-gray-400">
+                Panuto: Sagutan ang mga blanko ng tama sa pamamagitan ng pagsusulat gamit ang MALALAKING LETRA. Sumulat ng maayos. Kopyahin ang mga detalye nang ayon sa nakasulat sa Certificate of Live Birth ng kukumpilan.
+              </span>
             </p>
 
             {/* 1. Student Information */}

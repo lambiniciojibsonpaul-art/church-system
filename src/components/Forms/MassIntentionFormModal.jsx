@@ -176,6 +176,14 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
               </ul>
             </div>
 
+            <p className="text-xs text-gray-500 italic leading-relaxed text-center max-w-2xl mx-auto border-t pt-4 border-gray-200">
+              Instructions: Answer all the blanks accordingly using ALL CAPS. Please write legibly.
+              <br />
+              <span className="text-[11px] text-gray-400">
+                Panuto: Sagutan ang mga blanko ng tama sa pamamagitan ng pagsusulat gamit ang MALALAKING LETRA. Sumulat ng maayos.
+              </span>
+            </p>
+
             {/* --- A. REQUESTOR INFORMATION --- */}
             <div>
               <h3 className="text-sm font-bold text-[#B59E74] uppercase tracking-widest border-b border-[#B59E74]/30 pb-2 mb-4">
