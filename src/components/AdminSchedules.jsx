@@ -115,15 +115,12 @@ function EventDetailsModal({ event, onClose }) {
         </div>
 
         <div className="flex gap-1 px-8 pt-5">
-          {["details", "qr", "attendance"].map((p) => {
-            if (p === "qr" && !canShowQR) return null;
-            return (
-              <button key={p} onClick={() => setActivePanel(p)}
-                className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${activePanel === p ? "bg-[#B59E74] text-white shadow" : "text-gray-400 hover:text-gray-600 bg-gray-100"}`}>
-                {p === "details" ? "Details" : p === "qr" ? "QR Code" : "Attendance"}
-              </button>
-            );
-          })}
+          {["details", "qr", "attendance"].map((p) => (
+            <button key={p} onClick={() => setActivePanel(p)}
+              className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${activePanel === p ? "bg-[#B59E74] text-white shadow" : "text-gray-400 hover:text-gray-600 bg-gray-100"}`}>
+              {p === "details" ? "Details" : p === "qr" ? "QR Code" : "Attendance"}
+            </button>
+          ))}
         </div>
 
         <div className="p-8">
@@ -142,16 +139,22 @@ function EventDetailsModal({ event, onClose }) {
           )}
 
           {activePanel === "qr" && (
-            <div className="flex flex-col items-center gap-6">
-              <div ref={qrRef} className="p-4 bg-white border border-gray-200 rounded-2xl shadow-sm">
-                <QRCodeCanvas value={checkInUrl} size={220} />
+            canShowQR ? (
+              <div className="flex flex-col items-center gap-6">
+                <div ref={qrRef} className="p-4 bg-white border border-gray-200 rounded-2xl shadow-sm">
+                  <QRCodeCanvas value={checkInUrl} size={220} />
+                </div>
+                <p className="text-xs text-gray-400 text-center break-all max-w-xs">{checkInUrl}</p>
+                <div className="flex gap-3">
+                  <button onClick={handleDownloadQR} className="px-5 py-2.5 bg-[#B59E74] text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[#9c8760] transition-colors">Download QR</button>
+                  <button onClick={() => window.print()} className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-gray-200 transition-colors">Print</button>
+                </div>
               </div>
-              <p className="text-xs text-gray-400 text-center break-all max-w-xs">{checkInUrl}</p>
-              <div className="flex gap-3">
-                <button onClick={handleDownloadQR} className="px-5 py-2.5 bg-[#B59E74] text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[#9c8760] transition-colors">Download QR</button>
-                <button onClick={() => window.print()} className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-gray-200 transition-colors">Print</button>
+            ) : (
+              <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-2xl">
+                <p className="text-gray-400 italic">QR Code will be available once the event starts.</p>
               </div>
-            </div>
+            )
           )}
 
           {activePanel === "attendance" && (
