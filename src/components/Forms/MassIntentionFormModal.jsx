@@ -54,8 +54,9 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
     if (!autofill || guestInfo) return;
     setFormData(prev => ({
       ...prev,
-      full_name:       prev.full_name      || autofill.fullName,
-      contact_number:  prev.contact_number || autofill.contactNumber,
+      full_name:           prev.full_name           || autofill.fullName,
+      contact_number:      prev.contact_number      || autofill.contactNumber,
+      submitter_signature: prev.submitter_signature || autofill.fullName,
     }));
   }, [autofill, guestInfo]);
 
@@ -64,8 +65,9 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
     const fullName = `${guestInfo.firstName} ${guestInfo.lastName}`.trim();
     setFormData(prev => ({
       ...prev,
-      full_name:       prev.full_name      || fullName,
-      contact_number:  prev.contact_number || guestInfo.contactNumber,
+      full_name:           prev.full_name           || fullName,
+      contact_number:      prev.contact_number      || guestInfo.contactNumber,
+      submitter_signature: prev.submitter_signature || fullName,
     }));
   }, [guestInfo]);
 
