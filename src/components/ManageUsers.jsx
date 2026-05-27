@@ -753,11 +753,11 @@ function ManageUsers() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">First Name *</label>
-                    <input type="text" required value={createForm.first_name} onChange={e => setCreateForm({...createForm, first_name: e.target.value})} className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm" placeholder="Juan"/>
+                    <input type="text" required value={createForm.first_name} onChange={e => setCreateForm({...createForm, first_name: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.\-]/g, "")})} className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm" placeholder="Juan"/>
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Last Name *</label>
-                    <input type="text" required value={createForm.last_name} onChange={e => setCreateForm({...createForm, last_name: e.target.value})} className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm" placeholder="Dela Cruz"/>
+                    <input type="text" required value={createForm.last_name} onChange={e => setCreateForm({...createForm, last_name: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.\-]/g, "")})} className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm" placeholder="Dela Cruz"/>
                   </div>
                 </div>
 
@@ -1152,7 +1152,7 @@ function ManageUsers() {
                   type="text"
                   required
                   value={editForm.first_name}
-                  onChange={(e) => setEditForm({...editForm, first_name: e.target.value})}
+                  onChange={(e) => setEditForm({...editForm, first_name: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.\-]/g, "")})}
                   className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] w-full text-sm"
                 />
               </div>
@@ -1163,7 +1163,7 @@ function ManageUsers() {
                   type="text"
                   required
                   value={editForm.last_name}
-                  onChange={(e) => setEditForm({...editForm, last_name: e.target.value})}
+                  onChange={(e) => setEditForm({...editForm, last_name: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.\-]/g, "")})}
                   className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] w-full text-sm"
                 />
               </div>
