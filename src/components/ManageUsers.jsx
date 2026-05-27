@@ -773,7 +773,7 @@ function ManageUsers() {
 
                 <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Contact Number</label>
-                  <input type="tel" value={createForm.contact_number} onChange={e => setCreateForm({...createForm, contact_number: e.target.value})} className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm" placeholder="09XX XXX XXXX"/>
+                  <input type="tel" value={createForm.contact_number} onChange={e => setCreateForm({...createForm, contact_number: e.target.value.replace(/\D/g, "")})} className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm" placeholder="09XX XXX XXXX"/>
                 </div>
 
                 <button type="submit" disabled={createLoading} className="w-full mt-2 bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-3 rounded-xl text-xs uppercase tracking-widest transition-colors shadow-md disabled:opacity-50">
@@ -1173,7 +1173,7 @@ function ManageUsers() {
                 <input
                   type="tel"
                   value={editForm.contact_number}
-                  onChange={(e) => setEditForm({...editForm, contact_number: e.target.value})}
+                  onChange={(e) => setEditForm({...editForm, contact_number: e.target.value.replace(/\D/g, "")})}
                   className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] w-full text-sm"
                 />
               </div>

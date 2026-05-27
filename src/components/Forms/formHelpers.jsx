@@ -39,6 +39,30 @@ export function useProfileAutofill(user) {
   return autofill;
 }
 
+/**
+ * Sanitizes a form field value based on its name.
+ * - Person name fields → letters, spaces, hyphens, apostrophes, dots only
+ * - Phone / count fields → digits only
+ * - All other fields → unchanged
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function applyFieldFilter(name, value) {
+  // Numbers-only fields
+  if (/contact_number|contactNumbers|groom_contact|bride_contact|expected_attendees|number_of_copies|groom_age|bride_age/i.test(name)) {
+    return value.replace(/\D/g, "");
+  }
+  // Letters-only fields (person names)
+  if (
+    /(^|_)(first|middle|last)_name$/.test(name) ||   // snake_case: child_first_name, etc.
+    /(First|Middle|Last)Name$/.test(name) ||           // camelCase: childFirstName, etc.
+    /_surname$/.test(name) ||
+    /^(full_name|father_name|mother_maiden_name|fatherName|motherMaidenName|godfather_name|godmother_name|godfatherName|godmotherName|requested_by|submitter_signature|submitterName|sponsor\d+_name)$/.test(name)
+  ) {
+    return value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.\-]/g, "");
+  }
+  return value;
+}
+
 export function Field({
   label,
   name,

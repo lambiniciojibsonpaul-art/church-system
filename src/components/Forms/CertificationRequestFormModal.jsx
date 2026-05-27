@@ -3,7 +3,7 @@ import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter } from "./formHelpers";
 
 const CERT_TYPES = [
   "Baptismal Certificate",
@@ -85,18 +85,7 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
-    
-    // ✨ Enforce numbers-only for contact and copies fields
-    if (name === "contact_number" || name === "number_of_copies") {
-      const numbersOnly = value.replace(/\D/g, "");
-      setFormData((prev) => ({ ...prev, [name]: numbersOnly }));
-      return;
-    }
-
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
+    setFormData(prev => ({ ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) }));
   };
 
   const handleSubmit = async (e) => {

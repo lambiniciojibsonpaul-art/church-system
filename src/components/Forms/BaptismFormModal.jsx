@@ -4,7 +4,7 @@ import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import { supabase } from "../../supabaseClient"; 
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, useProfileAutofill } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, useProfileAutofill, applyFieldFilter } from "./formHelpers";
 
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -121,15 +121,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
-    
-    // Enforce numbers-only for the contact number field
-    if (name === "contactNumbers") {
-      const numbersOnly = value.replace(/\D/g, "");
-      setFormData({ ...formData, [name]: numbersOnly });
-      return;
-    }
-    
-    setFormData({ ...formData, [name]: type === "checkbox" ? checked : value });
+    setFormData(prev => ({ ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) }));
   };
 
   const sponsorsList = formData.additionalSponsors 

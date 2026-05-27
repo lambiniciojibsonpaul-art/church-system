@@ -3,7 +3,7 @@ import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter } from "./formHelpers";
 
 // Helper function to generate time slots between 8:30 AM and 5:30 PM
 function generateTimeSlots() {
@@ -100,15 +100,7 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
-    
-    // ✨ Enforce numbers-only for contact field
-    if (name === "contact_number") {
-      const numbersOnly = value.replace(/\D/g, "");
-      setFormData({ ...formData, [name]: numbersOnly });
-      return;
-    }
-
-    setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
+    setFormData(prev => ({ ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) }));
   };
 
   const handleRequestTypeChange = (value) =>

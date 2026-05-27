@@ -3,7 +3,7 @@ import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter } from "./formHelpers";
 
 // Helper function to generate time slots between 8:30 AM and 5:30 PM
 function generateTimeSlots() {
@@ -108,19 +108,9 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
   if (!user && !guestInfo) return <SignInPrompt onClose={onClose} serviceName="a wedding" onGuest={onGuest} />;
 
   const handleChange = (e) => {
-  const { name, type, checked, value } = e.target;
-  
-  // ✨ This checks if the input name is one of your contact fields
-  if (name === "groom_contact" || name === "bride_contact") {
-    // The regex /\D/g matches ANY character that is NOT a digit (0-9)
-    // and replaces it with an empty string.
-    const numbersOnly = value.replace(/\D/g, "");
-    setFormData((prev) => ({ ...prev, [name]: numbersOnly }));
-    return; // Exit the function early so the letter isn't saved
-  }
-  
-  setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
-};
+    const { name, type, checked, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
