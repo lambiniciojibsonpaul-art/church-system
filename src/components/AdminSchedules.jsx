@@ -231,30 +231,7 @@ function AdminSchedules() {
   const [activeMinistries, setActiveMinistries] = useState([]);
   const [viewMode, setViewMode] = useState("card"); // "card" | "table"
 
-  // Local mass schedules — stored in localStorage, never sent to DB
-  const LOCAL_MASSES_KEY = "spb_local_masses";
-  const [localMasses, setLocalMasses] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(LOCAL_MASSES_KEY)) || []; }
-    catch { return []; }
-  });
-  const [isMassModalOpen, setIsMassModalOpen] = useState(false);
-  const [massSubmitting, setMassSubmitting] = useState(false);
-  const [deletingLocalMass, setDeletingLocalMass] = useState(null);
-  const MASS_TYPES = [
-    "Sunday Mass", "Daily Mass", "Weekday Mass", "Anticipatory Mass",
-    "Wedding Mass", "Funeral Mass", "Baptismal Mass", "Confirmation Mass",
-    "First Communion Mass", "Special Mass",
-  ];
-  const [massFormData, setMassFormData] = useState({
-    title: "",
-    massType: "Sunday Mass",
-    priestName: "",
-    eventStartDate: "",
-    eventEndDate: "",
-    eventTime: "",
-    setting: "Main Church",
-    description: "",
-  });
+  const [isMassMode, setIsMassMode] = useState(false);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -401,11 +378,12 @@ function AdminSchedules() {
   };
 
   const handleOpenEventModal = () => {
+    setIsMassMode(false);
     setFormData({
       title: "",
       eventClass: "Mass",
       priestName: "",
-      eventStartDate: "",  // ← was eventDate
+      eventStartDate: "",
       eventEndDate: "",
       eventDate: "",
       eventTime: "",
@@ -427,67 +405,29 @@ function AdminSchedules() {
 
 
   const handleOpenMassModal = () => {
-    setMassFormData({
+    setIsMassMode(true);
+    setFormData({
       title: "",
-      massType: "Sunday Mass",
+      eventClass: "Mass",
       priestName: "",
       eventStartDate: "",
       eventEndDate: "",
+      eventDate: "",
       eventTime: "",
-      setting: "Main Church",
-      description: "",
-    });
-    setIsMassModalOpen(true);
-  };
-
-  const handleMassChange = (e) => {
-    setMassFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-  };
-
-  const handleMassSubmit = (e) => {
-    e.preventDefault();
-    const _td = new Date();
-    const today = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,'0')}-${String(_td.getDate()).padStart(2,'0')}`;
-    if (massFormData.eventStartDate < today) {
-      alert("Error: You cannot schedule a mass in the past.");
-      return;
-    }
-    if (massFormData.eventEndDate && massFormData.eventEndDate < massFormData.eventStartDate) {
-      alert("Error: End date cannot be before the start date.");
-      return;
-    }
-    setMassSubmitting(true);
-    const newMass = {
-      id: `local_${Date.now()}`,
-      _isLocal: true,
-      title: massFormData.title,
-      mass_type: massFormData.massType,
-      event_class: "Mass",
-      priest_name: massFormData.priestName || null,
-      event_date: massFormData.eventStartDate,
-      event_end_date: massFormData.eventEndDate || null,
-      event_time: massFormData.eventTime,
-      setting: massFormData.setting,
       location: CHURCH_ADDRESS,
-      description: massFormData.description,
-      status: "Active",
-      is_inside: true,
-      latitude: PARISH_LAT,
-      longitude: PARISH_LNG,
-      created_at: new Date().toISOString(),
-    };
-    const updated = [...localMasses, newMass];
-    setLocalMasses(updated);
-    localStorage.setItem(LOCAL_MASSES_KEY, JSON.stringify(updated));
-    setMassSubmitting(false);
-    setIsMassModalOpen(false);
-  };
-
-  const confirmDeleteLocalMass = () => {
-    const updated = localMasses.filter(m => m.id !== deletingLocalMass.id);
-    setLocalMasses(updated);
-    localStorage.setItem(LOCAL_MASSES_KEY, JSON.stringify(updated));
-    setDeletingLocalMass(null);
+      description: "",
+      isInside: true,
+      setting: "",
+      isPublic: true,
+      ministry: "",
+      collaborators: [],
+      latitude: "",
+      longitude: "",
+    });
+    setMapSearch("");
+    setSearchResults([]);
+    setFlyTarget(null);
+    setIsModalOpen(true);
   };
 
   // --- ACTIONS ---
@@ -617,6 +557,7 @@ function AdminSchedules() {
       }
 
       setIsModalOpen(false);
+      setIsMassMode(false);
       fetchEvents();
       
     } catch (error) {
@@ -630,15 +571,11 @@ function AdminSchedules() {
   const _now = new Date();
   const today = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`;
 
-  const allEvents = [...events, ...localMasses];
-
-  const visibleEvents = allEvents
+  const visibleEvents = events
     .filter(ev => {
       const q = eventSearch.toLowerCase();
       if (q && !ev.title?.toLowerCase().includes(q) && !ev.location?.toLowerCase().includes(q) && !ev.setting?.toLowerCase().includes(q)) return false;
       const isCancelledOrRejected = ev.status === "Cancelled" || ev.status === "Rejected";
-      if (ev._isLocal && activeTab === "Pending") return false;
-      if (ev._isLocal && activeTab === "Cancelled") return false;
       if (activeTab === "All") return true;
       if (activeTab === "Active") { const end = ev.event_end_date || ev.event_date; return ev.event_date <= today && end >= today && !isCancelledOrRejected; }
       if (activeTab === "Upcoming") return ev.event_date > today && !isCancelledOrRejected;
@@ -833,23 +770,17 @@ function AdminSchedules() {
                   {visibleEvents.map((ev) => {
                     const isPending = ev.status === "Pending";
                     const isCancelledOrRejected = ev.status === "Cancelled" || ev.status === "Rejected";
-                    const accentColor = ev._isLocal ? "bg-purple-400" : isPending ? "bg-yellow-400" : isCancelledOrRejected ? "bg-red-400" : ev.event_class === "Mass" ? "bg-[#B59E74]" : "bg-gray-800";
+                    const accentColor = isPending ? "bg-yellow-400" : isCancelledOrRejected ? "bg-red-400" : ev.event_class === "Mass" ? "bg-[#B59E74]" : "bg-gray-800";
                     return (
                       <tr key={ev.id} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${isCancelledOrRejected ? "opacity-70" : ""}`}>
                         <td className="p-3">
                           <div className="flex items-center gap-2">
                             <div className={`w-1 h-8 rounded-full shrink-0 ${accentColor}`} />
-                            <div>
-                              <span className={`text-sm font-medium ${isCancelledOrRejected ? "line-through text-gray-400" : "text-gray-800"}`}>{ev.title}</span>
-                              {ev._isLocal && <span className="ml-2 text-[9px] font-bold uppercase bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">Local</span>}
-                            </div>
+                            <span className={`text-sm font-medium ${isCancelledOrRejected ? "line-through text-gray-400" : "text-gray-800"}`}>{ev.title}</span>
                           </div>
                         </td>
                         <td className="p-3">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">{ev.event_class}</span>
-                            {ev._isLocal && ev.mass_type && <span className="text-[10px] text-purple-500 font-medium">{ev.mass_type}</span>}
-                          </div>
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">{ev.event_class}</span>
                         </td>
                         <td className="p-3 text-sm text-gray-600">{ev.ministry || (ev.priest_name ? `Fr. ${ev.priest_name}` : "—")}</td>
                         <td className="p-3 text-sm text-gray-600 whitespace-nowrap">
@@ -861,34 +792,24 @@ function AdminSchedules() {
                         <td className="p-3 text-sm text-gray-600 whitespace-nowrap">{ev.event_time || "—"}</td>
                         <td className="p-3 text-sm text-gray-500 max-w-[160px] truncate">{ev.location || "—"}</td>
                         <td className="p-3">
-                          {ev._isLocal ? (
-                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Local Schedule</span>
-                          ) : (
-                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${isPending ? "bg-yellow-100 text-yellow-700" : isCancelledOrRejected ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
-                              {ev.status || "Active"}
-                            </span>
-                          )}
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${isPending ? "bg-yellow-100 text-yellow-700" : isCancelledOrRejected ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
+                            {ev.status || "Active"}
+                          </span>
                         </td>
                         <td className="p-3">
                           <div className="flex gap-1 flex-wrap">
-                            {ev._isLocal ? (
-                              <button onClick={() => setDeletingLocalMass(ev)} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">Remove</button>
-                            ) : (
+                            <button onClick={() => setSelectedEvent(ev)} className="px-2 py-1 bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors whitespace-nowrap">View / QR / Attendance</button>
+                            {isPending && (
                               <>
-                                <button onClick={() => setSelectedEvent(ev)} className="px-2 py-1 bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors whitespace-nowrap">View / QR / Attendance</button>
-                                {isPending && (
-                                  <>
-                                    <button onClick={() => handleApprove(ev)} className="px-2 py-1 bg-green-50 hover:bg-green-600 text-green-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✓</button>
-                                    <button onClick={() => { setRejectingEvent(ev); setRejectionReason(""); }} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✕</button>
-                                  </>
-                                )}
-                                {(ev.status === "Active" || !ev.status) && (
-                                  <button onClick={() => { setCancellingEvent(ev); setCancelReason(""); }} className="px-2 py-1 bg-orange-50 hover:bg-orange-600 text-orange-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">Cancel</button>
-                                )}
-                                {isCancelledOrRejected && (
-                                  <button onClick={() => setDeletingEvent(ev)} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">Delete</button>
-                                )}
+                                <button onClick={() => handleApprove(ev)} className="px-2 py-1 bg-green-50 hover:bg-green-600 text-green-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✓</button>
+                                <button onClick={() => { setRejectingEvent(ev); setRejectionReason(""); }} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✕</button>
                               </>
+                            )}
+                            {(ev.status === "Active" || !ev.status) && (
+                              <button onClick={() => { setCancellingEvent(ev); setCancelReason(""); }} className="px-2 py-1 bg-orange-50 hover:bg-orange-600 text-orange-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">Cancel</button>
+                            )}
+                            {isCancelledOrRejected && (
+                              <button onClick={() => setDeletingEvent(ev)} className="px-2 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">Delete</button>
                             )}
                           </div>
                         </td>
@@ -905,25 +826,18 @@ function AdminSchedules() {
                 const isCancelledOrRejected = ev.status === "Cancelled" || ev.status === "Rejected";
 
                 return (
-                <div key={ev.id} className={`border rounded-2xl p-6 transition-all relative flex flex-col h-full ${ev._isLocal ? "bg-purple-50/40 border-purple-200 hover:shadow-md" : isPending ? "bg-yellow-50/30 border-yellow-200" : isCancelledOrRejected ? "bg-red-50/30 border-red-100 opacity-80" : "border-gray-100 hover:shadow-md"}`}>
-                  <div className={`absolute top-0 left-0 w-1.5 h-full rounded-l-2xl ${ev._isLocal ? "bg-purple-400" : isPending ? "bg-yellow-400" : isCancelledOrRejected ? "bg-red-400" : ev.event_class === "Mass" ? "bg-[#B59E74]" : "bg-gray-800"}`}></div>
+                <div key={ev.id} className={`border border-gray-100 rounded-2xl p-6 transition-all relative flex flex-col h-full ${isPending ? "bg-yellow-50/30 border-yellow-200" : isCancelledOrRejected ? "bg-red-50/30 border-red-100 opacity-80" : "hover:shadow-md"}`}>
+                  <div className={`absolute top-0 left-0 w-1.5 h-full rounded-l-2xl ${isPending ? "bg-yellow-400" : isCancelledOrRejected ? "bg-red-400" : ev.event_class === "Mass" ? "bg-[#B59E74]" : "bg-gray-800"}`}></div>
 
                   <div className="flex justify-between items-start mb-3 gap-2">
-                    {ev._isLocal ? (
-                      <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md shrink-0 bg-purple-100 text-purple-700">Local Schedule</span>
-                    ) : (isPending || isCancelledOrRejected || (activeTab !== "Upcoming" && activeTab !== "Past")) && (
+                    {(isPending || isCancelledOrRejected || (activeTab !== "Upcoming" && activeTab !== "Past")) && (
                       <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md shrink-0 ${isPending ? "bg-yellow-100 text-yellow-700" : isCancelledOrRejected ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
                         {ev.status || "Active"}
                       </span>
                     )}
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-100 text-gray-600 truncate">
-                        {ev.event_class}
-                      </span>
-                      {ev._isLocal && ev.mass_type && (
-                        <span className="text-[10px] text-purple-600 font-medium">{ev.mass_type}</span>
-                      )}
-                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-gray-100 text-gray-600 truncate text-right">
+                      {ev.event_class}
+                    </span>
                   </div>
 
                   <h3 className={`text-xl font-serif font-medium leading-tight mb-1 ${isCancelledOrRejected ? "text-gray-500 line-through" : "text-gray-800"}`}>
@@ -931,8 +845,8 @@ function AdminSchedules() {
                   </h3>
 
                   <p className="text-sm text-gray-500 font-serif italic mb-4">
-                    {isPending ? "Proposed by: " : "Officiated by: "}
-                    <span className="font-semibold">{ev.ministry || (ev.priest_name ? `Fr. ${ev.priest_name}` : "—")}</span>
+                    {isPending ? "Proposed by: " : "Hosted by: "}
+                    <span className="font-semibold">{ev.ministry || (ev.priest_name ? `Fr. ${ev.priest_name}` : "")}</span>
                   </p>
 
                   <div className="space-y-2 text-sm text-gray-600 border-t border-gray-50 pt-4 flex-1">
@@ -962,27 +876,21 @@ function AdminSchedules() {
                   </div>
 
                   <div className="mt-4 border-t border-gray-100 pt-4 flex flex-col gap-2">
-                    {ev._isLocal ? (
-                      <button onClick={() => setDeletingLocalMass(ev)} className="w-full bg-red-50 hover:bg-red-600 text-red-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">Remove Schedule</button>
-                    ) : (
-                      <>
-                        <button onClick={() => setSelectedEvent(ev)} className="w-full bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">View / QR / Attendance</button>
-                        <div className="flex gap-2">
-                          {isPending && (
-                            <>
-                              <button onClick={() => handleApprove(ev)} className="flex-1 bg-green-50 hover:bg-green-600 text-green-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✓ Accept</button>
-                              <button onClick={() => { setRejectingEvent(ev); setRejectionReason(""); }} className="flex-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✕ Reject</button>
-                            </>
-                          )}
-                          {(ev.status === "Active" || !ev.status) && (
-                            <button onClick={() => { setCancellingEvent(ev); setCancelReason(""); }} className="w-full bg-orange-50 hover:bg-orange-600 text-orange-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">Cancel Event</button>
-                          )}
-                          {isCancelledOrRejected && (
-                            <button onClick={() => setDeletingEvent(ev)} className="w-full bg-red-50 hover:bg-red-600 text-red-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">Delete Permanently</button>
-                          )}
-                        </div>
-                      </>
-                    )}
+                    <button onClick={() => setSelectedEvent(ev)} className="w-full bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">View / QR / Attendance</button>
+                    <div className="flex gap-2">
+                      {isPending && (
+                        <>
+                          <button onClick={() => handleApprove(ev)} className="flex-1 bg-green-50 hover:bg-green-600 text-green-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✓ Accept</button>
+                          <button onClick={() => { setRejectingEvent(ev); setRejectionReason(""); }} className="flex-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✕ Reject</button>
+                        </>
+                      )}
+                      {(ev.status === "Active" || !ev.status) && (
+                        <button onClick={() => { setCancellingEvent(ev); setCancelReason(""); }} className="w-full bg-orange-50 hover:bg-orange-600 text-orange-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">Cancel Event</button>
+                      )}
+                      {isCancelledOrRejected && (
+                        <button onClick={() => setDeletingEvent(ev)} className="w-full bg-red-50 hover:bg-red-600 text-red-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">Delete Permanently</button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )})}
@@ -1057,153 +965,16 @@ function AdminSchedules() {
       {/* --- EVENT DETAILS / QR / ATTENDANCE MODAL --- */}
       {selectedEvent && <EventDetailsModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
 
-      {/* --- DELETE LOCAL MASS MODAL --- */}
-      {deletingLocalMass && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in-up">
-            <div className="bg-red-50 px-8 py-6 border-b border-red-100">
-              <h2 className="text-xl font-serif text-red-800 font-medium uppercase tracking-widest">Remove Local Schedule</h2>
-              <p className="text-sm text-red-700 italic">"{deletingLocalMass.title}"</p>
-            </div>
-            <div className="p-8 space-y-6">
-              <p className="text-sm text-gray-600">This will remove the local mass schedule. It only exists on this device — no database record will be affected.</p>
-              <div className="flex gap-3">
-                <button onClick={() => setDeletingLocalMass(null)} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all">Keep</button>
-                <button onClick={confirmDeleteLocalMass} className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200">Remove</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- SCHEDULE MASS MODAL --- */}
-      {isMassModalOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">
-            <div className="sticky top-0 bg-white px-8 py-6 z-10 flex justify-between items-center border-b border-gray-100">
-              <div>
-                <h2 className="text-xl font-serif text-[#B59E74] uppercase tracking-widest">✝ Schedule Mass</h2>
-                <p className="text-[11px] text-purple-600 font-medium mt-0.5">Saved locally on this device — no database record</p>
-              </div>
-              <button onClick={() => setIsMassModalOpen(false)} className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors">✕</button>
-            </div>
-
-            <form onSubmit={handleMassSubmit} className="p-8 space-y-6">
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Mass Title *</label>
-                  <input
-                    type="text" name="title" required
-                    value={massFormData.title} onChange={handleMassChange}
-                    className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none"
-                    placeholder="e.g., Sunday Morning Mass"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Mass Type *</label>
-                  <select
-                    name="massType" required
-                    value={massFormData.massType} onChange={handleMassChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74] font-bold text-[#B59E74]"
-                  >
-                    {MASS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600 uppercase">Officiating Priest *</label>
-                <select
-                  name="priestName" required
-                  value={massFormData.priestName} onChange={handleMassChange}
-                  className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
-                >
-                  <option value="">Select priest…</option>
-                  {priestNames.map(name => <option key={name} value={name}>Fr. {name}</option>)}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Start Date *</label>
-                  <input
-                    type="date" name="eventStartDate" required
-                    min={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })()}
-                    value={massFormData.eventStartDate} onChange={handleMassChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">
-                    End Date <span className="text-gray-400 normal-case font-normal text-[10px]">(optional)</span>
-                  </label>
-                  <input
-                    type="date" name="eventEndDate"
-                    min={massFormData.eventStartDate || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })()}
-                    value={massFormData.eventEndDate} onChange={handleMassChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
-                  />
-                  {massFormData.eventEndDate && massFormData.eventEndDate < massFormData.eventStartDate && (
-                    <p className="text-[10px] text-red-500 mt-0.5">End date must be on or after the start date.</p>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Time *</label>
-                  <input
-                    type="time" name="eventTime" required
-                    value={massFormData.eventTime} onChange={handleMassChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600 uppercase">Facility / Location *</label>
-                <select
-                  name="setting" required
-                  value={massFormData.setting} onChange={handleMassChange}
-                  className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
-                >
-                  {INDOOR_FACILITIES.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-gray-600 uppercase">Description <span className="text-gray-400 normal-case font-normal text-[10px]">(optional)</span></label>
-                <textarea
-                  name="description" value={massFormData.description} onChange={handleMassChange}
-                  rows="3" className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#B59E74] outline-none resize-none"
-                  placeholder="Additional details about this mass..."
-                />
-              </div>
-
-              <div className="flex items-start gap-3 p-4 bg-purple-50 border border-purple-200 rounded-xl text-purple-700 text-xs">
-                <span className="text-base mt-0.5">💾</span>
-                <span>This schedule is saved locally on your browser. It will not appear on the parishioners' calendar and does not require a database record.</span>
-              </div>
-
-              <button
-                type="submit" disabled={massSubmitting}
-                className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-xl uppercase tracking-widest mt-4 shadow-md transition-colors disabled:opacity-70"
-              >
-                {massSubmitting ? "Saving..." : "✝ Save Mass Schedule"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* --- CREATE EVENT MODAL --- */}
+      {/* --- CREATE EVENT / SCHEDULE MASS MODAL --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">
             <div className="sticky top-0 bg-white px-8 py-6 z-10 flex justify-between items-center border-b border-gray-100">
               <h2 className="text-xl font-serif text-[#B59E74] uppercase tracking-widest">
-                Create New Schedule
+                {isMassMode ? "✝ Schedule Mass" : "Create New Schedule"}
               </h2>
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={() => { setIsModalOpen(false); setIsMassMode(false); }}
                 className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors"
               >
                 ✕
@@ -1225,13 +996,17 @@ function AdminSchedules() {
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">Event Type *</label>
-                  <select
-                    name="eventClass" required
-                    value={formData.eventClass} onChange={handleChange}
-                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74] font-bold text-[#B59E74]"
-                  >
-                    {EVENT_CLASSES.map(cls => <option key={cls} value={cls}>{cls}</option>)}
-                  </select>
+                  {isMassMode ? (
+                    <div className="p-3 rounded-xl border border-gray-200 bg-gray-50 font-bold text-[#B59E74] text-sm">Mass</div>
+                  ) : (
+                    <select
+                      name="eventClass" required
+                      value={formData.eventClass} onChange={handleChange}
+                      className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74] font-bold text-[#B59E74]"
+                    >
+                      {EVENT_CLASSES.map(cls => <option key={cls} value={cls}>{cls}</option>)}
+                    </select>
+                  )}
                 </div>
               </div>
 
@@ -1558,7 +1333,7 @@ function AdminSchedules() {
                 type="submit" disabled={submitting}
                 className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-xl uppercase tracking-widest mt-4 shadow-md transition-colors disabled:opacity-70"
               >
-                {submitting ? "Saving..." : "Post Schedule"}
+                {submitting ? "Saving..." : isMassMode ? "✝ Post Mass Schedule" : "Post Schedule"}
               </button>
             </form>
           </div>
