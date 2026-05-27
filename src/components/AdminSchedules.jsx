@@ -44,7 +44,6 @@ function MapPicker({ lat, lng, flyTarget, onChange, readOnly }) {
 }
 
 const EVENT_CLASSES = [
-  "Mass",
   "Parish Event",
   "Liturgical",
   "Meeting",
@@ -235,7 +234,7 @@ function AdminSchedules() {
 
   const [formData, setFormData] = useState({
     title: "",
-    eventClass: "Mass",
+    eventClass: "Parish Event",
     priestName: "",
     eventStartDate: "",  // ← was eventDate
     eventEndDate: "",
@@ -381,7 +380,7 @@ function AdminSchedules() {
     setIsMassMode(false);
     setFormData({
       title: "",
-      eventClass: "Mass",
+      eventClass: "Parish Event",
       priestName: "",
       eventStartDate: "",
       eventEndDate: "",
@@ -408,7 +407,7 @@ function AdminSchedules() {
     setIsMassMode(true);
     setFormData({
       title: "",
-      eventClass: "Mass",
+      eventClass: "Parish Event",
       priestName: "",
       eventStartDate: "",
       eventEndDate: "",
