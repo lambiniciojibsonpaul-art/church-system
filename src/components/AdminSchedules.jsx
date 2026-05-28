@@ -69,7 +69,8 @@ const INDOOR_FACILITIES = [
   "Chamber Room"
 ];
 
-function EventDetailsModal({ event, onClose }) {
+// ✨ FIX: Added onEdit prop
+function EventDetailsModal({ event, onClose, onEdit }) {
   const [activePanel, setActivePanel] = useState("details");
   const [attendance, setAttendance] = useState([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
@@ -112,7 +113,18 @@ function EventDetailsModal({ event, onClose }) {
             <h2 className="text-lg font-serif text-[#B59E74] uppercase tracking-widest leading-tight">{event.title}</h2>
             <p className="text-xs text-gray-400 mt-0.5">{event.event_class}</p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors">✕</button>
+          {/* ✨ FIX: Edit Button inside modal */}
+          <div className="flex gap-2 items-center">
+            {onEdit && (
+              <button 
+                onClick={() => onEdit(event)} 
+                className="px-4 py-1.5 bg-[#B59E74]/10 text-[#B59E74] hover:bg-[#B59E74] hover:text-white rounded-full text-xs font-bold uppercase tracking-widest transition-colors"
+              >
+                ✎ Edit
+              </button>
+            )}
+            <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors">✕</button>
+          </div>
         </div>
 
         <div className="flex gap-1 px-8 pt-5">
@@ -210,13 +222,14 @@ function AdminSchedules() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // ✨ FIX: Added State to track which event is being edited
+  const [editingEvent, setEditingEvent] = useState(null);
+
   const [activeTab, setActiveTab] = useState("Upcoming");
   const [eventSearch, setEventSearch] = useState("");
   
-  // ✨ NEW: State for sorting across all tabs
   const [activeSort, setActiveSort] = useState("date_asc");
 
-  // ✨ NEW: Smart default sorting when tabs change
   useEffect(() => {
     if (activeTab === "Past" || activeTab === "Cancelled") {
       setActiveSort("date_desc");
@@ -239,7 +252,7 @@ function AdminSchedules() {
   const searchDebounceRef = useRef(null);
 
   const [activeMinistries, setActiveMinistries] = useState([]);
-  const [viewMode, setViewMode] = useState("card"); // "card" | "table"
+  const [viewMode, setViewMode] = useState("card");
 
   const [isMassMode, setIsMassMode] = useState(false);
 
@@ -247,7 +260,7 @@ function AdminSchedules() {
     title: "",
     eventClass: "Parish Event",
     priestName: "",
-    eventStartDate: "",  // ← was eventDate
+    eventStartDate: "",
     eventEndDate: "",
     eventDate: "",
     eventTime: "",
@@ -342,7 +355,6 @@ function AdminSchedules() {
       }
     } catch (err) {
       console.error("Failed to load priests:", err);
-      // Fallback list
       setPriestNames([
         "Rev. Fr. Pedro Bautista",
         "Rev. Fr. Juan Dela Cruz",
@@ -417,10 +429,11 @@ function AdminSchedules() {
         setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, setting: data.display_name, location: generalLocation }));
         setMapSearch(shortName);
       }
-    } catch { /* non-fatal — coordinates are still saved */ }
+    } catch { /* non-fatal */ }
   };
 
   const handleOpenEventModal = () => {
+    setEditingEvent(null);
     setIsMassMode(false);
     setFormData({
       title: "",
@@ -446,12 +459,12 @@ function AdminSchedules() {
     setIsModalOpen(true);
   };
 
-
   const handleOpenMassModal = () => {
+    setEditingEvent(null);
     setIsMassMode(true);
     setFormData({
       title: "",
-      eventClass: "Parish Event",
+      eventClass: "Mass",
       priestName: "",
       eventStartDate: "",
       eventEndDate: "",
@@ -472,6 +485,43 @@ function AdminSchedules() {
     setFlyTarget(null);
     setIsModalOpen(true);
   };
+
+  // ✨ FIX: Function to handle populating the form for Editing
+  const handleEditEvent = (ev) => {
+    setSelectedEvent(null); // Close details modal if open
+    setEditingEvent(ev);
+    setIsMassMode(ev.event_class === "Mass");
+    const isIndoor = INDOOR_FACILITIES.includes(ev.setting);
+    
+    setFormData({
+      title: ev.title || "",
+      eventClass: ev.event_class || "Parish Event",
+      priestName: ev.priest_name || "",
+      eventStartDate: ev.event_date || "",
+      eventEndDate: ev.event_end_date || "",
+      eventDate: ev.event_date || "",
+      eventTime: ev.event_time || "",
+      location: ev.location || "",
+      description: ev.description || "",
+      isInside: isIndoor,
+      setting: ev.setting || "",
+      isPublic: ev.is_public ?? true,
+      ministry: ev.ministry || "",
+      collaborators: ev.collaborators || [],
+      latitude: ev.latitude || "",
+      longitude: ev.longitude || "",
+    });
+    
+    setMapSearch(ev.setting || "");
+    setIsModalOpen(true);
+
+    if (!isIndoor && ev.latitude && ev.longitude) {
+      setFlyTarget({ lat: ev.latitude, lng: ev.longitude });
+    } else {
+      setFlyTarget(null);
+    }
+  };
+
 
   // --- ACTIONS ---
   const handleApprove = async (eventToApprove) => {
@@ -524,10 +574,10 @@ function AdminSchedules() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // 1. DATE VALIDATION: Prevent past dates
+    // 1. DATE VALIDATION: Prevent past dates (unless editing an old event)
     const _td = new Date();
     const today = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,'0')}-${String(_td.getDate()).padStart(2,'0')}`;
-    if (formData.eventStartDate < today) {
+    if (!editingEvent && formData.eventStartDate < today) {
       alert("Error: You cannot schedule an event in the past. Please select today or a future date.");
       return;
     }
@@ -537,20 +587,17 @@ function AdminSchedules() {
       return;
     }
 
-    // 2. HOST VALIDATION — at least one of priest or ministry must be selected
+    // 2. HOST VALIDATION
     if (!formData.priestName && !formData.ministry) {
       alert("Please assign at least one host — a Hosting Priest, a Hosting Ministry, or both.");
       return;
     }
 
-    // 3. OPERATING HOURS RESTRICTION — For parishioners and ministers only
+    // 3. OPERATING HOURS RESTRICTION
     const restrictedRoles = ["parishioner", "ministry"];
     if (restrictedRoles.includes(role)) {
-      // Extract hour from time string (HH:mm format)
       const [hourStr] = formData.eventTime.split(":");
       const eventHour = parseInt(hourStr, 10);
-      
-      // Operating hours: 7 AM to 10 PM (07:00 to 22:00)
       const minHour = 7;
       const maxHour = 22;
       
@@ -561,57 +608,38 @@ function AdminSchedules() {
     }
 
     // 4. CONFLICT DETECTION
-    // Business Rules:
-    // 1. Same Time + Same Location = BLOCKED
-    // 2. Same Time + Different Location = ALLOWED
-    // 3. Same Time + Same Priest = BLOCKED (priest cannot be in two places at once)
     const conflict = events.find(ev => {
+      // ✨ FIX: Ignore self when editing
+      if (editingEvent && ev.id === editingEvent.id) return false;
       if (ev.status === "Cancelled" || ev.status === "Rejected") return false;
       
-      // Check date range overlap
       const newStart = formData.eventStartDate;
       const newEnd   = formData.eventEndDate || formData.eventStartDate;
       const evDate   = ev.event_date;
       const rangeOverlaps = evDate >= newStart && evDate <= newEnd;
       
-      // If dates don't match or times don't match, no conflict
       if (!rangeOverlaps || ev.event_time !== formData.eventTime) return false;
       
-      // At this point: same date range and same time
-      
-      // RULE 3: Same Priest = BLOCKED (priest cannot be in two places at once)
       const isSamePriest = formData.priestName && ev.priest_name === formData.priestName;
-      if (isSamePriest) return true; // Conflict detected
+      if (isSamePriest) return true;
       
-      // RULE 1 & 2: Check if locations are the same
-      // Create location keys to compare
-      const newLocationKey = formData.isInside 
-        ? `inside:${formData.setting}` 
-        : `outside:${formData.latitude},${formData.longitude}`;
+      const newLocationKey = formData.isInside ? `inside:${formData.setting}` : `outside:${formData.latitude},${formData.longitude}`;
+      const existingLocationKey = ev.is_inside ? `inside:${ev.setting}` : `outside:${ev.latitude},${ev.longitude}`;
       
-      const existingLocationKey = ev.is_inside 
-        ? `inside:${ev.setting}` 
-        : `outside:${ev.latitude},${ev.longitude}`;
-      
-      const isSameLocation = newLocationKey === existingLocationKey;
-      
-      // RULE 1: Same Location = BLOCKED
-      // RULE 2: Different Location = ALLOWED (no conflict)
-      return isSameLocation;
+      return newLocationKey === existingLocationKey;
     });
 
     if (conflict) {
       alert(`Scheduling Conflict! "${conflict.title}" is already booked at this time.` + 
         (formData.priestName ? ` The priest "${formData.priestName}" is unavailable.` : '') +
         (!formData.priestName ? ` The location is already in use.` : ''));
-      return; // Stop the submission!
+      return;
     }
 
     setSubmitting(true);
 
     try {
       const basePayload = {
-        creator_id:   user.id,
         title:        formData.title,
         event_class:  formData.eventClass,
         priest_name:  formData.priestName  || null,
@@ -623,44 +651,53 @@ function AdminSchedules() {
         location:     formData.location,
         description:  formData.description,
         setting:      formData.setting,
-        status:       "Active",
         is_public:    formData.isPublic,
         latitude:     formData.isInside ? PARISH_LAT : (formData.latitude !== "" ? parseFloat(formData.latitude) : null),
         longitude:    formData.isInside ? PARISH_LNG : (formData.longitude !== "" ? parseFloat(formData.longitude) : null),
       };
 
       let insertedEventId = null;
-      let { data, error } = await restInsert("events", [basePayload]);
-      if (!error && Array.isArray(data) && data[0]?.id) insertedEventId = data[0].id;
 
-      // Retry without new columns if the DB migration hasn't been run yet
-      if (error && (error.code === "PGRST204" || error.message?.includes("column"))) {
-        const fallback = { ...basePayload };
-        delete fallback.collaborators;
-        delete fallback.is_public;
-        delete fallback.event_end_date;
-        const retry = await restInsert("events", [fallback]);
-        if (!retry.error && Array.isArray(retry.data) && retry.data[0]?.id) insertedEventId = retry.data[0].id;
-        if (retry.error) throw new Error(retry.error.message);
-      } else if (error) {
-        throw new Error(error.message);
-      }
+      // ✨ FIX: Update if editing, Insert if creating
+      if (editingEvent) {
+        let { error } = await restUpdate("events", { id: editingEvent.id }, basePayload);
+        if (error) throw new Error(error.message);
+      } else {
+        basePayload.creator_id = user.id;
+        basePayload.status = "Active";
 
-      if (formData.isPublic === false && formData.ministry) {
-        await notifyHostMinistryForPrivateEvent({
-          eventId: insertedEventId,
-          title: formData.title,
-          hostMinistry: formData.ministry,
-        });
+        let { data, error } = await restInsert("events", [basePayload]);
+        if (!error && Array.isArray(data) && data[0]?.id) insertedEventId = data[0].id;
+
+        if (error && (error.code === "PGRST204" || error.message?.includes("column"))) {
+          const fallback = { ...basePayload };
+          delete fallback.collaborators;
+          delete fallback.is_public;
+          delete fallback.event_end_date;
+          const retry = await restInsert("events", [fallback]);
+          if (!retry.error && Array.isArray(retry.data) && retry.data[0]?.id) insertedEventId = retry.data[0].id;
+          if (retry.error) throw new Error(retry.error.message);
+        } else if (error) {
+          throw new Error(error.message);
+        }
+
+        if (formData.isPublic === false && formData.ministry) {
+          await notifyHostMinistryForPrivateEvent({
+            eventId: insertedEventId,
+            title: formData.title,
+            hostMinistry: formData.ministry,
+          });
+        }
       }
 
       setIsModalOpen(false);
+      setEditingEvent(null);
       setIsMassMode(false);
       fetchEvents();
       
     } catch (error) {
       console.error("Database Error:", error.message);
-      alert("Failed to create schedule: " + error.message);
+      alert(`Failed to ${editingEvent ? "update" : "create"} schedule: ` + error.message);
     } finally {
       setSubmitting(false);
     }
@@ -683,7 +720,6 @@ function AdminSchedules() {
       return true;
     })
     .sort((a, b) => {
-      // ✨ NEW: Master Sorting Logic applied to all tabs
       if (activeSort === "created_desc") {
         return String(b.created_at || "").localeCompare(String(a.created_at || ""));
       }
@@ -691,7 +727,6 @@ function AdminSchedules() {
         return String(a.created_at || "").localeCompare(String(b.created_at || ""));
       }
 
-      // Combine Date and Time for accurate chronological sorting
       const dateA = a.event_date || (activeSort === "date_asc" ? "9999-12-31" : "0000-00-00");
       const timeA = a.event_time || "00:00:00";
       const dateB = b.event_date || (activeSort === "date_asc" ? "9999-12-31" : "0000-00-00");
@@ -705,7 +740,6 @@ function AdminSchedules() {
         return dtB - dtA;
       }
       
-      // Default: date_asc
       if (isNaN(dtA) || isNaN(dtB)) return `${dateA}T${timeA}`.localeCompare(`${dateB}T${timeB}`);
       return dtA - dtB;
     });
@@ -772,9 +806,7 @@ function AdminSchedules() {
           </div>
         </div>
 
-        {/* ✨ NEW: Search bar and Sort Filter row (Available on ALL tabs) */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-          
           <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-[#B59E74] w-full max-w-md shadow-sm">
             <span className="text-gray-400 text-sm">🔍</span>
             <input
@@ -789,7 +821,6 @@ function AdminSchedules() {
             )}
           </div>
 
-          {/* Sort Dropdown */}
           <div className="flex items-center gap-3 animate-fade-in">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Sort By:</label>
             <div className="relative">
@@ -810,7 +841,6 @@ function AdminSchedules() {
           </div>
         </div>
 
-        {/* Time-based tabs */}
         <div className="flex gap-2 sm:gap-3 mb-6 p-2 bg-[#F6F5ED] rounded-full w-fit border border-gray-100 overflow-x-auto">
           {[
             { key: "Upcoming", label: "Upcoming", count: upcomingCount, color: "bg-blue-500" },
@@ -896,7 +926,13 @@ function AdminSchedules() {
                         </td>
                         <td className="p-3">
                           <div className="flex gap-1 flex-wrap">
-                            <button onClick={() => setSelectedEvent(ev)} className="px-2 py-1 bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors whitespace-nowrap">View / QR / Attendance</button>
+                            <button onClick={() => setSelectedEvent(ev)} className="px-2 py-1 bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors whitespace-nowrap">View / QR</button>
+                            
+                            {/* ✨ FIX: Edit Button on Table */}
+                            {!isCancelledOrRejected && (
+                              <button onClick={() => handleEditEvent(ev)} className="px-2 py-1 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✎ Edit</button>
+                            )}
+
                             {isPending && (
                               <>
                                 <button onClick={() => handleApprove(ev)} className="px-2 py-1 bg-green-50 hover:bg-green-600 text-green-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors">✓</button>
@@ -974,7 +1010,15 @@ function AdminSchedules() {
                   </div>
 
                   <div className="mt-4 border-t border-gray-100 pt-4 flex flex-col gap-2">
-                    <button onClick={() => setSelectedEvent(ev)} className="w-full bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">View / QR / Attendance</button>
+                    <div className="flex gap-2 w-full">
+                      <button onClick={() => setSelectedEvent(ev)} className="flex-1 bg-[#B59E74]/10 hover:bg-[#B59E74] text-[#B59E74] hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">View / QR</button>
+                      
+                      {/* ✨ FIX: Edit Button on Card */}
+                      {!isCancelledOrRejected && (
+                        <button onClick={() => handleEditEvent(ev)} className="flex-1 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors">✎ Edit</button>
+                      )}
+                    </div>
+                    
                     <div className="flex gap-2">
                       {isPending && (
                         <>
@@ -1061,18 +1105,28 @@ function AdminSchedules() {
       )}
 
       {/* --- EVENT DETAILS / QR / ATTENDANCE MODAL --- */}
-      {selectedEvent && <EventDetailsModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
+      {selectedEvent && (
+        <EventDetailsModal 
+          event={selectedEvent} 
+          onClose={() => setSelectedEvent(null)} 
+          onEdit={handleEditEvent} 
+        />
+      )}
 
-      {/* --- CREATE EVENT / SCHEDULE MASS MODAL --- */}
+      {/* --- CREATE / EDIT EVENT MODAL --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative scrollbar-hidden">
             <div className="sticky top-0 bg-white px-8 py-6 z-10 flex justify-between items-center border-b border-gray-100">
               <h2 className="text-xl font-serif text-[#B59E74] uppercase tracking-widest">
-                {isMassMode ? "✝ Schedule Mass" : "Create New Schedule"}
+                {/* ✨ FIX: Dynamic Title */}
+                {editingEvent ? "Edit Schedule" : isMassMode ? "✝ Schedule Mass" : "Create New Schedule"}
               </h2>
               <button
-                onClick={() => { setIsModalOpen(false); setIsMassMode(false); }}
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setEditingEvent(null);
+                }}
                 className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors"
               >
                 ✕
@@ -1113,7 +1167,7 @@ function AdminSchedules() {
                   <label className="text-xs font-bold text-gray-600 uppercase">Start Date *</label>
                   <input
                     type="date" name="eventStartDate" required
-                    min={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })()}
+                    min={!editingEvent ? (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })() : undefined}
                     value={formData.eventStartDate} onChange={handleChange}
                     className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                   />
@@ -1163,7 +1217,6 @@ function AdminSchedules() {
                           onChange={e => setFormData(prev => ({
                             ...prev,
                             priestName: e.target.value,
-                            // selecting a priest locks out hosting ministry
                             ministry: e.target.value ? "" : prev.ministry,
                             collaborators: e.target.value ? prev.collaborators : prev.collaborators,
                           }))}
@@ -1174,7 +1227,7 @@ function AdminSchedules() {
                         </select>
                       </div>
 
-                      {/* Hosting Ministry — disabled when a priest is chosen */}
+                      {/* Hosting Ministry */}
                       <div className="flex flex-col gap-1">
                         <label className={`text-xs font-bold uppercase ${priestChosen ? "text-gray-300" : "text-gray-600"}`}>
                           Hosting Ministry
@@ -1200,7 +1253,7 @@ function AdminSchedules() {
                       </div>
                     </div>
 
-                    {/* Collaborating Ministries — active only when at least one host is chosen */}
+                    {/* Collaborating Ministries */}
                     <div className={`flex flex-col gap-1.5 transition-opacity ${hostChosen ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
                       <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-2">
                         Collaborating Ministries
@@ -1280,14 +1333,13 @@ function AdminSchedules() {
                 />
               </div>
 
-              {/* ── Map pin — shown for both indoor (read-only) and outdoor ── */}
+              {/* ── Map pin ── */}
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-2">
                   📍 {formData.isInside ? "Check-in Location (Fixed)" : "Pin Location on Map"}
-                  <span className="text-[10px] font-normal normal-case text-gray-400 italic">— for QR check-in geolocation (200m radius)</span>
+                  <span className="text-[10px] font-normal normalcase text-gray-400 italic">— for QR check-in geolocation (200m radius)</span>
                 </label>
 
-                {/* Indoor info banner */}
                 {formData.isInside && (
                   <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700 text-xs">
                     <span>🏛️</span>
@@ -1295,7 +1347,6 @@ function AdminSchedules() {
                   </div>
                 )}
 
-                {/* Outdoor-only: search bar */}
                 {!formData.isInside && (
                   <>
                     <div className="relative">
@@ -1320,7 +1371,6 @@ function AdminSchedules() {
                         )}
                       </div>
 
-                      {/* Results dropdown */}
                       {searchResults.length > 0 && (
                         <div className="absolute z-[1000] top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden">
                           {searchResults.map((r, i) => (
@@ -1344,7 +1394,6 @@ function AdminSchedules() {
                   </>
                 )}
 
-                {/* Map — always shown; read-only for indoor */}
                 <div className="rounded-xl overflow-hidden border border-gray-300 shadow-sm">
                   <MapPicker
                     lat={formData.isInside ? PARISH_LAT : formData.latitude}
@@ -1355,7 +1404,6 @@ function AdminSchedules() {
                   />
                 </div>
 
-                {/* Coordinates display */}
                 {formData.isInside ? (
                   <div className="flex gap-3 mt-1">
                     <div className="flex-1 flex flex-col gap-1">
@@ -1431,7 +1479,8 @@ function AdminSchedules() {
                 type="submit" disabled={submitting}
                 className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-4 rounded-xl uppercase tracking-widest mt-4 shadow-md transition-colors disabled:opacity-70"
               >
-                {submitting ? "Saving..." : isMassMode ? "✝ Post Mass Schedule" : "Post Schedule"}
+                {/* ✨ FIX: Dynamic Button Text */}
+                {submitting ? "Saving..." : editingEvent ? "Save Changes" : isMassMode ? "✝ Post Mass Schedule" : "Post Schedule"}
               </button>
             </form>
           </div>

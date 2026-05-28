@@ -211,7 +211,7 @@ function StaffDashboard() {
   const [viewingDetails, setViewingDetails] = useState(null);
   const [activeQR, setActiveQR] = useState(null);
 
-  // ── NEW: Filter/Sort/Search state for events/certificates/qr tabs ──
+  // Filter/Sort/Search state for events/certificates/qr tabs
   const [itemsSearch, setItemsSearch] = useState("");
   const [itemsFilterType, setItemsFilterType] = useState("All");
   const [itemsSortBy, setItemsSortBy] = useState("date_asc");
@@ -225,9 +225,10 @@ function StaffDashboard() {
   const [staffPageSize, setStaffPageSize] = useState(10);
   const [staffCurrentPage, setStaffCurrentPage] = useState(1);
 
-  // Approval/Rejection Modals
+  // View Mode
   const [staffViewMode, setStaffViewMode] = useState("card"); // "card" | "table"
 
+  // Approval Modal
   const [acceptingRequest, setAcceptingRequest] = useState(null);
   const [assignedPriest, setAssignedPriest] = useState("");
   const [acceptSubmitting, setAcceptSubmitting] = useState(false);
@@ -328,6 +329,7 @@ function StaffDashboard() {
     const entries = Object.entries(TAB_CONFIG);
     const results = await Promise.allSettled(
       entries.map(([, cfg]) =>
+        // ✨ FIX: Remove any hardcoded filters that block Rejected status
         restSelect(cfg.table, { order: "created_at.desc", timeoutMs: 12000 })
       )
     );
@@ -562,13 +564,11 @@ function StaffDashboard() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
-  // ── NEW: Type options per tab ─────────────────────────────────────────────
   const getTypeOptionsForTab = () => {
     if (activeTab === "certificates") return ["All", "Baptism", "Wedding"];
     return ["All", "Baptism", "Wedding", "Parish Event"];
   };
 
-  // ── NEW: getVisibleItems with filter + sort + search ──────────────────────
   const getVisibleItems = () => {
     let result = [...items];
 
@@ -759,11 +759,13 @@ function StaffDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {staffPageData.map((req) => (
+                      {staffPageData.map((req) => {
+                        const isRejected = req.status === "Rejected" || req.status === "Cancelled";
+                        return (
                         <tr
                           id={`request-card-${req.id}`}
                           key={`${req._tab}-${req.id}`}
-                          className={`border-b border-gray-50 transition-all duration-500 ${highlightId === req.id ? "bg-[#B59E74]/10" : "hover:bg-gray-50"}`}
+                          className={`border-b border-gray-50 transition-all duration-500 ${highlightId === req.id ? "bg-[#B59E74]/10" : "hover:bg-gray-50"} ${isRejected ? "opacity-60" : ""}`}
                         >
                           <td className="p-3">
                             <div className="flex flex-col gap-1">
@@ -772,7 +774,7 @@ function StaffDashboard() {
                           </div>
                           </td>
                           <td className="p-3">
-                            <p className="text-sm font-medium text-gray-800">{req._config.title(req)}</p>
+                            <p className={`text-sm font-medium ${isRejected ? "text-gray-500 line-through" : "text-gray-800"}`}>{req._config.title(req)}</p>
                             <button
                               onClick={() => setViewingDetails({ ...req, request_type: req._tab, display_name: req._config.title(req) })}
                               className="text-[10px] font-bold uppercase tracking-widest text-[#B59E74] hover:text-[#9c8760] transition-colors mt-0.5"
@@ -789,7 +791,7 @@ function StaffDashboard() {
                           </td>
                           <td className="p-3 text-xs text-gray-400 whitespace-nowrap">{new Date(req.created_at).toLocaleDateString()}</td>
                           <td className="p-3">
-                            <div className="flex gap-1 flex-wrap">
+                            <div className="flex gap-1 flex-wrap items-center">
                               <button
                                 onClick={() => setViewingDetails({ ...req, request_type: req._tab, display_name: req._config.title(req) })}
                                 className="px-2 py-1 bg-gray-50 hover:bg-[#B59E74] text-gray-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors"
@@ -806,19 +808,23 @@ function StaffDashboard() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {staffPageData.map((req) => (
+                  {staffPageData.map((req) => {
+                    const isRejected = req.status === "Rejected" || req.status === "Cancelled";
+                    return (
                     <div
                       id={`request-card-${req.id}`}
                       key={`${req._tab}-${req.id}`}
                       className={`border rounded-2xl p-6 flex flex-col transition-all duration-500
                         ${highlightId === req.id
                           ? "border-[#B59E74] bg-[#B59E74]/10 shadow-lg shadow-[#B59E74]/20 scale-[1.01]"
+                          : isRejected 
+                          ? "border-red-100 bg-red-50/30 opacity-70"
                           : "border-gray-100 bg-gray-50/50 hover:bg-white hover:shadow-md"
                         }`}
                     >
@@ -828,7 +834,7 @@ function StaffDashboard() {
                       </div>
 
                       <div className="mb-4">
-                        <h3 className="text-lg font-serif text-gray-800 font-medium leading-tight">{req._config.title(req)}</h3>
+                        <h3 className={`text-lg font-serif font-medium leading-tight ${isRejected ? "text-gray-500 line-through" : "text-gray-800"}`}>{req._config.title(req)}</h3>
                         <button
                           onClick={() => setViewingDetails({ ...req, request_type: req._tab, display_name: req._config.title(req) })}
                           className="text-[10px] font-bold uppercase tracking-widest text-[#B59E74] hover:text-[#9c8760] transition-colors mt-1"
@@ -853,6 +859,14 @@ function StaffDashboard() {
                           <p className="mt-1 text-orange-600">Please select a different priest below.</p>
                         </div>
                       )}
+                      
+                      {req.rejection_remarks && isRejected && (
+                        <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                          <p className="font-bold uppercase tracking-widest mb-0.5">Reason:</p>
+                          <p className="italic mt-0.5">{req.rejection_remarks}</p>
+                        </div>
+                      )}
+
                       <div className="mt-auto flex gap-2 pt-4 border-t border-gray-200 flex-wrap">
                         <button
                           onClick={() => setViewingDetails({ ...req, request_type: req._tab, display_name: req._config.title(req) })}
@@ -871,7 +885,7 @@ function StaffDashboard() {
                         )}
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               )}
             
@@ -1231,7 +1245,8 @@ function StatusBadge({ status }) {
     status === "Priest Rejected" ? "bg-orange-100 text-orange-700"  :
     status === "Approved"        ? "bg-green-100 text-green-700"    :
     status === "Cancelled"       ? "bg-orange-100 text-orange-700"  :
-                                   "bg-red-100 text-red-700";
+    status === "Rejected"        ? "bg-red-100 text-red-700"        :
+                                   "bg-gray-100 text-gray-600";
   return (
     <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${cls}`}>
       {status}

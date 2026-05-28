@@ -1,5 +1,6 @@
 import FloatingFeatures from "./FloatingFeatures.jsx";
 import UpcomingEvents from "./UpcomingEvents.jsx";
+import PublicAnnouncements from "./PublicAnnouncements.jsx"; // ✨ Import the new component!
 import church1 from "../assets/Images/church1.jpg";
 
 function ChurchLandingPage() {
@@ -25,6 +26,9 @@ function ChurchLandingPage() {
       <FloatingFeatures />
 
       <UpcomingEvents />
+
+      {/* ✨ Drop the announcements right here */}
+      <PublicAnnouncements />
 
       {/* Floating Chat Button */}
     </div>

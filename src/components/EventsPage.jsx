@@ -297,18 +297,23 @@ function EventsPage() {
       return canSeeEvent(e);
     })
     .sort((a, b) => {
+      // ✨ FIX: Smart Sorting! 
+      // 1. Sort by Date first
       const dateA = a.event_date || "9999-12-31";
-      const timeA = a.event_time || "23:59:59";
       const dateB = b.event_date || "9999-12-31";
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+      // 2. If it's the exact same day, check if one is a "Mass"
+      const isMassA = a.event_class === "Mass";
+      const isMassB = b.event_class === "Mass";
+      
+      if (isMassA && !isMassB) return -1; // Push A (Mass) to the top
+      if (!isMassA && isMassB) return 1;  // Push B (Mass) to the top
+
+      // 3. If both are Mass, or neither are Mass, sort by Time chronologically
+      const timeA = a.event_time || "23:59:59";
       const timeB = b.event_time || "23:59:59";
-      
-      const dtA = new Date(`${dateA}T${timeA}`).getTime();
-      const dtB = new Date(`${dateB}T${timeB}`).getTime();
-      
-      if (isNaN(dtA) || isNaN(dtB)) {
-        return `${dateA}T${timeA}`.localeCompare(`${dateB}T${timeB}`);
-      }
-      return dtA - dtB;
+      return timeA.localeCompare(timeB);
     });
 
   const getEventsForDate = (dateToMatch) => {

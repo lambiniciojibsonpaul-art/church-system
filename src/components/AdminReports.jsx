@@ -198,19 +198,41 @@ function AdminReports() {
   const [activeTab, setActiveTab] = useState("services");
   const [loading, setLoading] = useState(true);
 
-  // Services tab state
+  // ✨ NEW: Fetch actual profile name
+  const [adminName, setAdminName] = useState("");
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from("profiles")
+      .select("first_name, last_name")
+      .eq("id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        const name = [data?.first_name, data?.last_name].filter(Boolean).join(" ");
+        if (name) setAdminName(name);
+      });
+  }, [user?.id]);
+
+  const reportGeneratorName = adminName 
+    || user?.user_metadata?.full_name 
+    || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(" ") 
+    || user?.email?.split("@")[0] 
+    || "Administrator";
+
+  const [metricTimeframe, setMetricTimeframe] = useState("30days");
+  const [metricsLoading, setMetricsLoading] = useState(true);
+
   const [selectedService, setSelectedService] = useState("baptisms");
   const [sortBy, setSortBy] = useState("newest");
   const [serviceStatusFilter, setServiceStatusFilter] = useState("All");
   const [serviceData, setServiceData] = useState([]);
   const [serviceLoading, setServiceLoading] = useState(false);
 
-  // Schedules tab state
   const [scheduleSortBy, setScheduleSortBy] = useState("newest");
   const [scheduleFilter, setScheduleFilter] = useState("all");
   const [scheduleStatusFilter, setScheduleStatusFilter] = useState("All");
 
-  // Attendance tab state
   const [attendanceEvents, setAttendanceEvents] = useState([]);
   const [selectedAttendanceEvent, setSelectedAttendanceEvent] = useState(null);
   const [attendanceSearch, setAttendanceSearch] = useState("");
@@ -230,7 +252,6 @@ function AdminReports() {
   });
 
   useEffect(() => {
-    // Bust stale localStorage role cache so admin sees real-time role assignments
     if (user?.email) {
       localStorage.removeItem(`adminCache:${user.email.toLowerCase()}`);
     }
@@ -239,37 +260,56 @@ function AdminReports() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchAllReports = async () => {
-    setLoading(true);
-    try {
-      // Metrics — counts only
-      const [baps, weddings, intentions, confs, events, attendance, ministriesCount] =
-        await Promise.all([
-          supabase.from("baptisms").select("id"),
-          supabase.from("weddings").select("id"),
-          supabase.from("mass_intentions").select("id"),
-          supabase.from("confirmations").select("id"),
-          supabase
-            .from("events")
-            .select("id")
-            .not("status", "in", '("Cancelled","Rejected")'),
-          supabase.from("attendance").select("id"),
-          // Fix: count from `ministries` table, not unique strings from events
-          supabase.from("ministries").select("id").eq("is_archived", false),
+  useEffect(() => {
+    const fetchDynamicMetrics = async () => {
+      setMetricsLoading(true);
+      let threshold = null;
+      
+      if (metricTimeframe !== "all") {
+        const now = new Date();
+        if (metricTimeframe === "7days") now.setDate(now.getDate() - 7);
+        else if (metricTimeframe === "30days") now.setDate(now.getDate() - 30);
+        else if (metricTimeframe === "year") {
+          now.setMonth(0); now.setDate(1); now.setHours(0,0,0,0);
+        }
+        threshold = now.toISOString();
+      }
+
+      const buildQuery = (table, dateColumn = "created_at") => {
+        let q = supabase.from(table).select("id", { count: "exact", head: true });
+        if (threshold) q = q.gte(dateColumn, threshold);
+        return q;
+      };
+
+      try {
+        const [baps, weddings, intentions, confs, attendance, events, ministriesCount] = await Promise.all([
+          buildQuery("baptisms"),
+          buildQuery("weddings"),
+          buildQuery("mass_intentions"),
+          buildQuery("confirmations"),
+          buildQuery("attendance"),
+          supabase.from("events").select("id", { count: "exact", head: true }).not("status", "in", '("Cancelled","Rejected")'),
+          supabase.from("ministries").select("id", { count: "exact", head: true }).eq("is_archived", false)
         ]);
 
-      setMetrics({
-        totalReservations:
-          (baps.data?.length || 0) +
-          (weddings.data?.length || 0) +
-          (intentions.data?.length || 0) +
-          (confs.data?.length || 0),
-        totalAttendance: attendance.data?.length || 0,
-        activeEvents: events.data?.length || 0,
-        totalMinistries: ministriesCount.data?.length || 0,
-      });
+        setMetrics({
+          totalReservations: (baps.count || 0) + (weddings.count || 0) + (intentions.count || 0) + (confs.count || 0),
+          totalAttendance: attendance.count || 0,
+          activeEvents: events.count || 0,
+          totalMinistries: ministriesCount.count || 0,
+        });
+      } catch (error) {
+        console.error("Error fetching metrics:", error);
+      } finally {
+        setMetricsLoading(false);
+      }
+    };
 
-      // Detail queries for schedules and ministries tabs
+    fetchDynamicMetrics();
+  }, [metricTimeframe]);
+
+  const fetchAllReports = async () => {
+    try {
       const [sData, mData, evData] = await Promise.all([
         supabase
           .from("events")
@@ -305,7 +345,6 @@ function AdminReports() {
       if (error) throw error;
       const records = data || [];
 
-      // Separately fetch profiles for all user_ids (avoids FK dependency)
       const userIds = [...new Set(records.filter(r => r.user_id).map(r => r.user_id))];
       let profileMap = {};
       if (userIds.length > 0) {
@@ -367,7 +406,6 @@ function AdminReports() {
 
   const handlePrint = () => window.print();
 
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F6F5ED]">
@@ -380,7 +418,6 @@ function AdminReports() {
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans print:bg-white print:p-0">
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-28 pb-12 print:max-w-full print:px-0 print:pt-0">
 
-        {/* Breadcrumb */}
         <div className="flex gap-4 mb-6 border-b border-gray-200 pb-3 print:hidden">
           <Link to="/admin" className="text-gray-500 hover:text-[#B59E74] font-bold uppercase tracking-widest text-sm transition-colors">Dashboard</Link>
           <span className="text-gray-300">|</span>
@@ -388,7 +425,7 @@ function AdminReports() {
         </div>
 
         {/* PRINT-ONLY OFFICIAL LETTERHEAD */}
-        <div className="hidden print:block text-center mb-12">
+        <div className="hidden print:block text-center mb-10">
           <h1 className="text-3xl font-serif font-bold text-black uppercase tracking-[0.2em]">
             San Pedro Bautista Church
           </h1>
@@ -396,15 +433,26 @@ function AdminReports() {
             Official Parish Administrative Report
           </p>
           <div className="w-full h-1 bg-black my-4"></div>
-          <div className="flex justify-between text-xs text-gray-500 italic mt-4">
-            <span>
-              Report Type:{" "}
-              {activeTab === "services"
-                ? "Service Reservations"
-                : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
-            </span>
-            <span>Date Generated: {new Date().toLocaleString()}</span>
+          
+          <div className="flex justify-between items-end text-sm text-gray-800 mt-6">
+            <div className="text-left space-y-1.5">
+              <p>
+                <span className="font-bold text-gray-500 uppercase tracking-widest text-xs mr-2">Report Type:</span> 
+                {activeTab === "services" ? "Service Reservations" : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+              </p>
+              <p>
+                <span className="font-bold text-gray-500 uppercase tracking-widest text-xs mr-2">Requested by:</span> 
+                <span className="font-serif">{reportGeneratorName}</span>
+              </p>
+            </div>
+            <div className="text-right">
+              <p>
+                <span className="font-bold text-gray-500 uppercase tracking-widest text-xs mr-2">Date Generated:</span> 
+                {new Date().toLocaleString()}
+              </p>
+            </div>
           </div>
+          
           <div className="w-full h-px bg-gray-300 my-6"></div>
         </div>
 
@@ -426,8 +474,31 @@ function AdminReports() {
           </button>
         </div>
 
+        {/* SUMMARY METRIC CARDS HEADER WITH FILTER */}
+        <div className="flex flex-col sm:flex-row justify-between sm:items-end mb-4 print:hidden gap-3">
+          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Dashboard Overview</h2>
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Timeframe:</label>
+            <div className="relative">
+              <select 
+                value={metricTimeframe}
+                onChange={(e) => setMetricTimeframe(e.target.value)}
+                className="appearance-none pl-3 pr-8 py-1.5 rounded-lg border border-gray-200 bg-white text-[11px] font-bold text-[#B59E74] uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-[#B59E74] cursor-pointer"
+              >
+                <option value="all">All Time</option>
+                <option value="30days">Past 30 Days</option>
+                <option value="7days">Past 7 Days</option>
+                <option value="year">This Year</option>
+              </select>
+              <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#B59E74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
         {/* SUMMARY METRIC CARDS */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10 print:hidden">
+        <div className={`grid grid-cols-1 md:grid-cols-4 gap-6 mb-10 print:hidden transition-opacity duration-300 ${metricsLoading ? "opacity-40 pointer-events-none" : "opacity-100"}`}>
           {[
             { label: "Total Reservations", value: metrics.totalReservations, icon: "📅", color: "bg-blue-500" },
             { label: "Total Attendance",   value: metrics.totalAttendance,   icon: "👥", color: "bg-green-500" },
@@ -454,7 +525,7 @@ function AdminReports() {
         <div className="bg-white rounded-[2rem] shadow-xl border border-gray-200 overflow-hidden print:shadow-none print:border-none print:rounded-none">
 
           {/* TAB NAVIGATION — all four tabs */}
-          <div className="flex bg-gray-50 border-b border-gray-100 print:hidden">
+          <div className="flex flex-wrap bg-gray-50 border-b border-gray-100 print:hidden">
             {[
               { id: "services",   label: "Service Reservations" },
               { id: "attendance", label: "Attendance" },
@@ -464,7 +535,7 @@ function AdminReports() {
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
-                className={`flex-1 py-5 text-xs font-bold uppercase tracking-widest transition-all ${
+                className={`flex-1 min-w-[150px] py-5 text-xs font-bold uppercase tracking-widest transition-all ${
                   activeTab === id
                     ? "bg-white text-[#B59E74] border-b-2 border-[#B59E74]"
                     : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
@@ -549,10 +620,10 @@ function AdminReports() {
                   {/* Section heading */}
                   <div className="flex items-center gap-4 mb-4">
                     <h4 className="text-sm font-bold text-[#B59E74] print:text-black uppercase tracking-widest whitespace-nowrap">
-                      {cfg.label}{serviceStatusFilter !== "All" && <span className="ml-2 text-[10px] bg-[#B59E74]/10 text-[#9c8760] px-2 py-0.5 rounded-full normal-case tracking-normal font-bold">{serviceStatusFilter}</span>}
+                      {cfg.label}{serviceStatusFilter !== "All" && <span className="ml-2 text-[10px] bg-[#B59E74]/10 text-[#9c8760] px-2 py-0.5 rounded-full normal-case tracking-normal font-bold print:hidden">{serviceStatusFilter}</span>}
                     </h4>
                     <div className="h-px w-full bg-gray-100 print:bg-black"></div>
-                    <span className="text-xs text-gray-400 whitespace-nowrap">{sorted.length} record{sorted.length !== 1 ? "s" : ""}</span>
+                    <span className="text-xs text-gray-400 whitespace-nowrap print:text-black">{sorted.length} record{sorted.length !== 1 ? "s" : ""}</span>
                   </div>
 
                   {/* Table */}
@@ -655,12 +726,12 @@ function AdminReports() {
 
                   {/* No event selected */}
                   {!selectedAttendanceEvent ? (
-                    <div className="text-center py-20 border-2 border-dashed border-gray-100 rounded-2xl">
+                    <div className="text-center py-20 border-2 border-dashed border-gray-100 rounded-2xl print:hidden">
                       <div className="text-3xl mb-3">👥</div>
                       <p className="text-gray-400 italic font-serif">Select an event above to view attendance records.</p>
                     </div>
                   ) : attendanceLoading ? (
-                    <div className="flex justify-center py-20">
+                    <div className="flex justify-center py-20 print:hidden">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B59E74]"></div>
                     </div>
                   ) : (
@@ -834,10 +905,10 @@ function AdminReports() {
                 {/* Section heading */}
                 <div className="flex items-center gap-4 mb-4">
                   <h4 className="text-sm font-bold text-[#B59E74] print:text-black uppercase tracking-widest whitespace-nowrap">
-                    Schedules{scheduleStatusFilter !== "All" && <span className="ml-2 text-[10px] bg-[#B59E74]/10 text-[#9c8760] px-2 py-0.5 rounded-full normal-case tracking-normal font-bold">{scheduleStatusFilter}</span>}
+                    Schedules{scheduleStatusFilter !== "All" && <span className="ml-2 text-[10px] bg-[#B59E74]/10 text-[#9c8760] px-2 py-0.5 rounded-full normal-case tracking-normal font-bold print:hidden">{scheduleStatusFilter}</span>}
                   </h4>
                   <div className="h-px w-full bg-gray-100 print:bg-black"></div>
-                  <span className="text-xs text-gray-400 whitespace-nowrap">{sorted.length} record{sorted.length !== 1 ? "s" : ""}</span>
+                  <span className="text-xs text-gray-400 whitespace-nowrap print:text-black">{sorted.length} record{sorted.length !== 1 ? "s" : ""}</span>
                 </div>
                 <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse border border-gray-200 print:border-black">

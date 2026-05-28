@@ -67,10 +67,19 @@ export default function AnnouncementsInbox() {
         console.warn("[AnnouncementsInbox] fetch error:", error.message);
         setAnnouncements([]);
       } else {
+        // ✨ FIX: Standardize the user's role to handle the mismatch
+        const currentRole = String(role).toLowerCase();
+        
         const filtered = (data || []).filter((ann) => {
           if (!ann.target_roles || ann.target_roles.length === 0) return true;
-          return ann.target_roles.includes(role);
+          
+          // ✨ FIX: Smart checking that treats "minister" and "ministry" as the exact same role
+          const targetRoles = ann.target_roles.map(r => String(r).toLowerCase());
+          return targetRoles.includes(currentRole) || 
+                 (currentRole === "minister" && targetRoles.includes("ministry")) || 
+                 (currentRole === "ministry" && targetRoles.includes("minister"));
         });
+        
         filtered.sort((a, b) => {
           if (a.is_pinned && !b.is_pinned) return -1;
           if (!a.is_pinned && b.is_pinned) return 1;

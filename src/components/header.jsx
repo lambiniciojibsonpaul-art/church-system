@@ -234,10 +234,8 @@ function useNotifications(userId, role) {
     if (readIds.length === 0) return;
     const { error } = await supabase.from("notifications").delete().in("id", readIds);
     if (error) {
-      // RLS-safe fallback: persist hidden read IDs locally to prevent reappearing on refresh.
       persistDismissed(Array.from(new Set([...dismissedIds, ...readIds])));
     } else {
-      // Keep local storage in sync when DB delete succeeds.
       persistDismissed(dismissedIds.filter((id) => !readIds.includes(id)));
     }
     setNotifications((prev) => prev.filter((n) => !readIds.includes(n.id)));
@@ -313,7 +311,7 @@ function timeAgo(dateStr) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NOTIFICATION LIST (shared between desktop dropdown + mobile drawer)
+// NOTIFICATION LIST
 // ─────────────────────────────────────────────────────────────────────────────
 function NotificationList({ notifications, unreadCount, onNotifClick, onMarkAll, onClearRead }) {
   return (
@@ -387,7 +385,7 @@ function NotificationList({ notifications, unreadCount, onNotifClick, onMarkAll,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DESKTOP NOTIFICATION BELL (dropdown)
+// DESKTOP NOTIFICATION BELL
 // ─────────────────────────────────────────────────────────────────────────────
 function NotificationBell({ isSolid, userId }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -443,7 +441,7 @@ function NotificationBell({ isSolid, userId }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MOBILE NOTIFICATION DRAWER (full-screen slide-up)
+// MOBILE NOTIFICATION DRAWER
 // ─────────────────────────────────────────────────────────────────────────────
 function MobileNotificationDrawer({ isOpen, onClose, userId }) {
   const { role } = useAuth();
@@ -564,14 +562,15 @@ function Header({ forceSolidBg = false }) {
   const [scrolled, setScrolled]           = useState(false);
   const [isLoggingOut, setIsLoggingOut]   = useState(false);
   const [mobileNotifsOpen, setMobileNotifsOpen] = useState(false);
+  const [mobileCalendarOpen, setMobileCalendarOpen] = useState(false); // ✨ NEW: Mobile dropdown state
 
   const { user, role, isAdmin, signOut } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
 
-  const isPriest      = role === "priest";
-  const isStaff       = role === "staff";
-  const isMinister    = role === "minister";
+  const isPriest    = role === "priest";
+  const isStaff     = role === "staff";
+  const isMinister  = role === "minister";
 
   const annUnread = useAnnouncementUnread(user?.id, role);
 
@@ -626,17 +625,28 @@ function Header({ forceSolidBg = false }) {
       <header className={`fixed top-0 w-full z-[100] transition-all duration-300 ${isSolid ? "bg-white shadow-md py-4" : "bg-transparent py-6"}`}>
         <div className="max-w-7xl mx-auto px-6 flex items-center">
 
-          {/* Left: wordmark */}
-          <div className={`flex-1 hidden lg:flex items-center font-serif italic ${textColor} opacity-70`}>
+          {/* Left: wordmark (Clickable Home) */}
+          <Link to="/" className={`flex-1 hidden lg:flex items-center font-serif italic ${textColor} opacity-80 hover:opacity-100 transition-opacity`}>
             Minore Basilica of San Pedro Bautista
-          </div>
+          </Link>
 
           {/* Center: nav */}
           <nav className="hidden lg:flex justify-center whitespace-nowrap shrink-0">
             {(isAdmin || isPriest || isStaff || isMinister) ? (
               <div className="flex gap-6 xl:gap-8 items-center">
-                <Link to="/events"    className={navLinkClass}>Calendar</Link>
-                <Link to="/services"  className={navLinkClass}>Services</Link>
+                {/* ✨ Desktop Dropdown for Staff/Admin */}
+                <div className="relative group">
+                  <button className={`${navLinkClass} flex items-center gap-1.5`}>
+                    Calendar <span className="text-[8px]">▼</span>
+                  </button>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 pt-4 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                    <div className="bg-white text-gray-800 shadow-xl border border-gray-100 rounded-xl py-2 flex flex-col min-w-[180px]">
+                      <Link to="/events" className="px-5 py-3 text-[11px] font-bold uppercase tracking-widest hover:bg-[#F6F5ED] hover:text-[#B59E74] transition-colors text-left">Parish Events</Link>
+                      <Link to="/services" className="px-5 py-3 text-[11px] font-bold uppercase tracking-widest hover:bg-[#F6F5ED] hover:text-[#B59E74] transition-colors text-left">Request Services</Link>
+                    </div>
+                  </div>
+                </div>
+
                 <Link to="/ministries" className={navLinkClass}>Ministries</Link>
                 {user && !isAdmin && (
                   <Link to="/announcements" className={`${navLinkClass} relative`}>
@@ -649,12 +659,24 @@ function Header({ forceSolidBg = false }) {
               </div>
             ) : (
               <div className="flex gap-5 xl:gap-7 items-center">
-                <Link to="/"          className={serifLinkClass}>Home</Link>
-                <Link to="/about"     className={serifLinkClass}>About Us</Link>
-                <Link to="/services"  className={serifLinkClass}>Services</Link>
-                <Link to="/events"    className={serifLinkClass}>Calendar</Link>
+                {/* ✨ Removed Home Link here */}
+                <Link to="/about" className={serifLinkClass}>About Us</Link>
+                
+                {/* ✨ Desktop Dropdown for Parishioner/Guest */}
+                <div className="relative group">
+                  <button className={`${serifLinkClass} flex items-center gap-1.5`}>
+                    Calendar <span className="text-[10px] not-italic font-sans">▼</span>
+                  </button>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 pt-4 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                    <div className="bg-white text-gray-800 shadow-xl border border-gray-100 rounded-xl py-2 flex flex-col min-w-[180px]">
+                      <Link to="/events" className="px-5 py-3 text-[11px] font-bold uppercase tracking-widest hover:bg-[#F6F5ED] hover:text-[#B59E74] font-sans not-italic transition-colors text-left">Events Calendar</Link>
+                      <Link to="/services" className="px-5 py-3 text-[11px] font-bold uppercase tracking-widest hover:bg-[#F6F5ED] hover:text-[#B59E74] font-sans not-italic transition-colors text-left">Parish Services</Link>
+                    </div>
+                  </div>
+                </div>
+
                 <Link to="/ministries" className={serifLinkClass}>Ministries</Link>
-                <Link to="/give"      className={serifLinkClass}>Give</Link>
+                <Link to="/give"       className={serifLinkClass}>Give</Link>
                 {user && (
                   <Link to="/announcements" className={`${serifLinkClass} relative`}>
                     Announcements
@@ -733,12 +755,22 @@ function Header({ forceSolidBg = false }) {
             <ul className={`mt-2 flex flex-col gap-4 p-6 rounded-2xl shadow-xl ${isSolid ? "bg-gray-50" : "bg-black/90 text-white"}`}>
               {(isAdmin || isPriest || isStaff || isMinister) ? (
                 <>
-                  <li><Link to="/events"     onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Calendar</Link></li>
-                  <li><Link to="/services"   onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Services</Link></li>
-                  <li><Link to="/ministries" onClick={() => setIsOpen(false)} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Ministries</Link></li>
+                  {/* ✨ Mobile Dropdown for Staff/Admin */}
+                  <li>
+                    <button onClick={() => setMobileCalendarOpen(!mobileCalendarOpen)} className="w-full flex items-center justify-between text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">
+                      Calendar <span>{mobileCalendarOpen ? "▲" : "▼"}</span>
+                    </button>
+                    {mobileCalendarOpen && (
+                      <div className="flex flex-col gap-3 mt-3 pl-4 border-l-2 border-[#B59E74]/30">
+                        <Link to="/events" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }} className="text-[10px] font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Events Calendar</Link>
+                        <Link to="/services" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }} className="text-[10px] font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Request Services</Link>
+                      </div>
+                    )}
+                  </li>
+                  <li><Link to="/ministries" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }} className="text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Ministries</Link></li>
                   {user && !isAdmin && (
                     <li>
-                      <Link to="/announcements" onClick={() => setIsOpen(false)} className="relative inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">
+                      <Link to="/announcements" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }} className="relative inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">
                         Announcements
                         {annUnread > 0 && <span className="h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />}
                       </Link>
@@ -747,14 +779,23 @@ function Header({ forceSolidBg = false }) {
                 </>
               ) : (
                 <>
-                  <li><Link to="/"           onClick={() => setIsOpen(false)}>Home</Link></li>
-                  <li><Link to="/about"      onClick={() => setIsOpen(false)}>About Us</Link></li>
-                  <li><Link to="/services"   onClick={() => setIsOpen(false)}>Services</Link></li>
-                  <li><Link to="/events"     onClick={() => setIsOpen(false)}>Calendar</Link></li>
-                  <li><Link to="/ministries" onClick={() => setIsOpen(false)}>Ministries</Link></li>
+                  {/* ✨ Mobile Dropdown for Parishioner/Guest */}
+                  <li><Link to="/about"      onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }}>About Us</Link></li>
+                  <li>
+                    <button onClick={() => setMobileCalendarOpen(!mobileCalendarOpen)} className="w-full flex items-center justify-between text-xs font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">
+                      Calendar <span>{mobileCalendarOpen ? "▲" : "▼"}</span>
+                    </button>
+                    {mobileCalendarOpen && (
+                      <div className="flex flex-col gap-3 mt-3 pl-4 border-l-2 border-[#B59E74]/30">
+                        <Link to="/events" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }} className="text-[10px] font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Events Calendar</Link>
+                        <Link to="/services" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }} className="text-[10px] font-bold uppercase tracking-widest hover:text-[#B59E74] transition-colors">Parish Services</Link>
+                      </div>
+                    )}
+                  </li>
+                  <li><Link to="/ministries" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }}>Ministries</Link></li>
                   {user && (
                     <li>
-                      <Link to="/announcements" onClick={() => setIsOpen(false)} className="relative inline-flex items-center gap-1.5">
+                      <Link to="/announcements" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }} className="relative inline-flex items-center gap-1.5">
                         Announcements
                         {annUnread > 0 && <span className="h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />}
                       </Link>
@@ -781,7 +822,7 @@ function Header({ forceSolidBg = false }) {
                   {/* Mobile Notification Button */}
                   <li>
                     <button 
-                      onClick={() => { setIsOpen(false); setMobileNotifsOpen(true); }} 
+                      onClick={() => { setIsOpen(false); setMobileNotifsOpen(true); setMobileCalendarOpen(false); }} 
                       className="w-full flex items-center justify-center gap-2 bg-[#B59E74] text-white py-3 rounded-xl font-bold tracking-widest uppercase text-xs"
                     >
                       <span>🔔</span> Notifications
@@ -789,7 +830,7 @@ function Header({ forceSolidBg = false }) {
                   </li>
 
                   <li>
-                    <Link to="/profile" onClick={() => setIsOpen(false)} className="block w-full text-center bg-white border-2 border-[#B59E74] text-[#B59E74] py-3 rounded-xl font-bold tracking-widest uppercase text-xs">
+                    <Link to="/profile" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }} className="block w-full text-center bg-white border-2 border-[#B59E74] text-[#B59E74] py-3 rounded-xl font-bold tracking-widest uppercase text-xs">
                       My Profile
                     </Link>
                   </li>
@@ -798,21 +839,21 @@ function Header({ forceSolidBg = false }) {
 
                   {isAdmin && (
                     <li>
-                      <Link to="/admin" onClick={() => setIsOpen(false)} className="block w-full text-center bg-gray-800 text-white py-3 rounded-xl font-bold tracking-widest uppercase">
+                      <Link to="/admin" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }} className="block w-full text-center bg-gray-800 text-white py-3 rounded-xl font-bold tracking-widest uppercase">
                         Admin Dashboard
                       </Link>
                     </li>
                   )}
                   {isPriest && (
                     <li>
-                      <Link to="/priest-dashboard" onClick={() => setIsOpen(false)} className="block w-full text-center bg-[#B59E74] text-white py-3 rounded-xl font-bold tracking-widest uppercase">
+                      <Link to="/priest-dashboard" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }} className="block w-full text-center bg-[#B59E74] text-white py-3 rounded-xl font-bold tracking-widest uppercase">
                         Priest Dashboard
                       </Link>
                     </li>
                   )}
                   {isStaff && (
                     <li>
-                      <Link to="/staff-dashboard" onClick={() => setIsOpen(false)} className="block w-full text-center bg-gray-800 text-white py-3 rounded-xl font-bold tracking-widest uppercase">
+                      <Link to="/staff-dashboard" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }} className="block w-full text-center bg-gray-800 text-white py-3 rounded-xl font-bold tracking-widest uppercase">
                         Staff Portal
                       </Link>
                     </li>
@@ -828,7 +869,7 @@ function Header({ forceSolidBg = false }) {
                 </>
               ) : (
                 <li>
-                  <Link to="/login" onClick={() => setIsOpen(false)} className="block w-full text-center bg-[#B59E74] text-white py-3 rounded-xl font-bold tracking-widest uppercase">
+                  <Link to="/login" onClick={() => { setIsOpen(false); setMobileCalendarOpen(false); }} className="block w-full text-center bg-[#B59E74] text-white py-3 rounded-xl font-bold tracking-widest uppercase">
                     Login
                   </Link>
                 </li>

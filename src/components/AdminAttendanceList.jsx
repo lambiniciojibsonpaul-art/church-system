@@ -92,6 +92,9 @@ function AdminAttendanceList() {
   const [attendance, setAttendance] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // ✨ NEW: State to control sorting
+  const [activeSort, setActiveSort] = useState("time_desc");
+
   useEffect(() => {
     fetchEvents();
   }, []);
@@ -125,6 +128,31 @@ function AdminAttendanceList() {
     }
     setLoading(false);
   };
+
+  // ✨ NEW: Function to safely extract a readable name for sorting
+  const getDisplayName = (row) => {
+    if (row.is_guest && row.guest_name) return row.guest_name.toLowerCase();
+    if (row.full_name) return row.full_name.toLowerCase();
+    if (row.first_name || row.last_name) return `${row.first_name || ''} ${row.last_name || ''}`.trim().toLowerCase();
+    return (row.email?.split('@')[0] || "unknown").toLowerCase();
+  };
+
+  // ✨ NEW: Sorted attendance list
+  const sortedAttendance = [...attendance].sort((a, b) => {
+    if (activeSort === "time_desc") {
+      return new Date(b.check_in_time) - new Date(a.check_in_time);
+    }
+    if (activeSort === "time_asc") {
+      return new Date(a.check_in_time) - new Date(b.check_in_time);
+    }
+    if (activeSort === "name_asc") {
+      return getDisplayName(a).localeCompare(getDisplayName(b));
+    }
+    if (activeSort === "name_desc") {
+      return getDisplayName(b).localeCompare(getDisplayName(a));
+    }
+    return 0;
+  });
 
   if (loading && !events.length) return (
     <div className="min-h-screen flex items-center justify-center bg-[#F6F5ED]">
@@ -176,71 +204,96 @@ function AdminAttendanceList() {
                 Please select an event to view attendees.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="text-[10px] text-gray-400 uppercase tracking-widest font-bold border-b border-gray-100">
-                      <th className="p-4">Name</th>
-                      <th className="p-4">Email</th>
-                      <th className="p-4">Contact</th>
-                      <th className="p-4">Role</th>
-                      <th className="p-4 text-right">Check-in Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {attendance.length === 0 ? (
-                      <tr>
-                        <td colSpan="5" className="p-10 text-center text-gray-400 italic font-serif">
-                          No one has checked in yet.
-                        </td>
+              <div className="animate-fade-in">
+                {/* ✨ NEW: Sort Dropdown Container */}
+                <div className="flex justify-end mb-4">
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Sort By:</label>
+                    <div className="relative">
+                      <select
+                        value={activeSort}
+                        onChange={(e) => setActiveSort(e.target.value)}
+                        className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm font-bold text-gray-700 cursor-pointer shadow-sm transition-colors"
+                      >
+                        <option value="time_desc">Check-in Time (Latest)</option>
+                        <option value="time_asc">Check-in Time (Earliest)</option>
+                        <option value="name_asc">Name (A-Z)</option>
+                        <option value="name_desc">Name (Z-A)</option>
+                      </select>
+                      <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="text-[10px] text-gray-400 uppercase tracking-widest font-bold border-b border-gray-100">
+                        <th className="p-4">Name</th>
+                        <th className="p-4">Email</th>
+                        <th className="p-4">Contact</th>
+                        <th className="p-4">Role</th>
+                        <th className="p-4 text-right">Check-in Time</th>
                       </tr>
-                    ) : (
-                      attendance.map((row, idx) => {
-                        const isGuest = row.is_guest === true;
-                        const displayName = isGuest && row.guest_name
-                          ? row.guest_name
-                          : row.full_name
-                            ? row.full_name
-                            : (row.first_name || row.last_name)
-                              ? `${row.first_name || ''} ${row.last_name || ''}`.trim()
-                              : row.email?.split('@')[0] || "Unknown";
+                    </thead>
+                    <tbody>
+                      {sortedAttendance.length === 0 ? (
+                        <tr>
+                          <td colSpan="5" className="p-10 text-center text-gray-400 italic font-serif">
+                            No one has checked in yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        sortedAttendance.map((row, idx) => {
+                          const isGuest = row.is_guest === true;
+                          const displayName = isGuest && row.guest_name
+                            ? row.guest_name
+                            : row.full_name
+                              ? row.full_name
+                              : (row.first_name || row.last_name)
+                                ? `${row.first_name || ''} ${row.last_name || ''}`.trim()
+                                : row.email?.split('@')[0] || "Unknown";
 
-                        const roleLabel = isGuest ? "guest" : (row.role || "parishioner");
-                        const roleBadgeClass = {
-                          admin:       "bg-emerald-100 text-emerald-700",
-                          superadmin:  "bg-emerald-100 text-emerald-700",
-                          priest:      "bg-amber-100 text-amber-700",
-                          staff:       "bg-sky-100 text-sky-700",
-                          ministry:    "bg-purple-100 text-purple-700",
-                          parishioner: "bg-rose-100 text-rose-600",
-                          guest:       "bg-gray-100 text-gray-500",
-                        }[roleLabel] || "bg-gray-100 text-gray-500";
+                          const roleLabel = isGuest ? "guest" : (row.role || "parishioner");
+                          const roleBadgeClass = {
+                            admin:       "bg-emerald-100 text-emerald-700",
+                            superadmin:  "bg-emerald-100 text-emerald-700",
+                            priest:      "bg-amber-100 text-amber-700",
+                            staff:       "bg-sky-100 text-sky-700",
+                            ministry:    "bg-purple-100 text-purple-700",
+                            parishioner: "bg-rose-100 text-rose-600",
+                            guest:       "bg-gray-100 text-gray-500",
+                          }[roleLabel] || "bg-gray-100 text-gray-500";
 
-                        return (
-                          <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                            <td className="p-4 font-medium text-gray-800 capitalize">
-                              {displayName}
-                            </td>
-                            <td className="p-4 text-sm text-gray-500 lowercase">
-                              {isGuest ? <span className="text-gray-300 italic">—</span> : row.email}
-                            </td>
-                            <td className="p-4 text-sm text-gray-500">
-                              {isGuest ? (row.guest_contact || "—") : (row.contact_number || "—")}
-                            </td>
-                            <td className="p-4">
-                              <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${roleBadgeClass}`}>
-                                {roleLabel}
-                              </span>
-                            </td>
-                            <td className="p-4 text-right text-sm text-gray-500">
-                              {new Date(row.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                          return (
+                            <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                              <td className="p-4 font-medium text-gray-800 capitalize">
+                                {displayName}
+                              </td>
+                              <td className="p-4 text-sm text-gray-500 lowercase">
+                                {isGuest ? <span className="text-gray-300 italic">—</span> : row.email}
+                              </td>
+                              <td className="p-4 text-sm text-gray-500">
+                                {isGuest ? (row.guest_contact || "—") : (row.contact_number || "—")}
+                              </td>
+                              <td className="p-4">
+                                <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${roleBadgeClass}`}>
+                                  {roleLabel}
+                                </span>
+                              </td>
+                              <td className="p-4 text-right text-sm text-gray-500">
+                                {new Date(row.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
