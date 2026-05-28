@@ -3,6 +3,7 @@ import { restSelect, restInsert } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
 import { ministryNames } from "../data/ministries";
 import church1 from "../assets/Images/church1.jpg";
+import { detectEventConflicts, formatConflictWarning } from "../utils/timeConflict";
 
 const EVENTS_CACHE_KEY = "eventsPage:events";
 const EVENTS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -188,6 +189,26 @@ function EventsPage() {
     setSubmitting(true);
 
     try {
+      const locationKey = formData.isInside
+        ? `inside:${formData.setting || ""}`
+        : `outside:,`;
+      const conflicts = detectEventConflicts({
+        events,
+        startDate: formData.eventStartDate,
+        endDate: formData.eventEndDate || formData.eventStartDate,
+        startTime: formData.eventTime,
+        endTime: null,
+        priestName: formData.ministry || null,
+        locationKey,
+      });
+      if (conflicts.length > 0) {
+        const proceed = window.confirm(`${formatConflictWarning(conflicts, "events")}\n\nSubmit request anyway?`);
+        if (!proceed) {
+          setSubmitting(false);
+          return;
+        }
+      }
+
       const finalDescription = isCollaborating && formData.collaborators.length > 0
         ? `${formData.description}\n\n🤝 In collaboration with: ${formData.collaborators.join(", ")}`
         : formData.description;

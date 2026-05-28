@@ -6,6 +6,7 @@ import { supabase } from "../../supabaseClient";
 import DocumentUploader from "../DocumentUploader"; // ✨ Your new component
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, useProfileAutofill, applyFieldFilter } from "./formHelpers";
+import { detectEventConflicts, fetchActiveEventsForConflict, formatConflictWarning } from "../../utils/timeConflict";
 
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -180,6 +181,23 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
     if (!formData.declaration_consent) {
       setError("Please confirm the declaration before submitting.");
       return;
+    }
+    try {
+      const allEvents = await fetchActiveEventsForConflict();
+      const conflicts = detectEventConflicts({
+        events: allEvents,
+        startDate: formData.preferredDate,
+        endDate: formData.preferredDate,
+        startTime: formData.preferredTime,
+        endTime: formData.preferredEndTime || null,
+        priestName: formData.preferredPriest || null,
+      });
+      if (conflicts.length > 0) {
+        const proceed = window.confirm(`${formatConflictWarning(conflicts, "events")}\n\nSubmit request anyway?`);
+        if (!proceed) return;
+      }
+    } catch (err) {
+      console.warn("Conflict precheck failed:", err?.message || err);
     }
     setLoading(true);
 

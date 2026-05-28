@@ -3,10 +3,11 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { restSelect, restUpdate, restInsert, restDelete } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
-import { sendApprovalEmail } from "../emailNotifications";
 import { QRCodeCanvas } from "qrcode.react";
 import jsPDF from "jspdf";
 import UserRepository from "./UserRepository";
+import { detectEventConflicts, fetchActiveEventsForConflict, formatConflictWarning } from "../utils/timeConflict";
+import { dateRangesOverlap, timeRangesOverlap } from "../utils/timeConflict";
 
 function formatDate(d) {
   if (!d) return "";
@@ -254,6 +255,9 @@ function StaffDashboard() {
   const [acceptingRequest, setAcceptingRequest] = useState(null);
   const [assignedPriest, setAssignedPriest] = useState("");
   const [acceptSubmitting, setAcceptSubmitting] = useState(false);
+  const [acceptConflictWarnings, setAcceptConflictWarnings] = useState([]);
+  const [acceptConflictBypass, setAcceptConflictBypass] = useState(false);
+  const [acceptConflictDetected, setAcceptConflictDetected] = useState(false);
 
   // Reject modal
   const [rejectingRequest, setRejectingRequest] = useState(null);
@@ -272,6 +276,12 @@ function StaffDashboard() {
     fetchApprovedItems();
     fetchPriests();
   }, []);
+
+  useEffect(() => {
+    setAcceptConflictWarnings([]);
+    setAcceptConflictBypass(false);
+    setAcceptConflictDetected(false);
+  }, [acceptingRequest?.id]);
 
   // Reset filters when switching tabs
   useEffect(() => {
@@ -401,29 +411,124 @@ function StaffDashboard() {
   // ── Approval handlers ─────────────────────────────────────────────────────
   const resolveTabFor    = (req) => req._tab || activeServiceTab;
   const resolveConfigFor = (req) => req._config || TAB_CONFIG[resolveTabFor(req)];
+  const getRequestSchedule = (row, tableName) => {
+    if (!row) return null;
+    if (tableName === "baptisms") {
+      return { startDate: row.preferred_date, endDate: row.preferred_date, startTime: row.preferred_time, endTime: row.end_time || null, facility: null };
+    }
+    if (tableName === "holy_communions") {
+      return { startDate: row.date_of_communion, endDate: row.date_of_communion, startTime: row.time_of_communion, endTime: row.end_time || null, facility: null };
+    }
+    if (tableName === "confirmations") {
+      return { startDate: row.date_of_confirmation, endDate: row.date_of_confirmation, startTime: row.time_of_confirmation, endTime: row.end_time || null, facility: null };
+    }
+    if (tableName === "weddings") {
+      return { startDate: row.wedding_date, endDate: row.wedding_date, startTime: row.wedding_time, endTime: row.end_time || null, facility: null };
+    }
+    if (tableName === "sacraments_liturgical") {
+      return { startDate: row.request_date, endDate: row.request_date, startTime: row.request_time, endTime: row.end_time || null, facility: null };
+    }
+    if (tableName === "facilities_bookings") {
+      return { startDate: row.start_date, endDate: row.end_date || row.start_date, startTime: row.start_time, endTime: row.end_time || null, facility: row.facility || null };
+    }
+    return null;
+  };
+
+  const collectRequestConflictsForStaff = async (targetReq, targetTab, targetCfg) => {
+    const targetTable = targetCfg.table;
+    const targetSchedule = getRequestSchedule(targetReq, targetTable);
+    if (!targetSchedule || !targetSchedule.startDate || !targetSchedule.startTime) return [];
+    const isTargetFacilities = targetTable === "facilities_bookings";
+
+    const liveRequestsByTab = {};
+    await Promise.all(
+      Object.entries(TAB_CONFIG).map(async ([tabName, cfg]) => {
+        try {
+          const { data } = await restSelect(cfg.table, { order: "created_at.desc", timeoutMs: 10000 });
+          liveRequestsByTab[tabName] = Array.isArray(data) ? data : [];
+        } catch {
+          liveRequestsByTab[tabName] = [];
+        }
+      })
+    );
+
+    const out = [];
+    Object.entries(liveRequestsByTab).forEach(([tabName, rows]) => {
+      const cfg = TAB_CONFIG[tabName];
+      if (!cfg?.table || !Array.isArray(rows)) return;
+      const rowTable = cfg.table;
+      const isRowFacilities = rowTable === "facilities_bookings";
+
+      if (isTargetFacilities && !isRowFacilities) return;
+      if (!isTargetFacilities && isRowFacilities) return;
+
+      rows.forEach((r) => {
+        if (!r || r.id == null) return;
+        if (rowTable === targetTable && r.id === targetReq.id) return;
+        if (r.status === "Rejected" || r.status === "Cancelled") return;
+
+        const s = getRequestSchedule(r, rowTable);
+        if (!s || !s.startDate || !s.startTime) return;
+        if (!dateRangesOverlap(targetSchedule.startDate, targetSchedule.endDate, s.startDate, s.endDate)) return;
+        if (!timeRangesOverlap(targetSchedule.startTime, targetSchedule.endTime, s.startTime, s.endTime)) return;
+
+        if (isTargetFacilities) {
+          if (!targetSchedule.facility || !s.facility) return;
+          if (String(targetSchedule.facility) !== String(s.facility)) return;
+        }
+
+        out.push({
+          id: r.id,
+          title: cfg.title(r) || tabName,
+          event_date: s.startDate,
+          event_time: s.startTime,
+          source_table: rowTable,
+        });
+      });
+    });
+    return out;
+  };
+  const requestSchedule = (req) => ({
+    startDate: req.preferred_date || req.wedding_date || req.date_of_confirmation || req.date_of_communion || req.request_date || req.start_date,
+    endDate: req.end_date || req.event_end_date || req.preferred_date || req.wedding_date || req.date_of_confirmation || req.date_of_communion || req.request_date || req.start_date,
+    startTime: req.preferred_time || req.wedding_time || req.time_of_confirmation || req.time_of_communion || req.request_time || req.start_time,
+    endTime: req.end_time || null,
+    priestName: req.preferred_priest || assignedPriest || null,
+    locationKey: req.facility ? `inside:${req.facility}` : null,
+  });
 
   const confirmAccept = async () => {
     if (!acceptingRequest) return;
     const reqTab    = resolveTabFor(acceptingRequest);
     const reqConfig = resolveConfigFor(acceptingRequest);
-    if (reqConfig.isSacrament && !assignedPriest) return alert("Please assign a priest before approving.");
     setAcceptSubmitting(true);
+    try {
+      const requestConflicts = await collectRequestConflictsForStaff(acceptingRequest, reqTab, reqConfig);
+      const allEvents = await fetchActiveEventsForConflict();
+      const sched = requestSchedule(acceptingRequest);
+      const eventConflicts = detectEventConflicts({
+        events: allEvents,
+        ...sched,
+      });
+      const conflicts = [...requestConflicts, ...eventConflicts];
+      if (conflicts.length > 0 && !acceptConflictBypass) {
+        setAcceptConflictDetected(true);
+        setAcceptConflictWarnings(conflicts);
+        setAcceptSubmitting(false);
+        return;
+      }
+    } catch (e) {
+      console.warn("Conflict precheck failed:", e?.message || e);
+    }
+    if (reqConfig.isSacrament && !assignedPriest) {
+      setAcceptSubmitting(false);
+      return alert("Please assign a priest before final approval.");
+    }
 
     const approvalPayload = { status: "Staff Approved" };
     if (reqConfig.isSacrament) approvalPayload.preferred_priest = assignedPriest || null;
     const { error: updateErr } = await restUpdate(reqConfig.table, { id: acceptingRequest.id }, approvalPayload);
     if (updateErr) { setAcceptSubmitting(false); return alert("Error approving request: " + updateErr.message); }
-
-    if (acceptingRequest.submitter_email) {
-      sendApprovalEmail({
-        to: acceptingRequest.submitter_email,
-        serviceName: reqTab.toLowerCase(),
-        eventDate: formatDate(acceptingRequest.preferred_date || acceptingRequest.wedding_date || acceptingRequest.date_of_confirmation || acceptingRequest.date_of_communion || acceptingRequest.start_date || acceptingRequest.request_date),
-        eventTime: acceptingRequest.preferred_time || acceptingRequest.wedding_time || acceptingRequest.time_of_confirmation || acceptingRequest.time_of_communion || acceptingRequest.start_time || "",
-        location: acceptingRequest.location || "Parish",
-        priestName: assignedPriest,
-      });
-    }
 
     const requestTitle = reqConfig.title(acceptingRequest);
 
@@ -481,6 +586,9 @@ function StaffDashboard() {
     fetchApprovedItems();
     setAcceptingRequest(null);
     setAssignedPriest("");
+    setAcceptConflictWarnings([]);
+    setAcceptConflictBypass(false);
+    setAcceptConflictDetected(false);
     setAcceptSubmitting(false);
   };
 
@@ -644,19 +752,26 @@ function StaffDashboard() {
     ? TAB_NAMES.flatMap(t => (requests[t] || []).map(r => ({ ...r, _tab: t, _config: TAB_CONFIG[t] })))
     : (requests[activeServiceTab] || []).map(r => ({ ...r, _tab: activeServiceTab, _config: TAB_CONFIG[activeServiceTab] }));
 
+  const awaitingStatuses = new Set(["Pending", "Staff Approved", "Priest Rejected", "Priest Approved"]);
+  const getReqSubmittedTs = (r) => {
+    const t = Date.parse(r?.created_at || "");
+    return Number.isNaN(t) ? 0 : t;
+  };
+  const getReqScheduleTs = (r) => {
+    const d = r?.preferred_date || r?.wedding_date || r?.date_of_confirmation || r?.date_of_communion || r?.request_date || r?.start_date || r?.display_date;
+    const t = r?.preferred_time || r?.wedding_time || r?.time_of_confirmation || r?.time_of_communion || r?.request_time || r?.start_time || "00:00";
+    const ts = Date.parse(`${String(d || "").slice(0, 10)}T${String(t || "00:00").slice(0, 5)}:00`);
+    return Number.isNaN(ts) ? 0 : ts;
+  };
+
   const pendingData = (staffSubTab === "All"
-    ? allServiceData
+    ? allServiceData.filter(r => awaitingStatuses.has(r.status))
     : allServiceData.filter(r => r.status === staffSubTab)
   ).sort((a, b) => {
-    const isMassA = a._tab === "Mass Intentions";
-    const isMassB = b._tab === "Mass Intentions";
-    if (isMassA && !isMassB) return -1;
-    if (!isMassA && isMassB) return 1;
-    if (isMassA && isMassB) return new Date(a.display_date || a.created_at) - new Date(b.display_date || b.created_at);
-    if (staffSortBy === "submitted_asc")  return new Date(a.created_at) - new Date(b.created_at);
-    if (staffSortBy === "submitted_desc") return new Date(b.created_at) - new Date(a.created_at);
-    if (staffSortBy === "date_desc")      return new Date(b.display_date || b.created_at) - new Date(a.display_date || a.created_at);
-    if (staffSortBy === "date_asc")       return new Date(a.display_date || a.created_at) - new Date(b.display_date || b.created_at);
+    if (staffSortBy === "submitted_asc")  return getReqSubmittedTs(a) - getReqSubmittedTs(b);
+    if (staffSortBy === "submitted_desc") return getReqSubmittedTs(b) - getReqSubmittedTs(a);
+    if (staffSortBy === "date_desc")      return getReqScheduleTs(b) - getReqScheduleTs(a);
+    if (staffSortBy === "date_asc")       return getReqScheduleTs(a) - getReqScheduleTs(b);
     return 0;
   });
 
@@ -1157,7 +1272,39 @@ function StaffDashboard() {
               <p className="text-sm text-green-700 italic">For {resolveConfigFor(acceptingRequest).title(acceptingRequest)}</p>
             </div>
             <div className="p-8 space-y-6">
-              {resolveConfigFor(acceptingRequest).isSacrament && (
+              {acceptConflictWarnings.length > 0 && (
+                <div className="w-full rounded-xl border border-amber-300 bg-amber-50 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700">Time Conflict Detected</p>
+                  <p className="text-xs text-amber-700 mt-1">{formatConflictWarning(acceptConflictWarnings, "events")}</p>
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRejectingRequest(acceptingRequest);
+                          setAcceptingRequest(null);
+                          setAcceptConflictWarnings([]);
+                          setAcceptConflictBypass(false);
+                          setAcceptConflictDetected(false);
+                        }}
+                        className="px-3 py-2 rounded-lg border border-amber-300 text-amber-800 text-[10px] font-bold uppercase tracking-widest hover:bg-amber-100"
+                      >
+                        Decline
+                      </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAcceptConflictBypass(true);
+                        setAcceptConflictWarnings([]);
+                      }}
+                      className="px-3 py-2 rounded-lg bg-amber-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-amber-700"
+                    >
+                      Approve Anyway
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {resolveConfigFor(acceptingRequest).isSacrament && (!acceptConflictDetected || acceptConflictBypass) && (
                 <div className="flex flex-col gap-2">
                   {acceptingRequest.preferred_priest && (
                     <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700">
@@ -1181,10 +1328,12 @@ function StaffDashboard() {
                 }
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setAcceptingRequest(null)} disabled={acceptSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Cancel</button>
-                <button onClick={confirmAccept} disabled={acceptSubmitting || (resolveConfigFor(acceptingRequest).isSacrament && !assignedPriest)} className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {acceptSubmitting ? "Approving…" : "Approve"}
-                </button>
+                <button onClick={() => { setAcceptingRequest(null); setAcceptConflictWarnings([]); setAcceptConflictBypass(false); setAcceptConflictDetected(false); }} disabled={acceptSubmitting} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50">Cancel</button>
+                {acceptConflictWarnings.length === 0 && (
+                  <button onClick={confirmAccept} disabled={acceptSubmitting} className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {acceptSubmitting ? "Approving…" : "Approve"}
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -365,7 +365,5 @@ export async function submitRequest({
     if (rpcError) console.error("notify_staff error:", rpcError.message);
   }
 
-  if (sendRequestEmail && user?.email) {
-    sendRequestEmail({ to: user.email, serviceName, summary });
-  }
+  // Email notifications are intentionally disabled; in-app notifications are used instead.
 }

@@ -15,6 +15,16 @@ function formatDisplayTime(value) {
   return String(value);
 }
 
+function getRequestTimeValue(req) {
+  return req?.preferred_time
+    || req?.time_of_communion
+    || req?.time_of_confirmation
+    || req?.request_time
+    || req?.wedding_time
+    || req?.start_time
+    || "";
+}
+
 function PriestDashboard() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("pending"); // "pending" | "schedule"
@@ -214,7 +224,6 @@ function PriestDashboard() {
     if (newStatus === "Priest Rejected") {
       updatePayload.rejection_remarks = rejectReason || "Schedule conflict.";
     }
-
     try {
       const { error } = await supabase
         .from(tableName)
@@ -449,7 +458,7 @@ function PriestDashboard() {
                     const isPending = req.status === "Pending" || !req.status;
                     const isCompleted = req.status === "Completed";
                     const isToday = String(req.display_date || "").split("T")[0] === todayKey;
-                    const timeVal = req.time_of_communion || req.time_of_confirmation || req.request_time || req.wedding_time || "—";
+                    const timeVal = getRequestTimeValue(req) || "—";
                     return (
                       <tr key={`${req.request_type}-${req.id}`} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className="p-3">
@@ -537,7 +546,7 @@ function PriestDashboard() {
                   </div>
                   <div className="flex items-center gap-3 text-gray-600 text-sm">
                     <span className="text-lg">⏰</span>
-                    <span>{req.time_of_communion || req.time_of_confirmation || req.request_time || req.wedding_time || "Time TBD"}</span>
+                    <span>{getRequestTimeValue(req) || "Time TBD"}</span>
                   </div>
                 </div>
 

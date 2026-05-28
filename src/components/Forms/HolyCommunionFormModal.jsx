@@ -5,6 +5,7 @@ import { sendRequestEmail } from "../../emailNotifications";
 import DocumentUploader from "../DocumentUploader";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter } from "./formHelpers";
+import { detectEventConflicts, fetchActiveEventsForConflict, formatConflictWarning } from "../../utils/timeConflict";
 
 // Helper function to generate time slots between 8:30 AM and 5:30 PM
 function generateTimeSlots() {
@@ -121,6 +122,23 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
     if (!formData.declaration_consent) {
       setError("Please confirm the declaration before submitting.");
       return;
+    }
+    try {
+      const allEvents = await fetchActiveEventsForConflict();
+      const conflicts = detectEventConflicts({
+        events: allEvents,
+        startDate: formData.date_of_communion,
+        endDate: formData.date_of_communion,
+        startTime: formData.time_of_communion,
+        endTime: formData.end_time || null,
+        priestName: formData.preferred_priest || null,
+      });
+      if (conflicts.length > 0) {
+        const proceed = window.confirm(`${formatConflictWarning(conflicts, "events")}\n\nSubmit request anyway?`);
+        if (!proceed) return;
+      }
+    } catch (err) {
+      console.warn("Conflict precheck failed:", err?.message || err);
     }
     setLoading(true);
     try {

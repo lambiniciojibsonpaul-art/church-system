@@ -3,7 +3,6 @@ import { QRCodeCanvas } from "qrcode.react";
 import { useNavigate, useLocation, Link } from "react-router-dom"; // ✨ added useLocation
 import { restSelect, restUpdate, restInsert, restDelete } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
-import { sendApprovalEmail } from "../emailNotifications";
 import { supabase } from "../supabaseClient";
 
 const QUERY_TIMEOUT_MS = 12000;
@@ -588,7 +587,6 @@ function AdminDashboard() {
     const reqTab    = resolveTabFor(acceptingRequest);
     const reqConfig = resolveConfigFor(acceptingRequest);
     setAcceptSubmitting(true);
-
     const { error: updateErr } = await restUpdate(reqConfig.table, { id: acceptingRequest.id }, { status: "Approved" });
     if (updateErr) { setAcceptSubmitting(false); alert("Error approving request: " + updateErr.message); return; }
 
@@ -610,23 +608,6 @@ function AdminDashboard() {
           alert("Request approved, but the calendar event could not be created: " + eventErr.message + "\n\nYou can add it manually from the Events page.");
         }
       }
-    }
-
-    if (acceptingRequest.submitter_email) {
-      sendApprovalEmail({
-        to: acceptingRequest.submitter_email,
-        serviceName: reqTab.toLowerCase(),
-        eventDate: formatDate(
-          acceptingRequest.preferred_date || acceptingRequest.wedding_date ||
-          acceptingRequest.date_of_confirmation || acceptingRequest.date_of_communion ||
-          acceptingRequest.start_date || acceptingRequest.request_date
-        ),
-        eventTime: acceptingRequest.preferred_time || acceptingRequest.wedding_time ||
-          acceptingRequest.time_of_confirmation || acceptingRequest.time_of_communion ||
-          acceptingRequest.start_time || "",
-        location: acceptingRequest.location || "Parish",
-        priestName: acceptingRequest.preferred_priest || "",
-      });
     }
 
     if (acceptingRequest.user_id) {

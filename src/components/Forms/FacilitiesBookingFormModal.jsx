@@ -4,6 +4,7 @@ import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter } from "./formHelpers";
+import { detectEventConflicts, fetchActiveEventsForConflict, formatConflictWarning } from "../../utils/timeConflict";
 
 // Helper function to generate time slots between 8:30 AM and 5:30 PM
 function generateTimeSlots() {
@@ -98,9 +99,26 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
       setError("Please confirm the declaration before submitting.");
       return;
     }
+    const finalFacility = formData.facility === "Other" ? formData.facility_other : formData.facility;
+    try {
+      const allEvents = await fetchActiveEventsForConflict();
+      const conflicts = detectEventConflicts({
+        events: allEvents,
+        startDate: formData.start_date,
+        endDate: formData.end_date || formData.start_date,
+        startTime: formData.start_time,
+        endTime: formData.end_time || null,
+        locationKey: finalFacility ? `inside:${finalFacility}` : null,
+      });
+      if (conflicts.length > 0) {
+        const proceed = window.confirm(`${formatConflictWarning(conflicts, "facility schedules")}\n\nSubmit request anyway?`);
+        if (!proceed) return;
+      }
+    } catch (err) {
+      console.warn("Conflict precheck failed:", err?.message || err);
+    }
     setLoading(true);
     try {
-      const finalFacility = formData.facility === "Other" ? formData.facility_other : formData.facility;
       const requestorFullName = [
         formData.requestor_first_name,
         formData.requestor_middle_name,

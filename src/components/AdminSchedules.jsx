@@ -7,6 +7,7 @@ import { QRCodeCanvas } from "qrcode.react";
 import { restSelect, restInsert, restUpdate, restDelete } from "../supabaseRest";
 import { useAuth } from "../contexts/useAuth";
 import { supabase } from "../supabaseClient";
+import { detectEventConflicts, formatConflictWarning } from "../utils/timeConflict";
 
 // Gold teardrop pin — avoids Vite asset path issues with default Leaflet icons
 const PIN_ICON = new L.DivIcon({
@@ -228,15 +229,7 @@ function AdminSchedules() {
   const [activeTab, setActiveTab] = useState("Upcoming");
   const [eventSearch, setEventSearch] = useState("");
   
-  const [activeSort, setActiveSort] = useState("date_asc");
-
-  useEffect(() => {
-    if (activeTab === "Past" || activeTab === "Cancelled") {
-      setActiveSort("date_desc");
-    } else {
-      setActiveSort("date_asc");
-    }
-  }, [activeTab]);
+  const [activeSort, setActiveSort] = useState("created_desc");
 
   const [rejectingEvent, setRejectingEvent] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -255,6 +248,8 @@ function AdminSchedules() {
   const [viewMode, setViewMode] = useState("card");
 
   const [isMassMode, setIsMassMode] = useState(false);
+  const [conflictWarnings, setConflictWarnings] = useState([]);
+  const [conflictBypass, setConflictBypass] = useState(false);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -369,6 +364,8 @@ function AdminSchedules() {
   const handleChange = (e) => {
     const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
     setFormData({ ...formData, [e.target.name]: value });
+    setConflictWarnings([]);
+    setConflictBypass(false);
   };
 
   const toggleCollaborator = (name) => {
@@ -378,6 +375,8 @@ function AdminSchedules() {
         ? prev.collaborators.filter(m => m !== name)
         : [...prev.collaborators, name],
     }));
+    setConflictWarnings([]);
+    setConflictBypass(false);
   };
 
   const handleMapSearch = (query) => {
@@ -444,6 +443,7 @@ function AdminSchedules() {
       eventEndDate: "",
       eventDate: "",
       eventTime: "",
+      endTime: "",
       location: CHURCH_ADDRESS,
       description: "",
       isInside: true,
@@ -457,6 +457,8 @@ function AdminSchedules() {
     setMapSearch("");
     setSearchResults([]);
     setFlyTarget(null);
+    setConflictWarnings([]);
+    setConflictBypass(false);
     setIsModalOpen(true);
   };
 
@@ -471,6 +473,7 @@ function AdminSchedules() {
       eventEndDate: "",
       eventDate: "",
       eventTime: "",
+      endTime: "",
       location: CHURCH_ADDRESS,
       description: "",
       isInside: true,
@@ -484,6 +487,8 @@ function AdminSchedules() {
     setMapSearch("");
     setSearchResults([]);
     setFlyTarget(null);
+    setConflictWarnings([]);
+    setConflictBypass(false);
     setIsModalOpen(true);
   };
 
@@ -515,6 +520,8 @@ function AdminSchedules() {
     });
     
     setMapSearch(ev.setting || "");
+    setConflictWarnings([]);
+    setConflictBypass(false);
     setIsModalOpen(true);
 
     if (!isIndoor && ev.latitude && ev.longitude) {
@@ -609,32 +616,23 @@ function AdminSchedules() {
       }
     }
 
-    // 4. CONFLICT DETECTION
-    const conflict = events.find(ev => {
-      // ✨ FIX: Ignore self when editing
-      if (editingEvent && ev.id === editingEvent.id) return false;
-      if (ev.status === "Cancelled" || ev.status === "Rejected") return false;
-      
-      const newStart = formData.eventStartDate;
-      const newEnd   = formData.eventEndDate || formData.eventStartDate;
-      const evDate   = ev.event_date;
-      const rangeOverlaps = evDate >= newStart && evDate <= newEnd;
-      
-      if (!rangeOverlaps || ev.event_time !== formData.eventTime) return false;
-      
-      const isSamePriest = formData.priestName && ev.priest_name === formData.priestName;
-      if (isSamePriest) return true;
-      
-      const newLocationKey = formData.isInside ? `inside:${formData.setting}` : `outside:${formData.latitude},${formData.longitude}`;
-      const existingLocationKey = ev.is_inside ? `inside:${ev.setting}` : `outside:${ev.latitude},${ev.longitude}`;
-      
-      return newLocationKey === existingLocationKey;
+    // 4. CONFLICT WARNING (indoor facility only; outside map events are allowed without warning)
+    const newLocationKey = formData.isInside
+      ? `inside:${formData.setting || ""}`
+      : `outside:${formData.latitude || ""},${formData.longitude || ""}`;
+    const conflicts = detectEventConflicts({
+      events,
+      startDate: formData.eventStartDate,
+      endDate: formData.eventEndDate || formData.eventStartDate,
+      startTime: formData.eventTime,
+      endTime: formData.endTime || null,
+      priestName: formData.priestName || null,
+      locationKey: newLocationKey,
+      ignoreEventId: editingEvent?.id || null,
+      indoorOnly: true,
     });
-
-    if (conflict) {
-      alert(`Scheduling Conflict! "${conflict.title}" is already booked at this time.` + 
-        (formData.priestName ? ` The priest "${formData.priestName}" is unavailable.` : '') +
-        (!formData.priestName ? ` The location is already in use.` : ''));
+    if (conflicts.length > 0 && !conflictBypass) {
+      setConflictWarnings(conflicts);
       return;
     }
 
@@ -696,6 +694,8 @@ function AdminSchedules() {
       setIsModalOpen(false);
       setEditingEvent(null);
       setIsMassMode(false);
+      setConflictWarnings([]);
+      setConflictBypass(false);
       fetchEvents();
       
     } catch (error) {
@@ -1478,12 +1478,45 @@ function AdminSchedules() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, isPublic: !prev.isPublic }))}
+                  onClick={() => {
+                    setFormData(prev => ({ ...prev, isPublic: !prev.isPublic }));
+                    setConflictWarnings([]);
+                    setConflictBypass(false);
+                  }}
                   className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${formData.isPublic ? "bg-[#B59E74]" : "bg-gray-300"}`}
                 >
                   <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${formData.isPublic ? "translate-x-7" : "translate-x-1"}`} />
                 </button>
               </div>
+
+              {conflictWarnings.length > 0 && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+                  <p className="text-xs font-bold uppercase tracking-widest text-amber-700">Time Conflict Detected</p>
+                  <p className="text-xs text-amber-700 mt-1">{formatConflictWarning(conflictWarnings, "indoor facility schedules")}</p>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConflictWarnings([]);
+                        setConflictBypass(false);
+                      }}
+                      className="px-3 py-2 rounded-lg border border-amber-300 text-amber-800 text-xs font-bold uppercase tracking-widest hover:bg-amber-100"
+                    >
+                      Adjust Schedule
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConflictBypass(true);
+                        setConflictWarnings([]);
+                      }}
+                      className="px-3 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold uppercase tracking-widest hover:bg-amber-700"
+                    >
+                      Continue Anyway
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <button
                 type="submit" disabled={submitting}
