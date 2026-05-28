@@ -1,96 +1,16 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import GenerateEventQR from "./Auth/GenerateEventQR";
-
-function EventSearchSelect({ events, value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const containerRef = useRef(null);
-  const inputRef = useRef(null);
-
-  const selected = events.find(ev => ev.id.toString() === (value?.toString() || ""));
-  const filtered = events.filter(ev =>
-    ev.title.toLowerCase().includes(search.toLowerCase())
-  );
-
-  useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 50);
-    else setSearch("");
-  }, [open]);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  return (
-    <div ref={containerRef} className="relative w-full">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-100 focus:border-[#B59E74] outline-none bg-gray-50 font-medium transition-all text-left"
-      >
-        <span className={selected ? "text-gray-800" : "text-gray-400"}>
-          {selected ? selected.title : "-- Select an Event --"}
-        </span>
-        <span className="text-gray-400 ml-2">{open ? "▲" : "▼"}</span>
-      </button>
-
-      {open && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-          <div className="p-2 border-b border-gray-100">
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-[#B59E74]">
-              <span className="text-gray-400 text-sm">🔍</span>
-              <input
-                ref={inputRef}
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search event..."
-                className="flex-1 outline-none text-sm text-gray-700 bg-transparent"
-              />
-              {search && (
-                <button type="button" onClick={() => setSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
-              )}
-            </div>
-          </div>
-          <ul className="max-h-56 overflow-y-auto">
-            <li
-              className="px-4 py-2.5 text-sm text-gray-400 italic cursor-pointer hover:bg-gray-50"
-              onClick={() => { onChange(null); setOpen(false); }}
-            >
-              -- Select an Event --
-            </li>
-            {filtered.length === 0 ? (
-              <li className="px-4 py-3 text-sm text-gray-400 italic text-center">No events found</li>
-            ) : (
-              filtered.map(ev => (
-                <li
-                  key={ev.id}
-                  onClick={() => { onChange(ev); setOpen(false); }}
-                  className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-[#B59E74]/10 hover:text-[#B59E74] transition-colors ${value?.id === ev.id ? "bg-[#B59E74]/10 text-[#B59E74] font-medium" : "text-gray-700"}`}
-                >
-                  {ev.title}
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function AdminQRCenter() {
   const [events, setEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sortOrder, setSortOrder] = useState("ascending");
+  const [dateFilter, setDateFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   useEffect(() => {
     fetchEvents();
@@ -110,6 +30,55 @@ function AdminQRCenter() {
     setLoading(false);
   };
 
+  const getFilteredEvents = () => {
+    let filtered = [...events];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (dateFilter !== "all") {
+      const filterStart = new Date(today);
+      let filterEnd = new Date(today);
+
+      switch (dateFilter) {
+        case "week":
+          filterEnd.setDate(filterEnd.getDate() + 7);
+          break;
+        case "month":
+          filterEnd.setMonth(filterEnd.getMonth() + 1);
+          break;
+        case "today":
+          filterEnd.setDate(filterEnd.getDate() + 1);
+          break;
+        default:
+          break;
+      }
+
+      filtered = filtered.filter(ev => {
+        const eventDate = new Date(ev.event_date);
+        return eventDate >= filterStart && eventDate < filterEnd;
+      });
+    }
+
+    // Apply sort
+    filtered.sort((a, b) => {
+      const dateA = new Date(a.event_date);
+      const dateB = new Date(b.event_date);
+      return sortOrder === "ascending" ? dateA - dateB : dateB - dateA;
+    });
+
+    return filtered;
+  };
+
+  const filteredEvents = getFilteredEvents();
+  const totalPages = Math.ceil(filteredEvents.length / itemsPerPage);
+  const startIdx = (currentPage - 1) * itemsPerPage;
+  const paginatedEvents = filteredEvents.slice(startIdx, startIdx + itemsPerPage);
+
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [sortOrder, dateFilter]);
+
   const _now = new Date();
   const todayLocal = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`;
 
@@ -124,7 +93,7 @@ function AdminQRCenter() {
 
   return (
     <div className="min-h-screen bg-[#F6F5ED] flex flex-col font-sans">
-      <main className="flex-1 max-w-4xl w-full mx-auto px-6 pt-28 pb-12">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-6 pt-28 pb-12">
 
         {/* Breadcrumb */}
         <div className="flex gap-4 mb-6 border-b border-gray-200 pb-3">
@@ -143,45 +112,189 @@ function AdminQRCenter() {
         </div>
 
         <div className="bg-white rounded-[2rem] shadow-xl border border-gray-100 p-8 md:p-12">
-          <div className="flex flex-col items-center gap-8">
+          <div className="flex flex-col gap-8">
 
-            {/* Event Selection */}
-            <div className="w-full max-w-md space-y-3">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block text-center">
-                Select Event to Generate QR
-              </label>
-              <EventSearchSelect
-                events={events}
-                value={selectedEvent}
-                onChange={setSelectedEvent}
-              />
+            {/* Filter & Sort Controls */}
+            <div className="w-full space-y-4">
+              {/* Date Filter Buttons */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block">
+                  Filter by Date
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { key: "all", label: "All" },
+                    { key: "today", label: "Today" },
+                    { key: "week", label: "This Week" },
+                    { key: "month", label: "This Month" },
+                  ].map(filter => (
+                    <button
+                      key={filter.key}
+                      onClick={() => setDateFilter(filter.key)}
+                      className={`px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
+                        dateFilter === filter.key
+                          ? "bg-[#B59E74] text-white"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sort Order Toggle */}
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                  Sort Order
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSortOrder("ascending")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
+                      sortOrder === "ascending"
+                        ? "bg-[#B59E74] text-white"
+                        : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    ⬆ Earliest
+                  </button>
+                  <button
+                    onClick={() => setSortOrder("descending")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
+                      sortOrder === "descending"
+                        ? "bg-[#B59E74] text-white"
+                        : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    ⬇ Latest
+                  </button>
+                </div>
+              </div>
             </div>
 
-            {/* QR Display Area */}
-            <div className="w-full flex justify-center mt-6">
-              {selectedEvent ? (
-                canGenerateQR ? (
-                  <div className="animate-fade-in">
-                    <GenerateEventQR
-                      eventId={selectedEvent.id}
-                      eventTitle={selectedEvent.title}
-                    />
-                  </div>
+            {/* Main Content Area - Two Column Layout */}
+            <div className="flex gap-8">
+              {/* Left Side - Events List */}
+              <div className="flex-1 min-w-0">
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block">
+                    Select Event
+                  </label>
+
+                  {filteredEvents.length === 0 ? (
+                    <div className="text-center py-8 px-4 border border-gray-200 rounded-xl bg-gray-50">
+                      <p className="text-gray-400 italic">No events found with current filters.</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Event List */}
+                      <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-200 bg-white">
+                        {paginatedEvents.map(event => (
+                          <button
+                            key={event.id}
+                            onClick={() => setSelectedEvent(event)}
+                            className={`w-full p-4 text-left transition-all hover:bg-[#B59E74]/5 ${
+                              selectedEvent?.id === event.id
+                                ? "bg-[#B59E74]/10 border-l-4 border-[#B59E74]"
+                                : ""
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <h3 className="font-bold text-gray-800 text-sm md:text-base truncate">{event.title}</h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  📅 {new Date(event.event_date).toLocaleDateString("en-US", {
+                                    weekday: "short",
+                                    year: "numeric",
+                                    month: "short",
+                                    day: "numeric"
+                                  })}
+                                </p>
+                              </div>
+                              {selectedEvent?.id === event.id && (
+                                <span className="text-[#B59E74] font-bold text-lg flex-shrink-0">✓</span>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Pagination Controls */}
+                      {totalPages > 1 && (
+                        <div className="flex items-center justify-center gap-2 mt-4">
+                          <button
+                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                            disabled={currentPage === 1}
+                            className={`px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
+                              currentPage === 1
+                                ? "bg-gray-100 text-gray-300 cursor-not-allowed"
+                                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                            }`}
+                          >
+                            ← Prev
+                          </button>
+
+                          <div className="flex gap-1">
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                              <button
+                                key={page}
+                                onClick={() => setCurrentPage(page)}
+                                className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
+                                  currentPage === page
+                                    ? "bg-[#B59E74] text-white"
+                                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                }`}
+                              >
+                                {page}
+                              </button>
+                            ))}
+                          </div>
+
+                          <button
+                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                            disabled={currentPage === totalPages}
+                            className={`px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
+                              currentPage === totalPages
+                                ? "bg-gray-100 text-gray-300 cursor-not-allowed"
+                                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                            }`}
+                          >
+                            Next →
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Side - QR Display */}
+              <div className="flex-1 min-w-0 flex items-center justify-center">
+                {selectedEvent ? (
+                  canGenerateQR ? (
+                    <div className="animate-fade-in w-full flex justify-center">
+                      <GenerateEventQR
+                        eventId={selectedEvent.id}
+                        eventTitle={selectedEvent.title}
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 px-6 border-2 border-dashed border-gray-200 rounded-[2rem] w-full">
+                      <p className="text-gray-400 italic">
+                        QR Code will be available once the event starts.
+                      </p>
+                    </div>
+                  )
                 ) : (
-                  <div className="text-center py-20 border-2 border-dashed border-gray-200 rounded-[2rem] w-full max-w-md">
+                  <div className="text-center py-12 px-6 border-2 border-dashed border-gray-200 rounded-[2rem] w-full">
+                    <div className="text-4xl mb-4">🖼️</div>
                     <p className="text-gray-400 italic">
-                      QR Code will be available once the event starts.
+                      Select an event from the list to generate the QR code.
                     </p>
                   </div>
-                )
-              ) : (
-                <div className="text-center py-20 border-2 border-dashed border-gray-200 rounded-[2rem] w-full max-w-md">
-                  <div className="text-4xl mb-4">🖼️</div>
-                  <p className="text-gray-400 italic">
-                    Select an event above to generate the QR code.
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
           </div>

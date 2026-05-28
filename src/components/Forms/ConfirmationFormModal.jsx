@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
+import DocumentUploader from "../DocumentUploader";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter } from "./formHelpers";
 
@@ -64,6 +65,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
     additional_sponsors: "",
     submitter_signature: "",
     declaration_consent: false,
+    documentPaths: [],
   });
 
   // Fetch priests when the modal opens

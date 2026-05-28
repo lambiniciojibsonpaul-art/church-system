@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
-import { supabase } from "../../supabaseClient"; 
+import { supabase } from "../../supabaseClient";
+import DocumentUploader from "../DocumentUploader"; // ✨ Your new component
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, useProfileAutofill, applyFieldFilter } from "./formHelpers";
 
@@ -81,6 +82,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
     submitterName: "",
     submitter_signature: "",
     declaration_consent: false,
+    documentPaths: [], // ✨ State to hold the uploaded file paths
   });
 
   const autofill = useProfileAutofill(user);
@@ -165,6 +167,12 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
     }
   };
 
+  // ✨ NEW: Handles receiving the uploaded file paths from DocumentUploader
+  const handleUploadComplete = (uploadedFiles) => {
+    const paths = uploadedFiles.map(file => file.path);
+    setFormData(prev => ({ ...prev, documentPaths: paths }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -202,6 +210,8 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         additional_sponsors: formData.additionalSponsors,
         submitter_name: formData.submitter_signature,
         status: "Pending",
+        // ✨ Add documentPaths to the payload
+        attached_documents: formData.documentPaths.length > 0 ? formData.documentPaths : null,
         ...(user ? {
           user_id: user.id,
           submitter_email: user.email || null,
@@ -566,19 +576,15 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                   "NO SEMINAR, NO BAPTISM" <br />
                   <span className="text-xs font-normal">Be on time: 30 minutes before schedule.</span>
                 </div>
+                
+                {/* ✨ THE MAGIC: Replaced Google Drive Link with DocumentUploader */}
                 <div className="mt-6 flex-grow flex flex-col justify-end">
-                  <div className="bg-[#B59E74]/10 rounded-xl border-2 border-dashed border-[#B59E74]/50 p-6 flex flex-col items-center justify-center text-center h-full">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-[#B59E74] mb-3">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
-                    </svg>
-                    <h4 className="text-sm font-bold text-gray-800 uppercase tracking-widest mb-1">Submit Your Documents</h4>
-                    <p className="text-xs text-gray-500 mb-4 max-w-xs">Please compile your scanned requirements and upload them to our secure Parish Google Drive folder.</p>
-                    <a href="https://drive.google.com/drive/folders/1K3j5gWyYykh6lTRJB0LjchlcT7As8Jox?usp=sharing" target="_blank" rel="noopener noreferrer"
-                      className="bg-[#B59E74] hover:bg-[#9c8760] text-white px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-2">
-                      <span>📁</span> Open Upload Folder
-                    </a>
-                  </div>
+                  <DocumentUploader 
+                    folderPath="baptisms" 
+                    onUploadComplete={handleUploadComplete} 
+                  />
                 </div>
+
               </div>
 
               <div className="bg-[#B59E74]/10 p-6 rounded-xl border border-[#B59E74]/30 shadow-sm flex flex-col gap-4 h-full">

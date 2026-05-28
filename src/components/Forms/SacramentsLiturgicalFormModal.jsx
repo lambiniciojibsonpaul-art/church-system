@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
+import DocumentUploader from "../DocumentUploader";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter } from "./formHelpers";
 
@@ -56,6 +57,7 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
     notes: "",
     submitter_signature: "",
     declaration_consent: false,
+    documentPaths: [], // ✨ NEW: State to hold the uploaded file paths
   });
 
   // NEW: Fetch priests when the modal opens
@@ -114,6 +116,12 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
       request_specify: "", 
     }));
 
+  // ✨ NEW: Handles receiving the uploaded file paths from DocumentUploader
+  const handleUploadComplete = (uploadedFiles) => {
+    const paths = uploadedFiles.map(file => file.path);
+    setFormData(prev => ({ ...prev, documentPaths: paths }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -128,15 +136,26 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
     setLoading(true);
     try {
       const requestedByFull = [formData.requested_by_first, formData.requested_by_middle, formData.requested_by_last].filter(Boolean).join(" ");
-      const { requested_by_first, requested_by_middle, requested_by_last, ...restForm } = formData;
+      
+      // ✨ FIX: Add documentPaths and declaration_consent to the exclusion list
+      const { 
+        requested_by_first, 
+        requested_by_middle, 
+        requested_by_last, 
+        documentPaths, 
+        declaration_consent, 
+        ...restForm 
+      } = formData;
+
       await submitRequest({
         table: "sacraments_liturgical",
         payload: {
           ...restForm,
           requested_by: requestedByFull,
-          // Map to database columns and ensure null if empty
           minister_name: formData.preferred_priest || null,
           preferred_priest: formData.preferred_priest || null,
+          // Safely map the stripped array into the correct DB column
+          attached_documents: documentPaths.length > 0 ? documentPaths : null,
         },
         user,
         guestInfo,
@@ -294,7 +313,7 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
 
             <hr className="border-gray-200" />
 
-            {/* --- STATIC LIST OF REQUIREMENTS & GOOGLE DRIVE UPLOAD --- */}
+            {/* --- STATIC LIST OF REQUIREMENTS & DOCUMENT UPLOADER --- */}
             <div className="bg-[#B59E74]/10 p-6 sm:p-8 rounded-2xl border border-[#B59E74]/30 shadow-sm mt-8">
               <h3 className="text-sm md:text-base font-bold text-[#B59E74] uppercase tracking-widest mb-2 flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
@@ -306,22 +325,12 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
                 Depending on your requested service, please ensure you secure any necessary original documents (such as permits or death certificates) prior to your schedule.
               </p>
               
-              <div className="bg-white rounded-xl border-2 border-dashed border-[#B59E74]/50 p-6 flex flex-col items-center justify-center text-center mt-6">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-[#B59E74] mb-3">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
-                </svg>
-                <h4 className="text-sm font-bold text-gray-800 uppercase tracking-widest mb-1">Submit Your Documents</h4>
-                <p className="text-xs text-gray-500 mb-4 max-w-md">
-                  Please compile your scanned requirements and upload them to our secure Parish Google Drive folder.
-                </p>
-                <a
-                  href="https://drive.google.com/drive/folders/1Vx6VT1vWZjkEcSRpMZ3e_Dq_CFPLnIls?usp=sharing" 
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-[#B59E74] hover:bg-[#9c8760] text-white px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-2"
-                >
-                  <span>📁</span> Open Upload Folder
-                </a>
+              {/* ✨ THE MAGIC: Replaced Google Drive Link with DocumentUploader */}
+              <div className="mt-6 flex-grow flex flex-col justify-end">
+                <DocumentUploader 
+                  folderPath="sacraments" 
+                  onUploadComplete={handleUploadComplete} 
+                />
               </div>
             </div>
 

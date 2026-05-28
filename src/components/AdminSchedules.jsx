@@ -201,7 +201,7 @@ function EventDetailsModal({ event, onClose }) {
 }
 
 function AdminSchedules() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState([]);
   
@@ -543,23 +543,67 @@ function AdminSchedules() {
       return;
     }
 
-    // 3. CONFLICT DETECTION
+    // 3. OPERATING HOURS RESTRICTION — For parishioners and ministers only
+    const restrictedRoles = ["parishioner", "ministry"];
+    if (restrictedRoles.includes(role)) {
+      // Extract hour from time string (HH:mm format)
+      const [hourStr] = formData.eventTime.split(":");
+      const eventHour = parseInt(hourStr, 10);
+      
+      // Operating hours: 7 AM to 10 PM (07:00 to 22:00)
+      const minHour = 7;
+      const maxHour = 22;
+      
+      if (eventHour < minHour || eventHour >= maxHour) {
+        alert(`Operating Hours Restriction: As a ${role}, you can only schedule events between 7:00 AM and 10:00 PM. Please select a time within this window.`);
+        return;
+      }
+    }
+
+    // 4. CONFLICT DETECTION
+    // Business Rules:
+    // 1. Same Time + Same Location = BLOCKED
+    // 2. Same Time + Different Location = ALLOWED
+    // 3. Same Time + Same Priest = BLOCKED (priest cannot be in two places at once)
     const conflict = events.find(ev => {
       if (ev.status === "Cancelled" || ev.status === "Rejected") return false;
-      // Conflict if any day in the new event's range overlaps with existing event's date
+      
+      // Check date range overlap
       const newStart = formData.eventStartDate;
       const newEnd   = formData.eventEndDate || formData.eventStartDate;
       const evDate   = ev.event_date;
       const rangeOverlaps = evDate >= newStart && evDate <= newEnd;
+      
+      // If dates don't match or times don't match, no conflict
       if (!rangeOverlaps || ev.event_time !== formData.eventTime) return false;
-      // Only flag priest conflict if a priest was actually chosen
+      
+      // At this point: same date range and same time
+      
+      // RULE 3: Same Priest = BLOCKED (priest cannot be in two places at once)
       const isSamePriest = formData.priestName && ev.priest_name === formData.priestName;
-      const isSameRoom   = formData.isInside && formData.setting && ev.setting === formData.setting;
-      return isSamePriest || isSameRoom;
+      if (isSamePriest) return true; // Conflict detected
+      
+      // RULE 1 & 2: Check if locations are the same
+      // Create location keys to compare
+      const newLocationKey = formData.isInside 
+        ? `inside:${formData.setting}` 
+        : `outside:${formData.latitude},${formData.longitude}`;
+      
+      const existingLocationKey = ev.is_inside 
+        ? `inside:${ev.setting}` 
+        : `outside:${ev.latitude},${ev.longitude}`;
+      
+      const isSameLocation = newLocationKey === existingLocationKey;
+      
+      // RULE 1: Same Location = BLOCKED
+      // RULE 2: Different Location = ALLOWED (no conflict)
+      return isSameLocation;
     });
 
     if (conflict) {
-      alert(`Scheduling Conflict! "${conflict.title}" is already booked at this time for this priest or location.`);
+      alert(`Scheduling Conflict! "${conflict.title}" is already booked at this time.` + 
+        (formData.priestName ? ` The priest "${formData.priestName}" is unavailable.` : '') +
+        (!formData.priestName ? ` The location is already in use.` : ''));
       return; // Stop the submission!
     }
 
