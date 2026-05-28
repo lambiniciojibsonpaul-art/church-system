@@ -79,6 +79,7 @@ export default function DocumentUploader({ onUploadComplete, bucketName = "paris
             </svg>
             <h3 className="text-sm font-bold text-gray-800 uppercase tracking-widest mb-1">Upload Requirements</h3>
             <p className="text-xs text-gray-500 font-serif italic mb-6">Drag and drop scanned documents, or click to browse.</p>
+            <p className="text-xs text-gray-500 font-serif italic mb-6">Please rename your uploaded file properly based on the given format. For example: "SURNAME_Birth_Certificate_2023.pdf"</p>
             <button type="button" className="bg-[#B59E74] text-white px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest pointer-events-none">
               Browse Files
             </button>

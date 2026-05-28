@@ -192,6 +192,7 @@ function humanizeKey(key) {
 
 function formatValue(key, val) {
   if (val == null || val === "") return null;
+  if (key === "attached_documents") return val; // Return raw array for documents
   if (typeof val === "boolean") return val ? "Yes" : "No";
   if (/_time$/i.test(key) || key === "time_of_communion" || key === "time_of_confirmation" || key === "wedding_time" || key === "preferred_time" || key === "request_time" || key === "start_time" || key === "end_time") {
     try {
@@ -218,6 +219,9 @@ function StaffDashboard() {
 
   const [activeTab, setActiveTab] = useState("requests");
   const [highlightId, setHighlightId] = useState(null);
+  
+  // ✨ NEW: Document Preview State
+  const [previewDoc, setPreviewDoc] = useState(null);
 
   // Role guard
   useEffect(() => {
@@ -361,7 +365,6 @@ function StaffDashboard() {
     const entries = Object.entries(TAB_CONFIG);
     const results = await Promise.allSettled(
       entries.map(([, cfg]) =>
-        // ✨ FIX: Remove any hardcoded filters that block Rejected status
         restSelect(cfg.table, { order: "created_at.desc", timeoutMs: 12000 })
       )
     );
@@ -1392,7 +1395,7 @@ function StaffDashboard() {
         </div>
       )}
 
-      {/* Details */}
+      {/* Details Modal */}
       {viewingDetails && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative">
@@ -1406,13 +1409,66 @@ function StaffDashboard() {
             <div className="p-6 md:p-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {getViewingEntries().map(([key, val]) => (
-                  <div key={key} className={key === "additional_notes" || key === "notes" || key === "request_details" || key === "intention_detail" || key === "rejection_remarks" ? "md:col-span-2" : ""}>
+                  <div key={key} className={key === "additional_notes" || key === "notes" || key === "request_details" || key === "intention_detail" || key === "rejection_remarks" || key === "attached_documents" ? "md:col-span-2" : ""}>
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{humanizeKey(key)}</p>
-                    <p className="font-medium text-gray-800 whitespace-pre-wrap break-words">{val}</p>
+                    
+                    {/* ✨ FIX: Document Preview Button */}
+                    {key === "attached_documents" && Array.isArray(val) ? (
+                      <div className="flex flex-col gap-2 mt-1">
+                        {val.map((path, index) => {
+                          const publicUrl = supabase.storage.from('parish_documents').getPublicUrl(path).data.publicUrl;
+                          const fileName = path.split('/').pop() || `Document ${index + 1}`;
+                          return (
+                            <button 
+                              key={index}
+                              type="button"
+                              onClick={() => setPreviewDoc({ url: publicUrl, name: fileName })}
+                              className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-2 bg-blue-50/50 p-3 rounded-xl border border-blue-100 transition-colors w-fit"
+                            >
+                              <span className="text-xl">📄</span> {fileName}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="font-medium text-gray-800 whitespace-pre-wrap break-words">{val}</p>
+                    )}
+                    
                   </div>
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ✨ NEW: DOCUMENT PREVIEW MODAL ── */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-8 animate-fade-in">
+          <div className="w-full max-w-5xl h-full max-h-[90vh] bg-[#F6F5ED] rounded-3xl shadow-2xl flex flex-col overflow-hidden relative">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white shrink-0">
+              <h3 className="text-lg font-serif font-medium text-gray-800 truncate pr-4">{previewDoc.name}</h3>
+              <div className="flex items-center gap-4 shrink-0">
+                <a href={previewDoc.url} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold uppercase tracking-widest text-[#B59E74] hover:text-[#9c8760] transition-colors flex items-center gap-1.5">
+                  Open in Tab <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                </a>
+                <button onClick={() => setPreviewDoc(null)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors font-bold">
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 bg-gray-100 overflow-hidden flex items-center justify-center p-4">
+              {previewDoc.name.toLowerCase().endsWith('.pdf') ? (
+                <iframe src={previewDoc.url} className="w-full h-full rounded-xl shadow-sm border border-gray-200" title="PDF Preview" />
+              ) : (
+                <img src={previewDoc.url} alt="Document Preview" className="max-w-full max-h-full object-contain rounded-xl shadow-sm" />
+              )}
+            </div>
+            
           </div>
         </div>
       )}
