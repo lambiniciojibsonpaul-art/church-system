@@ -105,6 +105,7 @@ const TAB_CONFIG = {
   "Mass Intentions": {
     table: "mass_intentions",
     isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.intention_type || ""} for ${r.names_in_intention || r.full_name || ""}`.trim(),
     columns: [
       { label: "For", value: (r) => r.names_in_intention || "—" },
@@ -145,16 +146,29 @@ const TAB_CONFIG = {
   },
   "Facilities Booking": {
     table: "facilities_bookings",
-    isSacrament: false,
+    isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.facility || "Facility"} — ${r.event_type || r.event_purpose || ""}`.trim(),
     columns: [
       { label: "Facility", value: (r) => r.facility },
       { label: "Start", value: (r) => formatDate(r.start_date) },
     ],
+    eventBuilder: (r, priest, userId) => ({
+      creator_id: userId,
+      title: `${r.facility || "Facility"} — ${r.event_type || r.event_purpose || "Booking"}`.trim(),
+      event_class: "Facilities",
+      priest_name: priest,
+      event_date: r.start_date,
+      event_time: r.start_time || "08:00",
+      location: r.facility || "Parish Facility",
+      description: `Facilities booking: ${r.event_type || r.event_purpose || ""}. Requested by ${r.requestor_first_name || r.guest_name || ""}.`,
+      status: "Active",
+    }),
   },
   Certifications: {
     table: "certification_requests",
-    isSacrament: false,
+    isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.certificate_type || "Certificate"} — ${r.record_holder_first_name || ""} ${r.record_holder_surname || ""}`.trim(),
     columns: [
       { label: "Type", value: (r) => r.certificate_type },
@@ -220,7 +234,7 @@ function StaffDashboard() {
   const [requests, setRequests] = useState({});
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [activeServiceTab, setActiveServiceTab] = useState("All Services");
-  const [staffSortBy, setStaffSortBy] = useState("submitted_asc");
+  const [staffSortBy, setStaffSortBy] = useState("submitted_desc");
   const [staffSubTab, setStaffSubTab] = useState("All");
   const [staffPageSize, setStaffPageSize] = useState(10);
   const [staffCurrentPage, setStaffCurrentPage] = useState(1);
@@ -364,7 +378,13 @@ function StaffDashboard() {
         display_name: e.title, preferred_time: e.event_time,
       }))];
 
-      allItems.sort((a, b) => new Date(a.display_date) - new Date(b.display_date));
+      allItems.sort((a, b) => {
+        const isMassA = a.event_class === "Mass" || a.request_type === "Mass Intention";
+        const isMassB = b.event_class === "Mass" || b.request_type === "Mass Intention";
+        if (isMassA && !isMassB) return -1;
+        if (!isMassA && isMassB) return 1;
+        return new Date(a.display_date) - new Date(b.display_date);
+      });
       setItems(allItems);
     } catch (err) { console.error("Fetch error:", err); }
     finally { setItemsLoading(false); }
@@ -381,7 +401,9 @@ function StaffDashboard() {
     if (reqConfig.isSacrament && !assignedPriest) return alert("Please assign a priest before approving.");
     setAcceptSubmitting(true);
 
-    const { error: updateErr } = await restUpdate(reqConfig.table, { id: acceptingRequest.id }, { status: "Staff Approved", preferred_priest: assignedPriest || null });
+    const approvalPayload = { status: "Staff Approved" };
+    if (reqConfig.isSacrament) approvalPayload.preferred_priest = assignedPriest || null;
+    const { error: updateErr } = await restUpdate(reqConfig.table, { id: acceptingRequest.id }, approvalPayload);
     if (updateErr) { setAcceptSubmitting(false); return alert("Error approving request: " + updateErr.message); }
 
     if (acceptingRequest.submitter_email) {
@@ -444,7 +466,7 @@ function StaffDashboard() {
       ...prev,
       [reqTab]: prev[reqTab].map((r) =>
         r.id === acceptingRequest.id
-          ? { ...r, status: "Staff Approved", preferred_priest: assignedPriest || null }
+          ? { ...r, status: "Staff Approved", ...(reqConfig.isSacrament ? { preferred_priest: assignedPriest || null } : {}) }
           : r
       ),
     }));
@@ -618,6 +640,11 @@ function StaffDashboard() {
     ? allServiceData
     : allServiceData.filter(r => r.status === staffSubTab)
   ).sort((a, b) => {
+    const isMassA = a._tab === "Mass Intentions";
+    const isMassB = b._tab === "Mass Intentions";
+    if (isMassA && !isMassB) return -1;
+    if (!isMassA && isMassB) return 1;
+    if (isMassA && isMassB) return new Date(a.display_date || a.created_at) - new Date(b.display_date || b.created_at);
     if (staffSortBy === "submitted_asc")  return new Date(a.created_at) - new Date(b.created_at);
     if (staffSortBy === "submitted_desc") return new Date(b.created_at) - new Date(a.created_at);
     if (staffSortBy === "date_desc")      return new Date(b.display_date || b.created_at) - new Date(a.display_date || a.created_at);

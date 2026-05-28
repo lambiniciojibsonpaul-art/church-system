@@ -40,11 +40,11 @@ export default function PublicAnnouncements() {
         });
 
         if (!error && data && !cancelled) {
-          // Filter to only show announcements meant for parishioners (or all)
+          // Filter to only show announcements meant for non-user public visitors
           const publicAnnouncements = data.filter((ann) => {
             if (!ann.target_roles || ann.target_roles.length === 0) return true;
             const roles = ann.target_roles.map(r => String(r).toLowerCase());
-            return roles.includes("parishioner");
+            return roles.includes("public_non_user");
           });
           setAnnouncements(publicAnnouncements);
         }

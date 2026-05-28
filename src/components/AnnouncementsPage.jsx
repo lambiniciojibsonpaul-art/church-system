@@ -35,6 +35,7 @@ function formatDate(d) {
 
 // ─── Role options for target_roles ───────────────────────────────────────────
 const ROLE_OPTIONS = [
+  { value: "public_non_user", label: "Public (Non-User)" },
   { value: "parishioner", label: "Parishioners" },
   { value: "staff",       label: "Staff" },
   { value: "priest",      label: "Priests" },
@@ -49,7 +50,7 @@ function emptyForm() {
     category:            "General",
     is_pinned:           false,
     status:              "Draft",
-    target_roles:        ["parishioner", "staff", "priest", "ministry"],
+    target_roles:        ["parishioner", "staff", "priest", "ministry", "public_non_user"],
   };
 }
 
@@ -112,7 +113,7 @@ function AnnouncementsPage() {
       status:              ann.status              || "Draft",
       target_roles:        Array.isArray(ann.target_roles) && ann.target_roles.length
                              ? ann.target_roles
-                             : ["parishioner", "staff", "priest", "ministry"],
+                             : ["parishioner", "staff", "priest", "ministry", "public_non_user"],
     });
     setIsDirty(false);
   }, []);
@@ -141,7 +142,7 @@ function AnnouncementsPage() {
       body:         form.body.trim(),
       category:     form.category,
       is_pinned:    form.is_pinned,
-      target_roles: form.target_roles.length ? form.target_roles : ["parishioner", "staff", "priest", "ministry"],
+      target_roles: form.target_roles.length ? form.target_roles : ["parishioner", "staff", "priest", "ministry", "public_non_user"],
       status:       "Draft",
       updated_at:   new Date().toISOString(),
     };
@@ -194,7 +195,7 @@ function AnnouncementsPage() {
       body:         form.body.trim(),
       category:     form.category,
       is_pinned:    form.is_pinned,
-      target_roles: form.target_roles.length ? form.target_roles : ["parishioner", "staff", "priest", "ministry"],
+      target_roles: form.target_roles.length ? form.target_roles : ["parishioner", "staff", "priest", "ministry", "public_non_user"],
       status:       "Published",
       updated_at:   new Date().toISOString(),
     };
@@ -542,10 +543,9 @@ function AnnouncementsPage() {
               {/* Target Roles */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">
-                  Visible To {!selectedId && <span className="text-red-400">*</span>}
-                  {selectedId && <span className="ml-2 text-[10px] normal-case tracking-normal font-normal text-gray-400">(cannot be changed after creation)</span>}
+                  Visible To <span className="text-red-400">*</span>
                 </label>
-                <div className={`border-2 rounded-xl px-4 py-3 space-y-2 ${selectedId ? "border-gray-100 bg-gray-50 opacity-60 pointer-events-none select-none" : "border-gray-200 hover:border-gray-300"}`}>
+                <div className="border-2 rounded-xl px-4 py-3 space-y-2 border-gray-200 hover:border-gray-300">
                   {/* Select All toggle */}
                   <label className="flex items-center gap-2.5 cursor-pointer select-none">
                     <input
@@ -603,6 +603,31 @@ function AnnouncementsPage() {
                   <Toggle
                     checked={form.is_pinned}
                     onChange={(v) => handleChange("is_pinned", v)}
+                  />
+                </div>
+
+                {/* Public (Non-User) visibility */}
+                <div className="flex items-center justify-between px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">🌐</span>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">Show on public site</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Controls if non-user visitors can see this announcement.
+                      </p>
+                    </div>
+                  </div>
+                  <Toggle
+                    checked={form.target_roles.includes("public_non_user")}
+                    onChange={(enabled) => {
+                      const current = Array.isArray(form.target_roles) ? form.target_roles : [];
+                      const withoutPublic = current.filter((r) => r !== "public_non_user");
+                      const next = enabled
+                        ? [...withoutPublic, "public_non_user"]
+                        : withoutPublic;
+                      if (next.length === 0) return;
+                      handleChange("target_roles", next);
+                    }}
                   />
                 </div>
 

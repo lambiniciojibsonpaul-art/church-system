@@ -317,7 +317,7 @@ function EventsPage() {
     });
 
   const getEventsForDate = (dateToMatch) => {
-    return visibleEvents.filter((e) => {
+    const sameDayEvents = visibleEvents.filter((e) => {
       const start = new Date(e.event_date + "T00:00:00");
       const end   = e.event_end_date
         ? new Date(e.event_end_date + "T00:00:00")
@@ -327,6 +327,30 @@ function EventsPage() {
       start.setHours(0, 0, 0, 0);
       end.setHours(0, 0, 0, 0);
       return target >= start && target <= end;
+    });
+
+    const isMassEvent = (ev) => {
+      const eventClass = String(ev.event_class || "").toLowerCase();
+      const title = String(ev.title || "").toLowerCase();
+      return eventClass === "mass" || title.includes("mass");
+    };
+
+    const toDateTime = (ev) => {
+      const date = ev.event_date || "9999-12-31";
+      const time = ev.event_time || "23:59:59";
+      return new Date(`${date}T${time}`).getTime();
+    };
+
+    return sameDayEvents.sort((a, b) => {
+      const aMass = isMassEvent(a);
+      const bMass = isMassEvent(b);
+
+      // Mass events always appear first.
+      if (aMass && !bMass) return -1;
+      if (!aMass && bMass) return 1;
+
+      // Within each group (Mass / non-Mass), sort earliest to latest.
+      return toDateTime(a) - toDateTime(b);
     });
   };
 

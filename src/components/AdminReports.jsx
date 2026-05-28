@@ -193,6 +193,23 @@ function getScheduleDisplayStatus(item) {
   return "Active";
 }
 
+function getRangeThreshold(rangeKey) {
+  if (rangeKey === "all") return null;
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (rangeKey === "today") return startOfToday.toISOString();
+  const daysMap = {
+    "7d": 7,
+    "30d": 30,
+    "90d": 90,
+    "365d": 365,
+  };
+  const days = daysMap[rangeKey];
+  if (!days) return null;
+  startOfToday.setDate(startOfToday.getDate() - days);
+  return startOfToday.toISOString();
+}
+
 function AdminReports() {
   const { refreshRole, user } = useAuth();
   const [activeTab, setActiveTab] = useState("services");
@@ -220,8 +237,8 @@ function AdminReports() {
     || user?.email?.split("@")[0] 
     || "Administrator";
 
-  const [metricTimeframe, setMetricTimeframe] = useState("30days");
   const [metricsLoading, setMetricsLoading] = useState(true);
+  const [reportTimeframe, setReportTimeframe] = useState("all");
 
   const [selectedService, setSelectedService] = useState("baptisms");
   const [sortBy, setSortBy] = useState("newest");
@@ -236,6 +253,13 @@ function AdminReports() {
   const [attendanceEvents, setAttendanceEvents] = useState([]);
   const [selectedAttendanceEvent, setSelectedAttendanceEvent] = useState(null);
   const [attendanceSearch, setAttendanceSearch] = useState("");
+  const [attendanceEventSearch, setAttendanceEventSearch] = useState("");
+  const [attendanceEventSortBy, setAttendanceEventSortBy] = useState("date_desc");
+  const [attendanceSortBy, setAttendanceSortBy] = useState("checkin_desc");
+  const [attendancePageSize, setAttendancePageSize] = useState(10);
+  const [attendanceCurrentPage, setAttendanceCurrentPage] = useState(1);
+  const [attendanceEventPageSize, setAttendanceEventPageSize] = useState(8);
+  const [attendanceEventCurrentPage, setAttendanceEventCurrentPage] = useState(1);
   const [attendanceData, setAttendanceData] = useState([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
 
@@ -256,24 +280,13 @@ function AdminReports() {
       localStorage.removeItem(`adminCache:${user.email.toLowerCase()}`);
     }
     refreshRole().catch(() => {});
-    fetchAllReports();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     const fetchDynamicMetrics = async () => {
       setMetricsLoading(true);
-      let threshold = null;
-      
-      if (metricTimeframe !== "all") {
-        const now = new Date();
-        if (metricTimeframe === "7days") now.setDate(now.getDate() - 7);
-        else if (metricTimeframe === "30days") now.setDate(now.getDate() - 30);
-        else if (metricTimeframe === "year") {
-          now.setMonth(0); now.setDate(1); now.setHours(0,0,0,0);
-        }
-        threshold = now.toISOString();
-      }
+      const threshold = getRangeThreshold(reportTimeframe);
 
       const buildQuery = (table, dateColumn = "created_at") => {
         let q = supabase.from(table).select("id", { count: "exact", head: true });
@@ -287,9 +300,17 @@ function AdminReports() {
           buildQuery("weddings"),
           buildQuery("mass_intentions"),
           buildQuery("confirmations"),
-          buildQuery("attendance"),
-          supabase.from("events").select("id", { count: "exact", head: true }).not("status", "in", '("Cancelled","Rejected")'),
-          supabase.from("ministries").select("id", { count: "exact", head: true }).eq("is_archived", false)
+          buildQuery("attendance", "check_in_time"),
+          (() => {
+            let q = supabase.from("events").select("id", { count: "exact", head: true }).not("status", "in", '("Cancelled","Rejected")');
+            if (threshold) q = q.gte("event_date", threshold);
+            return q;
+          })(),
+          (() => {
+            let q = supabase.from("ministries").select("id", { count: "exact", head: true }).eq("is_archived", false);
+            if (threshold) q = q.gte("created_at", threshold);
+            return q;
+          })(),
         ]);
 
         setMetrics({
@@ -306,23 +327,27 @@ function AdminReports() {
     };
 
     fetchDynamicMetrics();
-  }, [metricTimeframe]);
+  }, [reportTimeframe]);
 
   const fetchAllReports = async () => {
     try {
+      const threshold = getRangeThreshold(reportTimeframe);
       const [sData, mData, evData] = await Promise.all([
         supabase
           .from("events")
           .select("title, event_class, priest_name, ministry, event_date, location, status, created_at")
+          .gte("event_date", threshold || "1900-01-01")
           .order("event_date", { ascending: true }),
         supabase
           .from("ministries")
-          .select("name, description, is_archived")
+          .select("name, description, is_archived, created_at")
           .eq("is_archived", false)
+          .gte("created_at", threshold || "1900-01-01")
           .order("name", { ascending: true }),
         supabase
           .from("events")
-          .select("id, title, event_date, priest_name, ministry")
+          .select("id, title, event_date, priest_name, ministry, created_at")
+          .gte("event_date", threshold || "1900-01-01")
           .order("event_date", { ascending: false }),
       ]);
 
@@ -338,12 +363,23 @@ function AdminReports() {
     }
   };
 
+  useEffect(() => {
+    fetchAllReports();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportTimeframe]);
+
   const fetchServiceData = async (serviceKey) => {
     setServiceLoading(true);
     try {
       const { data, error } = await supabase.from(serviceKey).select("*");
       if (error) throw error;
-      const records = data || [];
+      const threshold = getRangeThreshold(reportTimeframe);
+      const cfg = SERVICE_CONFIGS[serviceKey];
+      const records = (data || []).filter((r) => {
+        if (!threshold) return true;
+        const recordDate = cfg?.getDate?.(r) || r.created_at;
+        return recordDate ? new Date(recordDate).getTime() >= new Date(threshold).getTime() : false;
+      });
 
       const userIds = [...new Set(records.filter(r => r.user_id).map(r => r.user_id))];
       let profileMap = {};
@@ -375,7 +411,7 @@ function AdminReports() {
       setServiceStatusFilter("All");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedService, activeTab]);
+  }, [selectedService, activeTab, reportTimeframe]);
 
   const fetchAttendanceData = async (eventId) => {
     setAttendanceLoading(true);
@@ -398,11 +434,26 @@ function AdminReports() {
     if (selectedAttendanceEvent) {
       fetchAttendanceData(selectedAttendanceEvent.id);
       setAttendanceSearch("");
+      setAttendanceCurrentPage(1);
     } else {
       setAttendanceData([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAttendanceEvent]);
+
+  useEffect(() => {
+    setAttendanceCurrentPage(1);
+  }, [attendanceSearch, attendanceSortBy, attendancePageSize]);
+
+  useEffect(() => {
+    setAttendanceEventCurrentPage(1);
+  }, [attendanceEventSearch, attendanceEventSortBy, attendanceEventPageSize]);
+
+  useEffect(() => {
+    setSelectedAttendanceEvent(null);
+    setAttendanceData([]);
+    setAttendanceSearch("");
+  }, [reportTimeframe]);
 
   const handlePrint = () => window.print();
 
@@ -477,23 +528,20 @@ function AdminReports() {
         {/* SUMMARY METRIC CARDS HEADER WITH FILTER */}
         <div className="flex flex-col sm:flex-row justify-between sm:items-end mb-4 print:hidden gap-3">
           <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Dashboard Overview</h2>
-          <div className="flex items-center gap-2">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Timeframe:</label>
-            <div className="relative">
-              <select 
-                value={metricTimeframe}
-                onChange={(e) => setMetricTimeframe(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-1.5 rounded-lg border border-gray-200 bg-white text-[11px] font-bold text-[#B59E74] uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-[#B59E74] cursor-pointer"
-              >
-                <option value="all">All Time</option>
-                <option value="30days">Past 30 Days</option>
-                <option value="7days">Past 7 Days</option>
-                <option value="year">This Year</option>
-              </select>
-              <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#B59E74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
+          <div className="sm:w-56">
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Timeframe</label>
+            <select
+              value={reportTimeframe}
+              onChange={(e) => setReportTimeframe(e.target.value)}
+              className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#B59E74]"
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="7d">Past 7 Days</option>
+              <option value="30d">Past 30 Days</option>
+              <option value="90d">Past 90 Days</option>
+              <option value="365d">Past 12 Months</option>
+            </select>
           </div>
         </div>
 
@@ -680,8 +728,42 @@ function AdminReports() {
 
             {/* ── ATTENDANCE TAB ── */}
             {activeTab === "attendance" && (() => {
+              const threshold = getRangeThreshold(reportTimeframe);
+              const thresholdMs = threshold ? new Date(threshold).getTime() : null;
+              const eventQuery = attendanceEventSearch.toLowerCase();
+              const eventFiltered = attendanceEvents.filter((ev) => {
+                if (thresholdMs && ev.event_date && new Date(ev.event_date).getTime() < thresholdMs) return false;
+                if (!eventQuery) return true;
+                const host = ev.ministry || ev.priest_name || "";
+                return (
+                  (ev.title || "").toLowerCase().includes(eventQuery) ||
+                  host.toLowerCase().includes(eventQuery)
+                );
+              });
+              const eventSorted = [...eventFiltered].sort((a, b) => {
+                const dateA = String(a.event_date || "");
+                const dateB = String(b.event_date || "");
+                const titleA = String(a.title || "").toLowerCase();
+                const titleB = String(b.title || "").toLowerCase();
+                const hostA = String(a.ministry || a.priest_name || "").toLowerCase();
+                const hostB = String(b.ministry || b.priest_name || "").toLowerCase();
+                if (attendanceEventSortBy === "date_desc") return dateB.localeCompare(dateA);
+                if (attendanceEventSortBy === "date_asc") return dateA.localeCompare(dateB);
+                if (attendanceEventSortBy === "title_asc") return titleA.localeCompare(titleB);
+                if (attendanceEventSortBy === "title_desc") return titleB.localeCompare(titleA);
+                if (attendanceEventSortBy === "host_asc") return hostA.localeCompare(hostB);
+                if (attendanceEventSortBy === "host_desc") return hostB.localeCompare(hostA);
+                return 0;
+              });
+              const eventTotal = eventSorted.length;
+              const eventTotalPages = Math.max(1, Math.ceil(eventTotal / attendanceEventPageSize));
+              const eventSafePage = Math.min(attendanceEventCurrentPage, eventTotalPages);
+              const eventStart = (eventSafePage - 1) * attendanceEventPageSize;
+              const eventPageData = eventSorted.slice(eventStart, eventStart + attendanceEventPageSize);
+
               const q = attendanceSearch.toLowerCase();
               const filtered = attendanceData.filter(item => {
+                if (thresholdMs && item.check_in_time && new Date(item.check_in_time).getTime() < thresholdMs) return false;
                 if (!q) return true;
                 const name = item.full_name
                   ? item.full_name
@@ -691,6 +773,26 @@ function AdminReports() {
                   (item.email || "").toLowerCase().includes(q)
                 );
               });
+              const toName = (item) => {
+                if (item.is_guest && item.guest_name) return item.guest_name;
+                if (item.full_name) return item.full_name;
+                return `${item.first_name || ""} ${item.last_name || ""}`.trim() || item.email || "";
+              };
+              const toRole = (item) => (item.is_guest ? "guest" : (item.role || "parishioner"));
+              const toCheckIn = (item) => item.check_in_time || "";
+              const sorted = [...filtered].sort((a, b) => {
+                if (attendanceSortBy === "checkin_desc") return toCheckIn(b).localeCompare(toCheckIn(a));
+                if (attendanceSortBy === "checkin_asc") return toCheckIn(a).localeCompare(toCheckIn(b));
+                if (attendanceSortBy === "name_asc") return toName(a).localeCompare(toName(b));
+                if (attendanceSortBy === "name_desc") return toName(b).localeCompare(toName(a));
+                if (attendanceSortBy === "role") return toRole(a).localeCompare(toRole(b)) || toName(a).localeCompare(toName(b));
+                return 0;
+              });
+              const total = sorted.length;
+              const totalPages = Math.max(1, Math.ceil(total / attendancePageSize));
+              const safePage = Math.min(attendanceCurrentPage, totalPages);
+              const start = (safePage - 1) * attendancePageSize;
+              const pageData = sorted.slice(start, start + attendancePageSize);
 
               return (
                 <div>
@@ -705,7 +807,7 @@ function AdminReports() {
                       />
                     </div>
                     {selectedAttendanceEvent && (
-                      <div className="sm:w-64">
+                      <div className="sm:w-56">
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Search Attendee</label>
                         <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-[#B59E74]">
                           <span className="text-gray-400 text-sm">🔍</span>
@@ -722,6 +824,96 @@ function AdminReports() {
                         </div>
                       </div>
                     )}
+                    {selectedAttendanceEvent && (
+                      <div className="sm:w-36">
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Rows</label>
+                        <select
+                          value={attendancePageSize}
+                          onChange={(e) => setAttendancePageSize(Number(e.target.value))}
+                          className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm"
+                        >
+                          <option value={10}>10</option>
+                          <option value={25}>25</option>
+                          <option value={50}>50</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mb-6 print:hidden">
+                    <div className="flex flex-col sm:flex-row gap-3 mb-3">
+                      <div className="flex-1">
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Event List Search</label>
+                        <input
+                          type="text"
+                          value={attendanceEventSearch}
+                          onChange={(e) => setAttendanceEventSearch(e.target.value)}
+                          placeholder="Search event title or host..."
+                          className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm"
+                        />
+                      </div>
+                      <div className="sm:w-40">
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Rows</label>
+                        <select
+                          value={attendanceEventPageSize}
+                          onChange={(e) => setAttendanceEventPageSize(Number(e.target.value))}
+                          className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm"
+                        >
+                          <option value={5}>5</option>
+                          <option value={8}>8</option>
+                          <option value={10}>10</option>
+                        </select>
+                      </div>
+                      <div className="sm:w-56">
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Sort By</label>
+                        <select
+                          value={attendanceEventSortBy}
+                          onChange={(e) => setAttendanceEventSortBy(e.target.value)}
+                          className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm"
+                        >
+                          <option value="date_desc">Event Date - Newest</option>
+                          <option value="date_asc">Event Date - Oldest</option>
+                          <option value="title_asc">Title - A to Z</option>
+                          <option value="title_desc">Title - Z to A</option>
+                          <option value="host_asc">Host - A to Z</option>
+                          <option value="host_desc">Host - Z to A</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50 text-gray-500 text-[10px] uppercase tracking-widest font-bold">
+                            <th className="p-3 border-b border-gray-200">Event</th>
+                            <th className="p-3 border-b border-gray-200">Host</th>
+                            <th className="p-3 border-b border-gray-200">Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {eventPageData.length === 0 ? (
+                            <tr><td colSpan="3" className="p-6 text-center text-gray-400 italic">No events found.</td></tr>
+                          ) : eventPageData.map((ev) => (
+                            <tr
+                              key={ev.id}
+                              onClick={() => setSelectedAttendanceEvent(ev)}
+                              className={`cursor-pointer border-b border-gray-50 hover:bg-[#B59E74]/10 ${selectedAttendanceEvent?.id === ev.id ? "bg-[#B59E74]/10" : ""}`}
+                            >
+                              <td className="p-3 text-sm font-medium text-gray-800">{ev.title}</td>
+                              <td className="p-3 text-sm text-gray-600">{ev.ministry || (ev.priest_name ? `Fr. ${ev.priest_name}` : "—")}</td>
+                              <td className="p-3 text-sm text-gray-500">{ev.event_date ? new Date(ev.event_date).toLocaleDateString() : "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
+                      <span>{eventTotal} event{eventTotal !== 1 ? "s" : ""}</span>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setAttendanceEventCurrentPage(p => Math.max(1, p - 1))} disabled={eventSafePage <= 1} className="px-3 py-1 rounded border border-gray-200 disabled:opacity-40">Prev</button>
+                        <span>{eventSafePage}/{eventTotalPages}</span>
+                        <button type="button" onClick={() => setAttendanceEventCurrentPage(p => Math.min(eventTotalPages, p + 1))} disabled={eventSafePage >= eventTotalPages} className="px-3 py-1 rounded border border-gray-200 disabled:opacity-40">Next</button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* No event selected */}
@@ -741,7 +933,7 @@ function AdminReports() {
                           {selectedAttendanceEvent.title}
                         </h4>
                         <div className="h-px w-full bg-gray-100 print:bg-black"></div>
-                        <span className="text-xs text-gray-400 whitespace-nowrap print:text-black">{filtered.length} attendee{filtered.length !== 1 ? "s" : ""}</span>
+                        <span className="text-xs text-gray-400 whitespace-nowrap print:text-black">{total} attendee{total !== 1 ? "s" : ""}</span>
                       </div>
                       <p className="text-xs text-gray-400 mb-4 print:text-black">
                         <span className="uppercase tracking-widest font-bold">Hosted by</span>{" "}
@@ -767,14 +959,14 @@ function AdminReports() {
                             </tr>
                           </thead>
                           <tbody>
-                            {filtered.length === 0 ? (
+                            {pageData.length === 0 ? (
                               <tr>
                                 <td colSpan="6" className="p-20 text-center text-gray-400 italic font-serif">
                                   {attendanceSearch ? "No attendees match your search." : "No attendance records for this event."}
                                 </td>
                               </tr>
                             ) : (
-                              filtered.map((item, idx) => {
+                              pageData.map((item, idx) => {
                                 const isGuest = item.is_guest === true;
                                 const displayName = isGuest && item.guest_name
                                   ? item.guest_name
@@ -796,7 +988,7 @@ function AdminReports() {
 
                                 return (
                                 <tr key={idx} className="border-b border-gray-50 print:border-black hover:bg-gray-50 transition-colors">
-                                  <td className="p-4 text-xs text-gray-400">{idx + 1}</td>
+                                  <td className="p-4 text-xs text-gray-400">{start + idx + 1}</td>
                                   <td className="p-4 text-sm font-medium text-gray-800 print:text-black capitalize">
                                     {displayName || <span className="text-gray-400 italic">—</span>}
                                   </td>
@@ -820,6 +1012,42 @@ function AdminReports() {
                             )}
                           </tbody>
                         </table>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-3 text-xs text-gray-500 print:hidden">
+                        <div className="flex items-center gap-2">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Sort By</label>
+                          <select
+                            value={attendanceSortBy}
+                            onChange={(e) => setAttendanceSortBy(e.target.value)}
+                            className="p-2 rounded-lg border border-gray-200 bg-gray-50 text-xs"
+                          >
+                            <option value="checkin_desc">Check-in - Newest</option>
+                            <option value="checkin_asc">Check-in - Oldest</option>
+                            <option value="name_asc">Name - A to Z</option>
+                            <option value="name_desc">Name - Z to A</option>
+                            <option value="role">Role</option>
+                          </select>
+                        </div>
+                        <span>Showing {total === 0 ? 0 : start + 1}-{Math.min(start + attendancePageSize, total)} of {total}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAttendanceCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={safePage <= 1}
+                            className="px-3 py-1 rounded border border-gray-200 disabled:opacity-40"
+                          >
+                            Prev
+                          </button>
+                          <span>{safePage}/{totalPages}</span>
+                          <button
+                            type="button"
+                            onClick={() => setAttendanceCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={safePage >= totalPages}
+                            className="px-3 py-1 rounded border border-gray-200 disabled:opacity-40"
+                          >
+                            Next
+                          </button>
+                        </div>
                       </div>
                     </>
                   )}

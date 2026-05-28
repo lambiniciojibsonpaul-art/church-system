@@ -112,13 +112,58 @@ function PriestDashboard() {
         .from("sacraments_liturgical")
         .select("*")
         .eq("preferred_priest", officialName);
-      
+
       if (liturgical) {
         allRequests = [...allRequests, ...liturgical.map(l => ({
           ...l,
           request_type: l.request_type || "Liturgical Service",
           display_date: l.request_date || l.created_at,
           display_name: `${l.request_type || 'Service'} requested by ${l.requested_by || 'Parishioner'}`,
+        }))];
+      }
+
+      // F. Mass Intentions
+      const { data: massIntentions } = await supabase
+        .from("mass_intentions")
+        .select("*")
+        .eq("preferred_priest", officialName);
+
+      if (massIntentions) {
+        allRequests = [...allRequests, ...massIntentions.map(m => ({
+          ...m,
+          request_type: "Mass Intention",
+          display_date: m.preferred_date || m.created_at,
+          display_name: `${m.intention_type || 'Intention'} — ${m.names_in_intention || m.full_name || 'Parishioner'}`,
+        }))];
+      }
+
+      // G. Facilities Bookings
+      const { data: facilities } = await supabase
+        .from("facilities_bookings")
+        .select("*")
+        .eq("preferred_priest", officialName);
+
+      if (facilities) {
+        allRequests = [...allRequests, ...facilities.map(f => ({
+          ...f,
+          request_type: "Facilities Booking",
+          display_date: f.start_date || f.created_at,
+          display_name: `${f.facility || 'Facility'} — ${f.event_type || f.event_purpose || 'Booking'}`,
+        }))];
+      }
+
+      // H. Certification Requests
+      const { data: certs } = await supabase
+        .from("certification_requests")
+        .select("*")
+        .eq("preferred_priest", officialName);
+
+      if (certs) {
+        allRequests = [...allRequests, ...certs.map(c => ({
+          ...c,
+          request_type: "Certification",
+          display_date: c.created_at,
+          display_name: `${c.certificate_type || 'Certificate'} — ${c.record_holder_first_name || ''} ${c.record_holder_surname || ''}`.trim(),
         }))];
       }
 
@@ -139,6 +184,9 @@ function PriestDashboard() {
       case "Wedding": return "weddings";
       case "Holy Communion": return "holy_communions";
       case "Confirmation": return "confirmations";
+      case "Mass Intention": return "mass_intentions";
+      case "Facilities Booking": return "facilities_bookings";
+      case "Certification": return "certification_requests";
       default: return "sacraments_liturgical";
     }
   };

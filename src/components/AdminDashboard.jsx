@@ -104,6 +104,7 @@ const TAB_CONFIG = {
   "Mass Intentions": {
     table: "mass_intentions",
     isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.intention_type || ""} for ${r.names_in_intention || r.full_name || ""}`.trim(),
     columns: [
       { label: "Type", value: (r) => r.intention_type },
@@ -148,7 +149,8 @@ const TAB_CONFIG = {
   },
   "Facilities Booking": {
     table: "facilities_bookings",
-    isSacrament: false,
+    isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.facility || "Facility"} — ${r.event_type || r.event_purpose || ""}`.trim(),
     columns: [
       { label: "Facility", value: (r) => r.facility },
@@ -156,10 +158,22 @@ const TAB_CONFIG = {
       { label: "Start", value: (r) => formatDate(r.start_date) },
       { label: "Submitter", value: (r) => r.is_guest ? `${r.guest_name || "—"} (Guest)` : (r.submitter_signature || `${r.requestor_first_name || ""} ${r.requestor_surname || ""}`.trim() || "—") },
     ],
+    eventBuilder: (r, priest, userId) => ({
+      creator_id: userId,
+      title: `${r.facility || "Facility"} — ${r.event_type || r.event_purpose || "Booking"}`.trim(),
+      event_class: "Facilities",
+      priest_name: priest,
+      event_date: r.start_date,
+      event_time: r.start_time || "08:00",
+      location: r.facility || "Parish Facility",
+      description: `Facilities booking: ${r.event_type || r.event_purpose || ""}. Requested by ${r.requestor_first_name || r.guest_name || ""}.`,
+      status: "Active",
+    }),
   },
   Certifications: {
     table: "certification_requests",
-    isSacrament: false,
+    isSacrament: true,
+    requiresPriest: true,
     title: (r) => `${r.certificate_type || "Certificate"} — ${r.record_holder_first_name || ""} ${r.record_holder_surname || ""}`.trim(),
     columns: [
       { label: "Type", value: (r) => r.certificate_type },
