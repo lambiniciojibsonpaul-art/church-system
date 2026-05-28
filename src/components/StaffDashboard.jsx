@@ -182,7 +182,7 @@ const TAB_NAMES = Object.keys(TAB_CONFIG);
 // ─── Details viewer helpers ───────────────────────────────────────────────────
 const HIDDEN_FIELDS = new Set([
   "id", "created_at", "user_id", "declaration_consent",
-  "_tab", "_config", "request_type", "display_date", "display_name", "preferred_time"
+  "_tab", "_config", "request_type", "display_date", "display_name"
 ]);
 
 function humanizeKey(key) {
@@ -192,6 +192,14 @@ function humanizeKey(key) {
 function formatValue(key, val) {
   if (val == null || val === "") return null;
   if (typeof val === "boolean") return val ? "Yes" : "No";
+  if (/_time$/i.test(key) || key === "time_of_communion" || key === "time_of_confirmation" || key === "wedding_time" || key === "preferred_time" || key === "request_time" || key === "start_time" || key === "end_time") {
+    try {
+      const t = String(val);
+      const withSeconds = t.length === 5 ? `${t}:00` : t;
+      const d = new Date(`1970-01-01T${withSeconds}`);
+      if (!isNaN(d)) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    } catch { /* ignore */ }
+  }
   if (key.match(/_date|_dob$/i) || key === "preferred_date" || key === "wedding_date") {
     try {
       const d = new Date(val);

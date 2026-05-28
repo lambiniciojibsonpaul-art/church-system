@@ -2,6 +2,19 @@ import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/useAuth";
 
+function formatDisplayTime(value) {
+  if (!value) return null;
+  try {
+    const t = String(value);
+    const withSeconds = t.length === 5 ? `${t}:00` : t;
+    const d = new Date(`1970-01-01T${withSeconds}`);
+    if (!isNaN(d)) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch {
+    // ignore
+  }
+  return String(value);
+}
+
 function PriestDashboard() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("pending"); // "pending" | "schedule"
@@ -723,6 +736,30 @@ function PriestDashboard() {
                   </>
                 )}
               </div>
+
+              {(viewingDetails.preferred_time || viewingDetails.wedding_time || viewingDetails.time_of_communion || viewingDetails.time_of_confirmation || viewingDetails.request_time || viewingDetails.start_time || viewingDetails.end_time) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-gray-100 pt-6">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Start Time</label>
+                    <p className="font-medium text-gray-800">
+                      {formatDisplayTime(
+                        viewingDetails.preferred_time ||
+                        viewingDetails.wedding_time ||
+                        viewingDetails.time_of_communion ||
+                        viewingDetails.time_of_confirmation ||
+                        viewingDetails.request_time ||
+                        viewingDetails.start_time
+                      ) || "N/A"}
+                    </p>
+                  </div>
+                  {viewingDetails.end_time && (
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">End Time</label>
+                      <p className="font-medium text-gray-800">{formatDisplayTime(viewingDetails.end_time) || "N/A"}</p>
+                    </div>
+                  )}
+                </div>
+              )}
               
               {/* Optional General Remarks / Notes */}
               {(viewingDetails.notes || viewingDetails.remarks) && (
