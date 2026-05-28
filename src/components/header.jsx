@@ -252,6 +252,7 @@ function useAnnouncementUnread(userId, userRole) {
 
   const fetchCount = useCallback(async () => {
     if (!userId || !userRole) { setCount(0); return; }
+    const effectiveRole = userRole === "minister" ? "ministry" : userRole;
     try {
       const { data: anns } = await supabase
         .from("announcements")
@@ -259,7 +260,7 @@ function useAnnouncementUnread(userId, userRole) {
         .eq("status", "Published");
       if (!anns?.length) { setCount(0); return; }
       const targeted = anns
-        .filter((a) => !a.target_roles?.length || a.target_roles.includes(userRole))
+        .filter((a) => !a.target_roles?.length || a.target_roles.includes(effectiveRole))
         .map((a) => a.id);
       if (!targeted.length) { setCount(0); return; }
       const { data: reads } = await supabase

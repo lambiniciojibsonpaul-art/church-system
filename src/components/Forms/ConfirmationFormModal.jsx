@@ -40,6 +40,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
   const [formData, setFormData] = useState({
     date_of_confirmation: "",
     time_of_confirmation: "",
+    end_time: "",
     preferred_priest: "",
     child_first_name: "",
     child_middle_name: "",
@@ -227,6 +228,15 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
                 <label className="text-sm font-bold text-gray-600">Time: <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras)</span></label>
                 <select name="time_of_confirmation" value={formData.time_of_confirmation} onChange={handleChange} required className={inputClass}>
                   <option value="" disabled>Select Time</option>
+                  {TIME_SLOTS.map((slot) => (
+                    <option key={slot.value} value={slot.value}>{slot.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-bold text-gray-600">End Time <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Katapusan)</span></label>
+                <select name="end_time" value={formData.end_time} onChange={handleChange} className={inputClass}>
+                  <option value="">— Optional —</option>
                   {TIME_SLOTS.map((slot) => (
                     <option key={slot.value} value={slot.value}>{slot.label}</option>
                   ))}

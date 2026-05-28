@@ -264,6 +264,7 @@ function AdminSchedules() {
     eventEndDate: "",
     eventDate: "",
     eventTime: "",
+    endTime: "",
     location: CHURCH_ADDRESS,
     description: "",
     isInside: true,
@@ -501,6 +502,7 @@ function AdminSchedules() {
       eventEndDate: ev.event_end_date || "",
       eventDate: ev.event_date || "",
       eventTime: ev.event_time || "",
+      endTime: ev.end_time || "",
       location: ev.location || "",
       description: ev.description || "",
       isInside: isIndoor,
@@ -648,6 +650,7 @@ function AdminSchedules() {
         event_date:      formData.eventStartDate,
         event_end_date:  formData.eventEndDate || null,
         event_time:   formData.eventTime,
+        end_time:     formData.endTime || null,
         location:     formData.location,
         description:  formData.description,
         setting:      formData.setting,
@@ -726,22 +729,19 @@ function AdminSchedules() {
       if (activeSort === "created_asc") {
         return String(a.created_at || "").localeCompare(String(b.created_at || ""));
       }
-
       const dateA = a.event_date || (activeSort === "date_asc" ? "9999-12-31" : "0000-00-00");
       const timeA = a.event_time || "00:00:00";
       const dateB = b.event_date || (activeSort === "date_asc" ? "9999-12-31" : "0000-00-00");
       const timeB = b.event_time || "00:00:00";
-      
-      const dtA = new Date(`${dateA}T${timeA}`).getTime();
-      const dtB = new Date(`${dateB}T${timeB}`).getTime();
-
-      if (activeSort === "date_desc") {
-        if (isNaN(dtA) || isNaN(dtB)) return `${dateB}T${timeB}`.localeCompare(`${dateA}T${timeA}`);
-        return dtB - dtA;
-      }
-      
-      if (isNaN(dtA) || isNaN(dtB)) return `${dateA}T${timeA}`.localeCompare(`${dateB}T${timeB}`);
-      return dtA - dtB;
+      const dateCmp = activeSort === "date_desc"
+        ? dateB.localeCompare(dateA)
+        : dateA.localeCompare(dateB);
+      if (dateCmp !== 0) return dateCmp;
+      const isMassA = a.event_class === "Mass";
+      const isMassB = b.event_class === "Mass";
+      if (isMassA && !isMassB) return -1;
+      if (!isMassA && isMassB) return 1;
+      return timeA.localeCompare(timeB);
     });
 
   const pendingCount   = events.filter(ev => ev.status === "Pending").length;
@@ -1162,7 +1162,7 @@ function AdminSchedules() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">Start Date *</label>
                   <input
@@ -1174,7 +1174,7 @@ function AdminSchedules() {
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-gray-600 uppercase">
-                    End Date <span className="text-gray-400 normal-case font-normal text-[10px]">(optional — for multi-day)</span>
+                    End Date <span className="text-gray-400 normal-case font-normal text-[10px]">(optional)</span>
                   </label>
                   <input
                     type="date" name="eventEndDate"
@@ -1191,6 +1191,16 @@ function AdminSchedules() {
                   <input
                     type="time" name="eventTime" required
                     value={formData.eventTime} onChange={handleChange}
+                    className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600 uppercase">
+                    End Time <span className="text-gray-400 normal-case font-normal text-[10px]">(optional)</span>
+                  </label>
+                  <input
+                    type="time" name="endTime"
+                    value={formData.endTime} onChange={handleChange}
                     className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                   />
                 </div>

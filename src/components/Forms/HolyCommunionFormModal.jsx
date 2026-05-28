@@ -37,6 +37,7 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
   const [formData, setFormData] = useState({
     date_of_communion: "",
     time_of_communion: "",
+    end_time: "",
     preferred_priest: "",
     child_first_name: "",
     child_middle_name: "",
@@ -128,6 +129,7 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
       const safePayload = {
         date_of_communion:  formData.date_of_communion,
         time_of_communion:  formData.time_of_communion,
+        end_time:           formData.end_time || null,
         preferred_priest:   formData.preferred_priest || null,
         child_first_name:   formData.child_first_name,
         child_middle_name:  formData.child_middle_name,
@@ -209,6 +211,15 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
                 <label className="text-sm font-bold text-gray-600">Time: <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras)</span></label>
                 <select name="time_of_communion" value={formData.time_of_communion} onChange={handleChange} required className={inputClass}>
                   <option value="" disabled>Select Time</option>
+                  {TIME_SLOTS.map((slot) => (
+                    <option key={slot.value} value={slot.value}>{slot.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-bold text-gray-600">End Time <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Katapusan)</span></label>
+                <select name="end_time" value={formData.end_time} onChange={handleChange} className={inputClass}>
+                  <option value="">— Optional —</option>
                   {TIME_SLOTS.map((slot) => (
                     <option key={slot.value} value={slot.value}>{slot.label}</option>
                   ))}

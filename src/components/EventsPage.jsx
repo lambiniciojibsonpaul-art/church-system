@@ -330,7 +330,15 @@ function EventsPage() {
     });
   };
 
-  const selectedEvents = getEventsForDate(selectedDate);
+  const selectedEvents = getEventsForDate(selectedDate).sort((a, b) => {
+    const isMassA = a.event_class === "Mass";
+    const isMassB = b.event_class === "Mass";
+    if (isMassA && !isMassB) return -1;
+    if (!isMassA && isMassB) return 1;
+    const timeA = a.event_time || "23:59:59";
+    const timeB = b.event_time || "23:59:59";
+    return timeA.localeCompare(timeB);
+  });
   const EVENTS_PER_PAGE = 3;
   const totalEventPages = Math.ceil(selectedEvents.length / EVENTS_PER_PAGE);
   const pagedEvents = selectedEvents.slice(eventsPage * EVENTS_PER_PAGE, (eventsPage + 1) * EVENTS_PER_PAGE);

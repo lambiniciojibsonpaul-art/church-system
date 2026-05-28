@@ -56,6 +56,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
     baptismType: "Sunday",
     preferredDate: "",
     preferredTime: "",
+    preferredEndTime: "",
     preferredPriest: "",
     childFirstName: "",
     childMiddleName: "",
@@ -193,6 +194,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         baptism_type: formData.baptismType,
         preferred_date: formData.preferredDate,
         preferred_time: formData.preferredTime,
+        end_time: formData.preferredEndTime || null,
         preferred_priest: formData.preferredPriest || null,
         child_first_name: formData.childFirstName,
         child_middle_name: formData.childMiddleName,
@@ -379,6 +381,16 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                   <select name="preferredTime" value={formData.preferredTime} onChange={handleChange} required
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700">
                     <option value="" disabled>Select Time</option>
+                    {TIME_SLOTS.map((slot) => (
+                      <option key={slot.value} value={slot.value}>{slot.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600">End Time <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Katapusan)</span></label>
+                  <select name="preferredEndTime" value={formData.preferredEndTime} onChange={handleChange}
+                    className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700">
+                    <option value="">— Optional —</option>
                     {TIME_SLOTS.map((slot) => (
                       <option key={slot.value} value={slot.value}>{slot.label}</option>
                     ))}

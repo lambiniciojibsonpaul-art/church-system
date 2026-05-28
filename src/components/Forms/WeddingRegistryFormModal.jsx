@@ -61,6 +61,7 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
     bride_contact: "",
     wedding_date: "",
     wedding_time: "",
+    end_time: "",
     preferred_priest: "", 
     reservation_fee: "",
     official_receipt_no: "",
@@ -269,6 +270,15 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
                   <label className="text-xs font-bold text-gray-600">Time of Wedding <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Kasal)</span></label>
                   <select name="wedding_time" value={formData.wedding_time} onChange={handleChange} required className={inputClass}>
                     <option value="" disabled>Select Time</option>
+                    {TIME_SLOTS.map((slot) => (
+                      <option key={slot.value} value={slot.value}>{slot.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-600">End Time <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Katapusan)</span></label>
+                  <select name="end_time" value={formData.end_time} onChange={handleChange} className={inputClass}>
+                    <option value="">— Optional —</option>
                     {TIME_SLOTS.map((slot) => (
                       <option key={slot.value} value={slot.value}>{slot.label}</option>
                     ))}
