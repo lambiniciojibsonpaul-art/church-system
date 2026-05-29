@@ -6,7 +6,7 @@ import { useAuth } from "../contexts/useAuth";
 import { QRCodeCanvas } from "qrcode.react";
 import jsPDF from "jspdf";
 import UserRepository from "./UserRepository";
-import { detectEventConflicts, fetchActiveEventsForConflict, formatConflictWarning } from "../utils/timeConflict";
+import { detectEventConflicts, fetchActiveEventsForConflict } from "../utils/timeConflict";
 import { dateRangesOverlap, timeRangesOverlap } from "../utils/timeConflict";
 
 function formatDate(d) {
@@ -209,6 +209,29 @@ function formatValue(key, val) {
     } catch { /* ignore */ }
   }
   return String(val);
+}
+
+function formatConflictDate(value) {
+  if (!value) return "No date";
+  try {
+    return new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString();
+  } catch {
+    return String(value).slice(0, 10);
+  }
+}
+
+function formatConflictTime(value) {
+  if (!value) return "No time";
+  try {
+    const raw = String(value).slice(0, 5);
+    const [h, m] = raw.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return raw;
+    const suffix = h >= 12 ? "PM" : "AM";
+    const hour12 = h % 12 || 12;
+    return `${hour12}:${String(m).padStart(2, "0")} ${suffix}`;
+  } catch {
+    return String(value);
+  }
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -1278,8 +1301,25 @@ function StaffDashboard() {
               {acceptConflictWarnings.length > 0 && (
                 <div className="w-full rounded-xl border border-amber-300 bg-amber-50 p-3">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700">Time Conflict Detected</p>
-                  <p className="text-xs text-amber-700 mt-1">{formatConflictWarning(acceptConflictWarnings, "events")}</p>
-                    <div className="flex gap-2 mt-2">
+                  <p className="text-xs text-amber-700 mt-1">
+                    This schedule overlaps with existing entries. You can decline or continue anyway.
+                  </p>
+                  <div className="mt-3 max-h-40 overflow-y-auto space-y-2 pr-1">
+                    {acceptConflictWarnings.map((c, idx) => (
+                      <div key={`${c.source_table || "src"}-${c.id || idx}`} className="rounded-lg border border-amber-200 bg-white/70 px-3 py-2">
+                        <p className="text-xs font-semibold text-amber-900 truncate">{c.title || "Untitled Event"}</p>
+                        <p className="text-[11px] text-amber-800 mt-0.5">
+                          {formatConflictDate(c.event_date)} at {formatConflictTime(c.event_time)}
+                        </p>
+                        {c.source_table && (
+                          <span className="inline-block mt-1 text-[10px] uppercase tracking-widest font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                            {String(c.source_table).replaceAll("_", " ")}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-2">
                       <button
                         type="button"
                         onClick={() => {

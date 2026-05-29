@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/useAuth";
 
@@ -40,6 +40,7 @@ function getInitials(firstName, lastName, email) {
 // ---- component ---------------------------------------------------------------
 function UserProfile() {
   const { user, role, loading: authLoading } = useAuth();
+  const location = useLocation();
 
   const [activeTab, setActiveTab]   = useState("profile");
   const [profile,   setProfile]     = useState(null);
@@ -57,6 +58,9 @@ function UserProfile() {
   const [pwLoading, setPwLoading] = useState(false);
   const [pwSuccess, setPwSuccess] = useState(false);
   const [pwError,   setPwError]   = useState(null);
+  const [requestNotifications, setRequestNotifications] = useState([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifError, setNotifError] = useState(null);
 
   const check    = validatePassword(pw.new);
   const mismatch = pw.confirm.length > 0 && pw.new !== pw.confirm;
@@ -82,6 +86,55 @@ function UserProfile() {
       setProfileLoading(false);
     })();
   }, [user?.id]);
+
+  useEffect(() => {
+    const requestedTab = location?.state?.profileTab;
+    if (requestedTab === "profile" || requestedTab === "notifications" || requestedTab === "security") {
+      setActiveTab(requestedTab);
+    }
+  }, [location?.state]);
+
+  useEffect(() => {
+    if (!user?.id || activeTab !== "notifications") return;
+
+    const fetchRequestNotifications = async () => {
+      setNotifLoading(true);
+      setNotifError(null);
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("id, title, message, is_read, created_at, source_table, source_id, link")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+      if (error) {
+        setNotifError(error.message || "Failed to load notifications.");
+        setRequestNotifications([]);
+      } else {
+        const filtered = (data || []).filter((n) => {
+          const source = String(n.source_table || "").toLowerCase();
+          const link = String(n.link || "");
+          return source !== "announcements" && link !== "/announcements";
+        });
+        setRequestNotifications(filtered);
+      }
+      setNotifLoading(false);
+    };
+
+    fetchRequestNotifications();
+
+    const channel = supabase
+      .channel(`profile-request-notifs-${user.id}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${user.id}`,
+      }, () => fetchRequestNotifications())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, activeTab]);
 
   // ---- guards ----------------------------------------------------------------
   if (authLoading) {
@@ -168,6 +221,65 @@ function UserProfile() {
     </li>
   );
 
+  const formatNotifDate = (value) => {
+    if (!value) return "—";
+    try {
+      return new Date(value).toLocaleString("en-PH", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return String(value);
+    }
+  };
+
+  const getRequestNotifStatus = (notif) => {
+    const text = `${notif?.title || ""} ${notif?.message || ""}`.toLowerCase();
+    if (
+      text.includes("not approved") ||
+      text.includes("rejected") ||
+      text.includes("declined") ||
+      text.includes("not accepted")
+    ) {
+      return { key: "rejected", label: "Rejected" };
+    }
+    if (
+      text.includes("fully approved") ||
+      text.includes("approved") ||
+      text.includes("confirmed") ||
+      text.includes("completed")
+    ) {
+      return { key: "approved", label: "Approved" };
+    }
+    return { key: "update", label: "Update" };
+  };
+
+  const deleteNotification = async (id) => {
+    if (!id) return;
+    const previous = requestNotifications;
+    setRequestNotifications((prev) => prev.filter((n) => n.id !== id));
+    const { error } = await supabase.from("notifications").delete().eq("id", id);
+    if (error) {
+      setRequestNotifications(previous);
+      setNotifError(error.message || "Failed to delete notification.");
+    }
+  };
+
+  const clearAllRequestNotifications = async () => {
+    if (requestNotifications.length === 0) return;
+    const ids = requestNotifications.map((n) => n.id);
+    const previous = requestNotifications;
+    setRequestNotifications([]);
+    const { error } = await supabase.from("notifications").delete().in("id", ids);
+    if (error) {
+      setRequestNotifications(previous);
+      setNotifError(error.message || "Failed to clear notifications.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans pt-24 pb-12 px-4 sm:px-6">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -215,7 +327,7 @@ function UserProfile() {
 
         {/* ── Tabs ──────────────────────────────────────────────────────── */}
         <div className="flex gap-1 bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm w-fit">
-          {["profile", "security"].map(tab => (
+          {["profile", "notifications", "security"].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -225,7 +337,7 @@ function UserProfile() {
                   : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
               }`}
             >
-              {tab === "profile" ? "My Profile" : "Security"}
+              {tab === "profile" ? "My Profile" : tab === "notifications" ? "Notification" : "Security"}
             </button>
           ))}
         </div>
@@ -314,17 +426,112 @@ function UserProfile() {
             )}
           </div>
         )}
-
-        {/* ── Security Tab ──────────────────────────────────────────────── */}
-        {activeTab === "security" && (
+        {activeTab === "notifications" && (
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
-            <h2 className="text-lg font-serif text-gray-800 uppercase tracking-widest mb-6 border-b border-gray-100 pb-4">
-              Change Password
-            </h2>
+            <div className="flex items-center justify-between gap-3 border-b border-gray-100 pb-4 mb-5">
+              <h2 className="text-lg font-serif text-gray-800 uppercase tracking-widest">
+                Request Notifications
+              </h2>
+              <button
+                type="button"
+                onClick={clearAllRequestNotifications}
+                disabled={requestNotifications.length === 0}
+                className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Clear All
+              </button>
+            </div>
 
-            <form onSubmit={handlePasswordChange} className="space-y-5 max-w-md">
-              {pwError   && <div className="p-3 bg-red-50 text-red-600 border border-red-100 rounded-xl text-sm font-bold">{pwError}</div>}
-              {pwSuccess && <div className="p-3 bg-green-50 text-green-700 border border-green-100 rounded-xl text-sm font-bold">Password changed successfully.</div>}
+            {notifError && (
+              <div className="mb-4 p-3 bg-red-50 text-red-600 border border-red-100 rounded-xl text-sm font-bold">
+                {notifError}
+              </div>
+            )}
+
+            {notifLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-[#B59E74]" />
+              </div>
+            ) : requestNotifications.length === 0 ? (
+              <div className="text-sm text-gray-400 italic py-8 text-center">
+                No request-status notifications yet.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                {requestNotifications.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`rounded-2xl border p-4 ${n.is_read ? "bg-gray-50 border-gray-200" : "bg-white border-[#B59E74]/40"}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 truncate">{n.title || "Request Update"}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{formatNotifDate(n.created_at)}</p>
+                      </div>
+                      {(() => {
+                        const s = getRequestNotifStatus(n);
+                        if (s.key === "approved") {
+                          return (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-50 text-green-700 border border-green-200 shrink-0">
+                              <span>✓</span>
+                              <span>{s.label}</span>
+                            </span>
+                          );
+                        }
+                        if (s.key === "rejected") {
+                          return (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 shrink-0">
+                              <span>✕</span>
+                              <span>{s.label}</span>
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-50 text-gray-600 border border-gray-200 shrink-0">
+                            <span>•</span>
+                            <span>{s.label}</span>
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <div className="flex items-start justify-between gap-3 mt-2">
+                      <div className="min-w-0 flex-1">
+                        {n.message && (
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{n.message}</p>
+                        )}
+                        {n.source_table && (
+                          <span className="inline-block mt-2 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#B59E74]/10 text-[#7a6a42]">
+                            {String(n.source_table).replaceAll("_", " ")}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => deleteNotification(n.id)}
+                        className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg border border-red-200 text-red-600 hover:bg-red-50 shrink-0"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+
+        {activeTab === "security" && (
+          <div className="space-y-6">
+
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+              <h2 className="text-lg font-serif text-gray-800 uppercase tracking-widest mb-6 border-b border-gray-100 pb-4">
+                Change Password
+              </h2>
+
+              <form onSubmit={handlePasswordChange} className="space-y-5 max-w-md">
+                {pwError   && <div className="p-3 bg-red-50 text-red-600 border border-red-100 rounded-xl text-sm font-bold">{pwError}</div>}
+                {pwSuccess && <div className="p-3 bg-green-50 text-green-700 border border-green-100 rounded-xl text-sm font-bold">Password changed successfully.</div>}
 
               {/* Current password */}
               <div className="flex flex-col gap-1">
@@ -386,16 +593,17 @@ function UserProfile() {
                 {mismatch && <p className="text-[11px] text-red-500 font-bold ml-1">Passwords do not match.</p>}
               </div>
 
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={pwLoading || !check.valid || mismatch || !pw.current || !pw.confirm}
-                  className="bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-3 px-8 rounded-xl text-xs uppercase tracking-widest transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {pwLoading ? "Updating..." : "Update Password"}
-                </button>
-              </div>
-            </form>
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={pwLoading || !check.valid || mismatch || !pw.current || !pw.confirm}
+                    className="bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold py-3 px-8 rounded-xl text-xs uppercase tracking-widest transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {pwLoading ? "Updating..." : "Update Password"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </div>
@@ -404,3 +612,4 @@ function UserProfile() {
 }
 
 export default UserProfile;
+

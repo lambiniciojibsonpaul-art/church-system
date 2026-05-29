@@ -5,7 +5,6 @@ import { sendRequestEmail } from "../../emailNotifications";
 import DocumentUploader from "../DocumentUploader";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter } from "./formHelpers";
-import { detectEventConflicts, fetchActiveEventsForConflict, formatConflictWarning } from "../../utils/timeConflict";
 
 // Helper function to generate time slots between 8:30 AM and 5:30 PM
 function generateTimeSlots() {
@@ -154,28 +153,21 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
       setError("Please confirm the declaration before submitting.");
       return;
     }
-    try {
-      const allEvents = await fetchActiveEventsForConflict();
-      const conflicts = detectEventConflicts({
-        events: allEvents,
-        startDate: formData.date_of_confirmation,
-        endDate: formData.date_of_confirmation,
-        startTime: formData.time_of_confirmation,
-        endTime: formData.end_time || null,
-        priestName: formData.preferred_priest || null,
-      });
-      if (conflicts.length > 0) {
-        const proceed = window.confirm(`${formatConflictWarning(conflicts, "events")}\n\nSubmit request anyway?`);
-        if (!proceed) return;
-      }
-    } catch (err) {
-      console.warn("Conflict precheck failed:", err?.message || err);
-    }
     setLoading(true);
     try {
       const fatherFull = [formData.father_first_name, formData.father_middle_name, formData.father_last_name].filter(Boolean).join(" ");
       const motherFull = [formData.mother_first_name, formData.mother_middle_name, formData.mother_last_name].filter(Boolean).join(" ");
-      const { father_first_name, father_middle_name, father_last_name, mother_first_name, mother_middle_name, mother_last_name, ...restFormData } = formData;
+      const {
+        father_first_name,
+        father_middle_name,
+        father_last_name,
+        mother_first_name,
+        mother_middle_name,
+        mother_last_name,
+        documentPaths,
+        declaration_consent,
+        ...restFormData
+      } = formData;
       await submitRequest({
         table: "confirmations",
         payload: {
@@ -183,6 +175,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
           preferred_priest: formData.preferred_priest || null,
           father_name: fatherFull || null,
           mother_maiden_name: motherFull || null,
+          attached_documents: (documentPaths && documentPaths.length > 0) ? documentPaths : null,
         },
         user,
         guestInfo,

@@ -212,10 +212,12 @@ function useNotifications(userId, role) {
     onClose?.();
     const link = sanitizeLinkForRole(notif);
     if (link) {
+      const openNotificationsTab = link === "/profile";
       navigate(link, {
         state: {
           highlightId: notif.source_id,
           highlightTable: notif.source_table,
+          ...(openNotificationsTab ? { profileTab: "notifications" } : {}),
         },
       });
     }
