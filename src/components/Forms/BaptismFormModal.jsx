@@ -5,7 +5,7 @@ import { sendRequestEmail } from "../../emailNotifications";
 import { supabase } from "../../supabaseClient";
 import DocumentUploader from "../DocumentUploader"; // ✨ Your new component
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, useProfileAutofill, applyFieldFilter } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, useProfileAutofill, applyFieldFilter, useScrollToError } from "./formHelpers";
 
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -28,6 +28,17 @@ function generateTimeSlots() {
 
 const TIME_SLOTS = generateTimeSlots();
 
+function humanizeBaptismError(message) {
+  const text = String(message || "");
+  if (/violates check constraint|new row for relation/i.test(text)) {
+    return "Some required information is missing or invalid. Please review the form fields and try again.";
+  }
+  if (/duplicate key|already exists|already registered|already in use/i.test(text)) {
+    return "This information already exists in the system. Please review the details and try again.";
+  }
+  return text || "Something went wrong while submitting your request. Please try again.";
+}
+
 async function submitGuestViaEdgeFunction(table, payload) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/submit-guest-form`, {
     method: "POST",
@@ -39,7 +50,7 @@ async function submitGuestViaEdgeFunction(table, payload) {
     body: JSON.stringify({ table, payload }),
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error || `Edge function error (${res.status})`);
+  if (!res.ok) throw new Error(humanizeBaptismError(json.error || `Edge function error (${res.status})`));
   return json;
 }
 
@@ -48,6 +59,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
+  useScrollToError(error);
   
   const [priests, setPriests] = useState([]);
   const [sponsorInput, setSponsorInput] = useState("");
@@ -229,8 +241,10 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
       const parseErr = (raw) => {
         try {
           const p = JSON.parse(raw?.message ?? raw ?? "");
-          return p.message || raw?.message || String(raw);
-        } catch { return raw?.message || String(raw); }
+          return humanizeBaptismError(p.message || raw?.message || String(raw));
+        } catch {
+          return humanizeBaptismError(raw?.message || String(raw));
+        }
       };
 
       // Guest path — use edge function (service role bypasses RLS)
@@ -351,7 +365,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
               </div>
             )}
             {error && (
-              <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 text-sm font-bold">
+              <div data-form-error="true" className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 text-sm font-bold">
                 Error: {error}
               </div>
             )}

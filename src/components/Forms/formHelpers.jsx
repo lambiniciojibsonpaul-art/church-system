@@ -201,10 +201,26 @@ export function ModalHeader({ title, subtitle, onClose }) {
 export function ErrorBanner({ message }) {
   if (!message) return null;
   return (
-    <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200">
+    <div data-form-error="true" className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200">
       {message}
     </div>
   );
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useScrollToError(error) {
+  useEffect(() => {
+    if (!error) return;
+
+    const timer = window.setTimeout(() => {
+      const errorBanner = document.querySelector('[data-form-error="true"]');
+      if (errorBanner) {
+        errorBanner.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 50);
+
+    return () => window.clearTimeout(timer);
+  }, [error]);
 }
 
 export function SubmitButton({ loading, children = "Submit Request" }) {
@@ -280,8 +296,39 @@ async function submitGuestViaEdgeFunction(table, payload) {
     body: JSON.stringify({ table, payload }),
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error || `Edge function error (${res.status})`);
+  if (!res.ok) throw new Error(humanizeSubmitError(json.error || `Edge function error (${res.status})`, table, payload));
   return json;
+}
+
+function humanizeSubmitError(message, table, payload = {}) {
+  const text = String(message || "");
+  const normalizedTable = String(table || "");
+
+  if (/violates check constraint|new row for relation/i.test(text)) {
+    if (normalizedTable === "weddings") {
+      if (!payload.reservation_fee || !/^\d+(\.\d{1,2})?$/.test(String(payload.reservation_fee).trim())) {
+        return "Reservation fee is required and cannot be negative. Please enter 0 or a valid amount.";
+      }
+    }
+    if (normalizedTable === "mass_intentions") {
+      if (!payload.offering_amount || !/^\d+(\.\d{1,2})?$/.test(String(payload.offering_amount).trim())) {
+        return "Offering amount is required and cannot be negative. Please enter 0 or a valid amount.";
+      }
+    }
+    if (Object.entries(payload).some(([key, value]) => /contact|phone/i.test(key) && value && !/^\d{11}$/.test(String(value).replace(/\s+/g, "")))) {
+      return "Contact number must be exactly 11 digits.";
+    }
+    if (Object.entries(payload).some(([key, value]) => /email/i.test(key) && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim()))) {
+      return "Please enter a valid email address.";
+    }
+    return "Some required information is missing or invalid. Please review the highlighted fields and try again.";
+  }
+
+  if (/duplicate key|already exists|already registered|already in use/i.test(text)) {
+    return "This information already exists in the system. Please review the details and try again.";
+  }
+
+  return text || "Something went wrong while submitting your request. Please try again.";
 }
 
 // Shared submit helper. Guest submissions go via Edge Function (bypasses RLS).
@@ -378,11 +425,11 @@ export async function submitRequest({
     await submitGuestViaEdgeFunction(table, fullPayload);
     submitSuccess = true;
   } else {
-    const parseErr = (raw) => {
+    const parseErr = (raw, attemptedPayload = fullPayload) => {
       try {
         const p = JSON.parse(raw?.message ?? raw ?? "");
-        return p.message || raw?.message || String(raw);
-      } catch { return raw?.message || String(raw); }
+        return humanizeSubmitError(p.message || raw?.message || String(raw), table, attemptedPayload);
+      } catch { return humanizeSubmitError(raw?.message || String(raw), table, attemptedPayload); }
     };
 
     let attempt = await restInsert(table, [fullPayload]);
@@ -411,7 +458,7 @@ export async function submitRequest({
         if (!lastRetry.error && Array.isArray(lastRetry.data) && lastRetry.data[0]?.id) {
           insertedRequestId = lastRetry.data[0].id;
         }
-        if (lastRetry.error) throw new Error(parseErr(lastRetry.error));
+        if (lastRetry.error) throw new Error(parseErr(lastRetry.error, minFallback));
       }
     }
 

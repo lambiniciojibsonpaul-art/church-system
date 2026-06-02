@@ -3,7 +3,7 @@ import { restInsert } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter, useScrollToError } from "./formHelpers";
 
 // Helper function to generate time slots between 8:30 AM and 5:30 PM
 function generateTimeSlots() {
@@ -38,6 +38,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
+  useScrollToError(error);
 
   const [formData, setFormData] = useState({
     requestor_first_name: "",
@@ -160,7 +161,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
               </div>
             )}
-            {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200">{error}</div>}
+            {error && <div data-form-error="true" className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200">{error}</div>}
 
             {/* INFO PANEL */}
             <div className="bg-white p-6 rounded-xl border border-[#B59E74]/30 shadow-sm">

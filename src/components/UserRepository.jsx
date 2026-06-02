@@ -462,6 +462,7 @@ export default function UserRepository() {
   const [pendingFile, setPendingFile] = useState(null);
   const [displayName, setDisplayName] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef();
 
   // Rename state
@@ -518,11 +519,13 @@ export default function UserRepository() {
       setExpandedUserId(null);
       setPendingFile(null);
       setDisplayName("");
+      setUploadError(null);
       return;
     }
     setExpandedUserId(userId);
     setPendingFile(null);
     setDisplayName("");
+    setUploadError(null);
     if (!documents[userId]) await fetchDocs(userId);
   };
 
@@ -532,21 +535,32 @@ export default function UserRepository() {
     if (!file) return;
     const fileError = validateUploadFile(file);
     if (fileError) {
-      alert(fileError);
+      setUploadError(fileError);
       e.target.value = "";
       setPendingFile(null);
       return;
     }
+    setUploadError(null);
     setPendingFile(file);
     if (!displayName.trim()) setDisplayName(file.name.replace(/\.[^.]+$/, ""));
   };
 
   // ── Upload ────────────────────────────────────────────────────────────────
   const handleUpload = async (userId) => {
-    if (!pendingFile) return alert("Please select a file first.");
-    if (!displayName.trim()) return alert("Please enter a name for this document.");
+    setUploadError(null);
+    if (!pendingFile) {
+      setUploadError("Please select a JPEG, PNG, or PDF file before uploading.");
+      return;
+    }
+    if (!displayName.trim()) {
+      setUploadError("Please enter a document name before uploading.");
+      return;
+    }
     const fileError = validateUploadFile(pendingFile);
-    if (fileError) return alert(fileError);
+    if (fileError) {
+      setUploadError(fileError);
+      return;
+    }
     setUploading(true);
 
     const ext = pendingFile.name.split(".").pop()?.toLowerCase();
@@ -558,7 +572,8 @@ export default function UserRepository() {
 
     if (storageErr) {
       setUploading(false);
-      return alert("Upload failed: " + storageErr.message);
+      setUploadError(`Upload failed: ${storageErr.message}`);
+      return;
     }
 
     const { error: dbErr } = await supabase.from("user_documents").insert({
@@ -573,11 +588,13 @@ export default function UserRepository() {
     if (dbErr) {
       await supabase.storage.from(BUCKET).remove([storagePath]);
       setUploading(false);
-      return alert("Failed to save document record: " + dbErr.message);
+      setUploadError(`Failed to save document record: ${dbErr.message}`);
+      return;
     }
 
     setPendingFile(null);
     setDisplayName("");
+    setUploadError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     await fetchDocs(userId);
     setUploading(false);
@@ -851,6 +868,12 @@ export default function UserRepository() {
                           <p className="text-[11px] text-gray-500 font-serif italic -mt-2">
                             JPEG, PNG, or PDF only. Maximum file size is 50MB.
                           </p>
+
+                          {uploadError && (
+                            <div className="w-full bg-red-50 text-red-600 text-sm p-3 rounded-xl border border-red-200 text-left">
+                              {uploadError}
+                            </div>
+                          )}
 
                           {pendingFile && (
                             <div className="w-full bg-[#F6F5ED] rounded-xl px-4 py-3 flex items-center justify-between gap-2 text-left">

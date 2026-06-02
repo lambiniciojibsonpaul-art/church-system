@@ -38,12 +38,12 @@ export default function DocumentUploader({ onUploadComplete, bucketName = "paris
       const hasAllowedExt = ALLOWED_EXTENSIONS.has(fileExt);
 
       if ((!file.type && !hasAllowedExt) || (file.type && !hasAllowedType) || !hasAllowedExt) {
-        rejectedFiles.push(`${file.name} must be a JPEG, PNG, or PDF file.`);
+        rejectedFiles.push(`${file.name} cannot be uploaded. Please use JPEG, PNG, or PDF only.`);
         continue;
       }
 
       if (file.size > MAX_FILE_SIZE_BYTES) {
-        rejectedFiles.push(`${file.name} is larger than 50MB.`);
+        rejectedFiles.push(`${file.name} is too large. Maximum file size is 50MB.`);
         continue;
       }
 
@@ -63,7 +63,7 @@ export default function DocumentUploader({ onUploadComplete, bucketName = "paris
         });
       } catch (error) {
         console.error("Upload error:", error.message);
-        rejectedFiles.push(`Failed to upload ${file.name}.`);
+        rejectedFiles.push(`Failed to upload ${file.name}. Please check the file and try again.`);
       }
     }
 

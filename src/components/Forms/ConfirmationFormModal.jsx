@@ -4,7 +4,7 @@ import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import DocumentUploader from "../DocumentUploader";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter, useScrollToError } from "./formHelpers";
 
 function isMissingColumnError(err, columnName) {
   const msg = String(err?.message || err || "").toLowerCase();
@@ -35,6 +35,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
+  useScrollToError(error);
 
   // State to hold the dynamic list of priests
   const [priests, setPriests] = useState([]);
@@ -262,7 +263,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
                 </div>
               </div>
             )}
-            {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200">{error}</div>}
+            {error && <div data-form-error="true" className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200">{error}</div>}
 
             {/* TOP DETAILS */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-white rounded-xl border border-gray-100 shadow-sm">
