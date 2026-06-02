@@ -60,6 +60,53 @@ function validatePayload(payload: Record<string, unknown>): string | null {
   return null;
 }
 
+function friendlyDatabaseError(message: string, payload: Record<string, unknown>): string {
+  const text = String(message || '');
+  const entries = Object.entries(payload || {});
+
+  if (/violates check constraint|new row for relation/i.test(text)) {
+    const invalidContact = entries.some(([key, value]) =>
+      /contact|phone/i.test(key) &&
+      value !== null &&
+      value !== undefined &&
+      String(value).trim() !== '' &&
+      !/^\d{11}$/.test(String(value).replace(/\s+/g, ''))
+    );
+    if (invalidContact) return 'Contact number must be exactly 11 digits.';
+
+    const invalidEmail = entries.some(([key, value]) =>
+      /email/i.test(key) &&
+      value !== null &&
+      value !== undefined &&
+      String(value).trim() !== '' &&
+      !EMAIL_RE.test(String(value).trim())
+    );
+    if (invalidEmail) return 'Please enter a valid email address.';
+
+    const invalidMoney = entries.some(([key, value]) =>
+      /reservation_fee|offering_amount/i.test(key) &&
+      (value === null || value === undefined || String(value).trim() === '' || !/^\d+(\.\d{1,2})?$/.test(String(value).trim()))
+    );
+    if (invalidMoney) return 'Amount is required and cannot be negative. Please enter 0 or a valid amount.';
+
+    const invalidName = entries.some(([key, value]) =>
+      /name|surname|requested_by|submitter_signature|celebrant/i.test(key) &&
+      typeof value === 'string' &&
+      value.trim() !== '' &&
+      (!NAME_RE.test(value.trim()) || value.trim().length > (key.includes('full_name') || key.includes('signature') ? NAME_FULL_MAX : NAME_PART_MAX))
+    );
+    if (invalidName) return 'Name fields can only contain letters, spaces, apostrophes, dots, or hyphens and must stay within the character limit.';
+
+    return 'Some required information is missing or invalid. Please review the form fields and try again.';
+  }
+
+  if (/duplicate key|already exists|already registered|already in use/i.test(text)) {
+    return 'This information already exists in the system. Please review the details and try again.';
+  }
+
+  return text || 'Something went wrong while submitting your request. Please try again.';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -136,7 +183,7 @@ serve(async (req) => {
 
     if (error) {
       console.error(`[submit-guest-form] insert error on ${table}:`, error)
-      return new Response(JSON.stringify({ error: error.message }), {
+      return new Response(JSON.stringify({ error: friendlyDatabaseError(error.message, payload) }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       })

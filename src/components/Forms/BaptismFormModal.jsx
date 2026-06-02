@@ -39,6 +39,19 @@ function humanizeBaptismError(message) {
   return text || "Something went wrong while submitting your request. Please try again.";
 }
 
+function isRetryableBaptismError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  const status = Number(error?.status || 0);
+
+  return (
+    status === 401 ||
+    status === 403 ||
+    message.includes("could not find") ||
+    message.includes("schema cache") ||
+    message.includes("column")
+  );
+}
+
 async function submitGuestViaEdgeFunction(table, payload) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/submit-guest-form`, {
     method: "POST",
@@ -257,6 +270,10 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         }
 
         if (first.error) {
+          if (!isRetryableBaptismError(first.error)) {
+            throw new Error(parseErr(first.error));
+          }
+
           const fallbackPayload = { ...payload };
           delete fallbackPayload.user_id;
           delete fallbackPayload.submitter_email;
@@ -267,6 +284,10 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
             insertedRequestId = retry.data[0].id;
           }
           if (retry.error) {
+            if (!isRetryableBaptismError(retry.error)) {
+              throw new Error(parseErr(retry.error));
+            }
+
             const minPayload = { ...fallbackPayload };
             delete minPayload.is_guest;
             delete minPayload.guest_name;

@@ -331,6 +331,19 @@ function humanizeSubmitError(message, table, payload = {}) {
   return text || "Something went wrong while submitting your request. Please try again.";
 }
 
+function isRetryableSubmitError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  const status = Number(error?.status || 0);
+
+  return (
+    status === 401 ||
+    status === 403 ||
+    message.includes("could not find") ||
+    message.includes("schema cache") ||
+    message.includes("column")
+  );
+}
+
 // Shared submit helper. Guest submissions go via Edge Function (bypasses RLS).
 // Authenticated submissions go via restInsert with JWT.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -438,6 +451,10 @@ export async function submitRequest({
     }
 
     if (attempt.error) {
+      if (!isRetryableSubmitError(attempt.error)) {
+        throw new Error(parseErr(attempt.error, fullPayload));
+      }
+
       const fallback = { ...fullPayload };
       delete fallback.user_id;
       delete fallback.submitter_email;
@@ -449,6 +466,10 @@ export async function submitRequest({
       }
 
       if (retry.error) {
+        if (!isRetryableSubmitError(retry.error)) {
+          throw new Error(parseErr(retry.error, fallback));
+        }
+
         const minFallback = { ...fallback };
         delete minFallback.is_guest;
         delete minFallback.guest_name;

@@ -151,9 +151,6 @@ function LoginPage() {
   };
 
   const handleSignIn = async () => {
-    console.log("[Login] Starting sign-in flow.");
-    const t0 = performance.now();
-
     let authSubscription;
     const sessionFromEvent = new Promise((resolve) => {
       const sub = supabase.auth.onAuthStateChange((event, sess) => {
@@ -182,21 +179,18 @@ function LoginPage() {
 
     if (!session?.user) throw new Error("Sign-in succeeded but no session was returned.");
 
-    console.log(`[Login] Auth confirmed in ${Math.round(performance.now() - t0)}ms — user=${session.user.email}`);
     setUiState((prev) => ({ ...prev, overlayPhase: "success" }));
 
     // --- STEP 1: Get the freshest user object to check metadata flags ---
     const { data: freshUserData } = await supabase.auth.getUser();
     const currentUser = freshUserData?.user || session.user;
     const metadata    = currentUser?.user_metadata || {};
-    console.log("[Login] Metadata:", JSON.stringify(metadata));
 
     // ALWAYS check requires_password_change FIRST — before any caching logic
     if (
       metadata.requires_password_change === true ||
       String(metadata.requires_password_change) === "true"
     ) {
-      console.log("[Login] requires_password_change flag detected → /update-password");
       navigate("/update-password", { replace: true });
       return;
     }
@@ -215,7 +209,6 @@ function LoginPage() {
         }
       });
 
-      console.log("[Login] Cache hit → navigating via cached role:", cachedRole);
       navigate(redirectAfterLogin || getRoleDest(cachedRole), { replace: true });
       return;
     }
@@ -248,7 +241,6 @@ function LoginPage() {
         throw pendingErr;
       }
       writeLongTermAdminCache(currentUser.email, roleData.role);
-      console.log("[Login] Role from DB:", roleData.role);
     } else {
       // No user_roles row yet — try to recover it now that the user has a live session.
       // This handles ministry accounts whose role insert failed at sign-up due to the
@@ -262,7 +254,6 @@ function LoginPage() {
         if (!recoveryErr) {
           roleData = { role: recoveryRole };
           writeLongTermAdminCache(currentUser.email, recoveryRole);
-          console.log("[Login] Role recovered from metadata:", recoveryRole);
         } else {
           console.warn("[Login] Role recovery failed (non-fatal):", recoveryErr.message);
         }
@@ -399,8 +390,6 @@ function LoginPage() {
 
     setRegisterLoading(true);
     try {
-      console.log("[Register] Starting signup for:", registerData.email, "as", registerData.accountType);
-
       const { data: signupData, error: signupError } = await supabase.auth.signUp({
         email: registerData.email,
         password: registerData.password,
@@ -443,8 +432,6 @@ function LoginPage() {
 
         if (roleError) {
           console.warn("[Register] Role assignment skipped (non-fatal):", roleError.message);
-        } else {
-          console.log("[Register] Role assigned:", userRole);
         }
       }
 

@@ -44,6 +44,104 @@ function buildUrl(table, params = {}) {
   return url.toString();
 }
 
+function parseErrorMessage(raw) {
+  if (!raw) return "";
+  if (typeof raw !== "string") return raw.message || String(raw);
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed.message || parsed.details || raw;
+  } catch {
+    return raw;
+  }
+}
+
+function friendlyDatabaseError(raw, table, payload = {}) {
+  const message = parseErrorMessage(raw);
+  const rows = Array.isArray(payload) ? payload : [payload];
+  const values = Object.assign({}, ...rows.filter(Boolean));
+  const entries = Object.entries(values);
+
+  if (/violates check constraint|new row for relation/i.test(message)) {
+    const hasInvalidContact = entries.some(([key, value]) =>
+      /contact|phone/i.test(key) &&
+      value !== null &&
+      value !== undefined &&
+      String(value).trim() !== "" &&
+      !/^\d{11}$/.test(String(value).replace(/\s+/g, ""))
+    );
+    if (hasInvalidContact) return "Contact number must be exactly 11 digits.";
+
+    const hasInvalidEmail = entries.some(([key, value]) =>
+      /email/i.test(key) &&
+      value !== null &&
+      value !== undefined &&
+      String(value).trim() !== "" &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim())
+    );
+    if (hasInvalidEmail) return "Please enter a valid email address.";
+
+    const hasInvalidMoney = entries.some(([key, value]) =>
+      /reservation_fee|offering_amount/i.test(key) &&
+      (value === null || value === undefined || String(value).trim() === "" || !/^\d+(\.\d{1,2})?$/.test(String(value).trim()))
+    );
+    if (hasInvalidMoney) return "Amount is required and cannot be negative. Please enter 0 or a valid amount.";
+
+    const hasInvalidNumber = entries.some(([key, value]) =>
+      /expected_attendees|number_of_copies|current_age|groom_age|bride_age/i.test(key) &&
+      value !== null &&
+      value !== undefined &&
+      String(value).trim() !== "" &&
+      (!/^\d+$/.test(String(value)) || Number(value) < 0 || Number(value) > 10000)
+    );
+    if (hasInvalidNumber) return "Number fields must be 0 or higher and within the allowed limit.";
+
+    const hasInvalidStatus = entries.some(([key, value]) =>
+      key === "status" &&
+      value &&
+      !["Pending", "Approved", "Rejected", "Cancelled", "Active", "Draft", "Published", "Archived"].includes(String(value))
+    );
+    if (hasInvalidStatus) return "Status value is invalid. Please choose a valid status.";
+
+    const hasTooManyDocuments = entries.some(([key, value]) =>
+      key === "attached_documents" &&
+      Array.isArray(value) &&
+      value.length > 10
+    );
+    if (hasTooManyDocuments) return "You can attach up to 10 documents only.";
+
+    const hasTooLongText = entries.some(([key, value]) =>
+      /address|description|notes|purpose|remarks|requirements|equipment|request/i.test(key) &&
+      typeof value === "string" &&
+      value.length > 2000
+    );
+    if (hasTooLongText) return "One of the text fields is too long. Please shorten it and try again.";
+
+    const hasInvalidName = entries.some(([key, value]) =>
+      /name|surname|requested_by|submitter_signature|celebrant/i.test(key) &&
+      typeof value === "string" &&
+      value.trim() !== "" &&
+      (!/^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]+$/.test(value.trim()) || value.trim().length > (/full_name|signature/i.test(key) ? 120 : 60))
+    );
+    if (hasInvalidName) return "Name fields can only contain letters, spaces, apostrophes, dots, or hyphens and must stay within the character limit.";
+
+    return `Some information in ${String(table || "this form").replace(/_/g, " ")} is missing or invalid. Please review the fields and try again.`;
+  }
+
+  if (/duplicate key|already exists|already registered|already in use/i.test(message)) {
+    return "This information already exists in the system. Please review the details and try again.";
+  }
+
+  if (/violates foreign key constraint/i.test(message)) {
+    return "The selected related record is no longer available. Please refresh the page and try again.";
+  }
+
+  if (/permission denied|row-level security|not authorized/i.test(message)) {
+    return "You do not have permission to perform this action.";
+  }
+
+  return message || "Something went wrong. Please try again.";
+}
+
 // SELECT one or many rows.
 //   restSelect("user_roles", { match: { user_id: id }, single: true })
 //   restSelect("events", { select: "*", order: "event_time.asc" })
@@ -83,7 +181,7 @@ export async function restSelect(table, opts = {}) {
       const body = await res.text().catch(() => "");
       return {
         data: null,
-        error: { status: res.status, message: body || res.statusText },
+        error: { status: res.status, message: friendlyDatabaseError(body || res.statusText, table) },
       };
     }
 
@@ -118,14 +216,12 @@ export async function restInsert(table, rows, opts = {}) {
 
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      console.error(`[restInsert] ${table} error (${res.status}):`, body);
-      return { data: null, error: { status: res.status, message: body || res.statusText } };
+      return { data: null, error: { status: res.status, message: friendlyDatabaseError(body || res.statusText, table, rows) } };
     }
     const data = await res.json();
     return { data, error: null };
   } catch (err) {
     clearTimeout(timer);
-    console.error(`[restInsert] ${table} exception:`, err);
     return {
       data: null,
       error: {
@@ -156,7 +252,7 @@ export async function restDelete(table, match, opts = {}) {
 
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      return { data: null, error: { status: res.status, message: body || res.statusText } };
+      return { data: null, error: { status: res.status, message: friendlyDatabaseError(body || res.statusText, table) } };
     }
     const data = await res.json().catch(() => []);
     return { data, error: null };
@@ -193,7 +289,7 @@ export async function restUpdate(table, match, patch, opts = {}) {
 
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      return { data: null, error: { status: res.status, message: body || res.statusText } };
+      return { data: null, error: { status: res.status, message: friendlyDatabaseError(body || res.statusText, table, patch) } };
     }
     const data = await res.json();
     return { data, error: null };

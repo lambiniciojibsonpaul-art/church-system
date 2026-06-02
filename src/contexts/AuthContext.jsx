@@ -163,7 +163,6 @@ export function AuthProvider({ children }) {
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (event, newSession) => {
-        console.log("[Auth] state change:", event, newSession?.user?.email || "(no user)");
         setSession(newSession);
         setUser(newSession?.user || null);
 
