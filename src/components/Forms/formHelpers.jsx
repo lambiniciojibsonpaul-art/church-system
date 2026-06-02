@@ -100,6 +100,11 @@ export function Field({
     <div className="flex flex-col gap-1.5">
       <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
         {label}
+        {required && (
+          <span className="ml-2 text-[9px] font-bold text-red-600 bg-red-50 border border-red-100 rounded-full px-2 py-0.5 align-middle">
+            Required
+          </span>
+        )}
       </label>
 
       {type === "textarea" ? (
@@ -288,19 +293,29 @@ export async function submitRequest({
   user,
   guestInfo = null,
   serviceName,
-  summary,
   restInsert,
-  sendRequestEmail,
 }) {
   const CONTACT_RE = /^\d{11}$/;
   const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]+$/;
+  const PRICE_RE = /^\d+(\.\d{1,2})?$/;
   const validateFields = (obj) => {
     for (const [key, raw] of Object.entries(obj || {})) {
       if (raw === null || raw === undefined) continue;
       if (typeof raw !== "string") continue;
       const value = raw.trim();
-      if (!value) continue;
       const k = key.toLowerCase();
+      const isPriceField = k === "offering_amount" || k === "reservation_fee";
+
+      if (isPriceField) {
+        if (!value) {
+          return `${key.replace(/_/g, " ")} is required.`;
+        }
+        if (!PRICE_RE.test(value)) {
+          return `${key.replace(/_/g, " ")} must be a non-negative amount.`;
+        }
+      }
+
+      if (!value) continue;
 
       if ((k.includes("contact") || k.includes("phone")) && !CONTACT_RE.test(value)) {
         return `${key.replace(/_/g, " ")} must be exactly 11 digits.`;

@@ -80,7 +80,10 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) }));
+    const nextValue = name === "offering_amount"
+      ? value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1")
+      : applyFieldFilter(name, value);
+    setFormData(prev => ({ ...prev, [name]: type === "checkbox" ? checked : nextValue }));
   };
 
   const handleSubmit = async (e) => {
@@ -377,15 +380,22 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
             {/* --- F. DONATION --- */}
             <div className="bg-white p-6 rounded-xl border border-gray-200">
               <div className="flex flex-col gap-1 md:w-1/2">
-                <label className="text-xs font-bold text-gray-600">Offering Amount (Voluntary) <span className="text-[11px] text-gray-400 normal-case font-normal">(Halaga ng Handog - Boluntaryo)</span></label>
+                <label className="text-xs font-bold text-gray-600">Offering Amount <span className="text-[11px] text-gray-400 normal-case font-normal">(Halaga ng Handog)</span></label>
                 <input
-                  type="text"
+                  type="number"
                   name="offering_amount"
                   value={formData.offering_amount}
                   onChange={handleChange}
+                  required
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
                   className={inputClass}
                   placeholder="₱ Amount"
                 />
+                <p className="text-[11px] text-gray-500 font-serif italic">
+                  Amount is required and cannot be negative.
+                </p>
               </div>
             </div>
 

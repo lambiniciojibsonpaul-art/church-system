@@ -112,7 +112,10 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) }));
+    const nextValue = name === "reservation_fee"
+      ? value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1")
+      : applyFieldFilter(name, value);
+    setFormData(prev => ({ ...prev, [name]: type === "checkbox" ? checked : nextValue }));
   };
 
   // ✨ NEW: Handles receiving the uploaded file paths from DocumentUploader
@@ -307,7 +310,21 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
 
                 <div className="flex flex-col gap-1 md:col-span-2">
                   <label className="text-xs font-bold text-gray-600">Reservation Fee <span className="text-[11px] text-gray-400 normal-case font-normal">(Bayad sa Reserbasyon - Hindi Mababalik)</span></label>
-                  <input type="text" name="reservation_fee" value={formData.reservation_fee} onChange={handleChange} className={`${inputClass} bg-gray-50`} placeholder="₱" />
+                  <input
+                    type="number"
+                    name="reservation_fee"
+                    value={formData.reservation_fee}
+                    onChange={handleChange}
+                    required
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    className={`${inputClass} bg-gray-50`}
+                    placeholder="₱"
+                  />
+                  <p className="text-[11px] text-gray-500 font-serif italic">
+                    Reservation fee is required and cannot be negative.
+                  </p>
                 </div>
                 <div className="grid grid-cols-1 gap-4">
                   <div className="flex flex-col gap-1">

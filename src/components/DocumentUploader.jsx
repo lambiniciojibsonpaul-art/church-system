@@ -1,10 +1,15 @@
 import { useState, useRef } from "react";
 import { supabase } from "../supabaseClient";
 
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
+const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "pdf"]);
+
 export default function DocumentUploader({ onUploadComplete, bucketName = "parish_documents", folderPath = "general" }) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
 
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
@@ -22,12 +27,27 @@ export default function DocumentUploader({ onUploadComplete, bucketName = "paris
 
   const processFiles = async (files) => {
     setIsUploading(true);
+    setError(null);
     const newFiles = [];
+    const rejectedFiles = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const fileExt = file.name.split('.').pop();
-      // Creates a path like: "weddings/167890123-abcde.pdf"
+      const fileExt = file.name.split(".").pop()?.toLowerCase() || "";
+      const hasAllowedType = ALLOWED_MIME_TYPES.has(file.type);
+      const hasAllowedExt = ALLOWED_EXTENSIONS.has(fileExt);
+
+      if ((!file.type && !hasAllowedExt) || (file.type && !hasAllowedType) || !hasAllowedExt) {
+        rejectedFiles.push(`${file.name} must be a JPEG, PNG, or PDF file.`);
+        continue;
+      }
+
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        rejectedFiles.push(`${file.name} is larger than 50MB.`);
+        continue;
+      }
+
+      // Creates a path like: "weddings/167890123-abcde.jpg"
       const uniqueFileName = `${folderPath}/${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
 
       try {
@@ -43,15 +63,18 @@ export default function DocumentUploader({ onUploadComplete, bucketName = "paris
         });
       } catch (error) {
         console.error("Upload error:", error.message);
-        alert(`Failed to upload ${file.name}.`);
+        rejectedFiles.push(`Failed to upload ${file.name}.`);
       }
     }
 
-    const updatedFileList = [...uploadedFiles, ...newFiles];
+    const updatedFileList = newFiles.length > 0 ? [...uploadedFiles, ...newFiles] : uploadedFiles;
     setUploadedFiles(updatedFileList);
+    if (rejectedFiles.length > 0) {
+      setError(rejectedFiles.join(" "));
+    }
     setIsUploading(false);
 
-    if (onUploadComplete) onUploadComplete(updatedFileList);
+    if (newFiles.length > 0 && onUploadComplete) onUploadComplete(updatedFileList);
   };
 
   return (
@@ -65,7 +88,7 @@ export default function DocumentUploader({ onUploadComplete, bucketName = "paris
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
       >
-        <input type="file" multiple ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".pdf,.jpg,.jpeg,.png" />
+        <input type="file" multiple ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf" />
 
         {isUploading ? (
           <div className="flex flex-col items-center justify-center py-6">
@@ -79,13 +102,20 @@ export default function DocumentUploader({ onUploadComplete, bucketName = "paris
             </svg>
             <h3 className="text-sm font-bold text-gray-800 uppercase tracking-widest mb-1">Upload Requirements</h3>
             <p className="text-xs text-gray-500 font-serif italic mb-6">Drag and drop scanned documents, or click to browse.</p>
-            <p className="text-xs text-gray-500 font-serif italic mb-6">Please rename your uploaded file properly based on the given format. For example: "SURNAME_Birth_Certificate_2023.pdf"</p>
+            <p className="text-xs font-bold text-[#B59E74] uppercase tracking-widest mb-3">JPEG, PNG, or PDF only</p>
+            <p className="text-xs text-gray-500 font-serif italic mb-6">Maximum file size is 50MB per file. Please rename your uploaded file properly based on the given format. For example: "SURNAME_Birth_Certificate_2023.pdf"</p>
             <button type="button" className="bg-[#B59E74] text-white px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest pointer-events-none">
               Browse Files
             </button>
           </div>
         )}
       </div>
+
+      {error && (
+        <div className="mt-3 bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-200">
+          {error}
+        </div>
+      )}
 
       {uploadedFiles.length > 0 && (
         <div className="mt-4 bg-[#F6F5ED] border border-[#B59E74]/20 rounded-xl p-4">

@@ -78,6 +78,12 @@ function cleanContactNumber(raw) {
 function isExact11Digits(raw) {
   return /^\d{11}$/.test((raw || "").trim());
 }
+function isValidEmail(raw) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((raw || "").trim());
+}
+function isDuplicateEmailError(message = "") {
+  return /already registered|user already exists|already signed up|already in use|duplicate/i.test(message);
+}
 
 // ----- component ------------------------------------------------------------
 
@@ -369,7 +375,7 @@ function LoginPage() {
       setRegisterError(`First and last name must be ${NAME_MAX} characters or less.`);
       return;
     }
-    if (!registerData.email.includes("@")) {
+    if (!isValidEmail(registerData.email)) {
       setRegisterError("Please enter a valid email address.");
       return;
     }
@@ -411,7 +417,7 @@ function LoginPage() {
       });
 
       if (signupError) {
-        if (/already registered|user already exists|already signed up/i.test(signupError.message)) {
+        if (isDuplicateEmailError(signupError.message)) {
           throw new Error("This email is already registered. Please sign in instead.");
         }
         throw signupError;
@@ -450,7 +456,8 @@ function LoginPage() {
       if (registerData.accountType === "ministry") setRegisteredAsMinistry(true);
       setRegisteredEmail(registerData.email);
     } catch (err) {
-      setRegisterError(err.message || "An unexpected error occurred. Please try again.");
+      const message = err.message || "An unexpected error occurred. Please try again.";
+      setRegisterError(isDuplicateEmailError(message) ? "This email is already registered. Please sign in instead." : message);
     } finally {
       setRegisterLoading(false);
     }
@@ -544,12 +551,13 @@ function LoginPage() {
                   <input name="email" type="email" required value={formData.email} onChange={handleInputChange}
                     className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full transition-shadow"
                     placeholder="name@example.com" />
+                  <p className="text-[11px] text-gray-400 italic ml-1">Required. Use a valid email address.</p>
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Password</label>
                   <div className="relative">
                     <input name="password" type={showLoginPassword ? "text" : "password"} required value={formData.password}
-                      onChange={handleInputChange} minLength={6}
+                      onChange={handleInputChange} minLength={8}
                       className="p-3 pr-12 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full transition-shadow"
                       placeholder="••••••••" />
                     <button type="button" onClick={() => setShowLoginPassword((v) => !v)}
@@ -558,6 +566,7 @@ function LoginPage() {
                       {showLoginPassword ? "Hide" : "Show"}
                     </button>
                   </div>
+                  <p className="text-[11px] text-gray-400 italic ml-1">Required. Enter your account password.</p>
                 </div>
                 <button type="submit" disabled={uiState.loading}
                   className="w-full bg-[#B59E74] hover:bg-[#9c8760] text-white font-bold text-base py-4 rounded-xl transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed mt-2 uppercase tracking-widest">
@@ -753,12 +762,14 @@ function LoginPage() {
                     <input name="firstName" type="text" required maxLength={NAME_MAX} value={registerData.firstName} onChange={handleRegisterChange}
                       className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
                       placeholder="Juan" />
+                    <p className="text-[11px] text-gray-400 italic ml-1">Required. Letters only, up to {NAME_MAX} characters.</p>
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Last Name</label>
                     <input name="lastName" type="text" required maxLength={NAME_MAX} value={registerData.lastName} onChange={handleRegisterChange}
                       className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
                       placeholder="Dela Cruz" />
+                    <p className="text-[11px] text-gray-400 italic ml-1">Required. Letters only, up to {NAME_MAX} characters.</p>
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Contact Number</label>
@@ -766,7 +777,7 @@ function LoginPage() {
                       maxLength={11}
                       className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
                       placeholder="09XX XXX XXXX" />
-                    <p className="text-[11px] text-gray-400 italic ml-1">Saved with your account so the parish office can reach you.</p>
+                    <p className="text-[11px] text-gray-400 italic ml-1">Required. Must be exactly 11 digits so the parish office can reach you.</p>
                   </div>
                 </div>
 
@@ -777,12 +788,13 @@ function LoginPage() {
                     <input name="email" type="email" required value={registerData.email} onChange={handleRegisterChange}
                       className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
                       placeholder="name@example.com" />
+                    <p className="text-[11px] text-gray-400 italic ml-1">Required. If already registered, please sign in instead.</p>
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Password</label>
                     <div className="relative">
                       <input name="password" type={showPassword ? "text" : "password"} required value={registerData.password}
-                        onChange={handleRegisterChange} minLength={6}
+                        onChange={handleRegisterChange} minLength={8}
                         className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
                         placeholder="••••••••" />
                       <ul className="text-[11px] mt-1 grid grid-cols-2 gap-y-1 ml-1">
@@ -798,8 +810,10 @@ function LoginPage() {
                     <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Confirm Password</label>
                     <input name="confirmPassword" type={showPassword ? "text" : "password"} required
                       value={registerData.confirmPassword} onChange={handleRegisterChange}
+                      minLength={8}
                       className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
                       placeholder="••••••••" />
+                    <p className="text-[11px] text-gray-400 italic ml-1">Required. Must match the password above.</p>
                   </div>
                   <label className="flex items-center gap-2 text-xs text-gray-600">
                     <input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} className="accent-[#B59E74]" />

@@ -106,6 +106,20 @@ serve(async (req) => {
 
     const supabaseAdmin = createClient(sUrl, sKey);
 
+    const { data: existingProfile, error: existingProfileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (existingProfileError) throw existingProfileError;
+    if (existingProfile?.id) {
+      return new Response(
+        JSON.stringify({ error: "This email is already in use. Please use a different email address." }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 409 }
+      );
+    }
+
     // Create auth user
     const { data, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
@@ -117,7 +131,15 @@ serve(async (req) => {
       }
     });
 
-    if (authError) throw authError;
+    if (authError) {
+      if (/already|exists|registered/i.test(authError.message || "")) {
+        return new Response(
+          JSON.stringify({ error: "This email is already in use. Please use a different email address." }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 409 }
+        );
+      }
+      throw authError;
+    }
 
     const newUserId = data.user.id;
     const normalizedRole = ALLOWED_ROLES.has(roleInput) ? roleInput : 'parishioner';

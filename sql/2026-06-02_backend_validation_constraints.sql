@@ -224,6 +224,34 @@ begin
     end if;
   end loop;
 
+  -- Price/amount text fields: required when the column exists, never negative.
+  -- These are text columns in the current schema, so validate with a regex.
+  for rec in
+    select table_name, column_name
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = any(request_tables)
+      and data_type in ('text', 'character varying')
+      and column_name in ('reservation_fee', 'offering_amount')
+  loop
+    constraint_name := 'chk_' || substr(md5(rec.table_name || '_' || rec.column_name || '_money_required'), 1, 24);
+    if not exists (
+      select 1 from pg_constraint
+      where conname = constraint_name
+        and conrelid = format('public.%I', rec.table_name)::regclass
+    ) then
+      execute format(
+        'alter table public.%I add constraint %I check (%I is not null and btrim(%I) <> '''' and btrim(%I) ~ %L) not valid',
+        rec.table_name,
+        constraint_name,
+        rec.column_name,
+        rec.column_name,
+        rec.column_name,
+        '^[0-9]+(\.[0-9]{1,2})?$'
+      );
+    end if;
+  end loop;
+
   -- Attachment arrays: limit count and make sure arrays are not absurdly large.
   for rec in
     select table_name, column_name
@@ -273,3 +301,13 @@ begin
     end if;
   end loop;
 end $$;
+
+-- Storage guardrail for uploaded request and archived documents.
+-- This makes direct/browser-bypassed uploads fail unless the file is
+-- JPEG/PNG/PDF and 50MB or smaller. If a bucket does not exist yet,
+-- this updates nothing.
+update storage.buckets
+set
+  file_size_limit = 52428800,
+  allowed_mime_types = array['image/jpeg', 'image/png', 'application/pdf']
+where id in ('parish_documents', 'user-documents');

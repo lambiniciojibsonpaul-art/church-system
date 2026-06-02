@@ -7,6 +7,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]+$/;
 const CONTACT_RE = /^\d{11}$/;
 const NAME_MAX = 60;
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const ALLOWED_UPLOAD_MIME_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
+const ALLOWED_UPLOAD_EXTENSIONS = new Set(["jpg", "jpeg", "png", "pdf"]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatBytes(bytes) {
@@ -26,6 +29,20 @@ function getFileIcon(mimeType) {
 }
 
 // ─── Create User Modal ────────────────────────────────────────────────────────
+function validateUploadFile(file) {
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  const hasAllowedExt = ALLOWED_UPLOAD_EXTENSIONS.has(ext);
+  const hasAllowedType = ALLOWED_UPLOAD_MIME_TYPES.has(file.type);
+
+  if ((!file.type && !hasAllowedExt) || (file.type && !hasAllowedType) || !hasAllowedExt) {
+    return "Only JPEG, PNG, or PDF files can be uploaded.";
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return "File must not exceed 50MB.";
+  }
+  return null;
+}
+
 function CreateUserModal({ onClose, onSuccess }) {
   const [form, setForm] = useState({ first_name: "", last_name: "", email: "", contact_number: "" });
   const [loading, setLoading] = useState(false);
@@ -513,6 +530,13 @@ export default function UserRepository() {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const fileError = validateUploadFile(file);
+    if (fileError) {
+      alert(fileError);
+      e.target.value = "";
+      setPendingFile(null);
+      return;
+    }
     setPendingFile(file);
     if (!displayName.trim()) setDisplayName(file.name.replace(/\.[^.]+$/, ""));
   };
@@ -521,9 +545,11 @@ export default function UserRepository() {
   const handleUpload = async (userId) => {
     if (!pendingFile) return alert("Please select a file first.");
     if (!displayName.trim()) return alert("Please enter a name for this document.");
+    const fileError = validateUploadFile(pendingFile);
+    if (fileError) return alert(fileError);
     setUploading(true);
 
-    const ext = pendingFile.name.split(".").pop();
+    const ext = pendingFile.name.split(".").pop()?.toLowerCase();
     const storagePath = `${userId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
     const { error: storageErr } = await supabase.storage
@@ -820,7 +846,11 @@ export default function UserRepository() {
                           </p>
 
                           <input ref={fileInputRef} type="file" className="hidden"
-                            onChange={handleFileChange} accept="*/*" />
+                            onChange={handleFileChange} accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf" />
+
+                          <p className="text-[11px] text-gray-500 font-serif italic -mt-2">
+                            JPEG, PNG, or PDF only. Maximum file size is 50MB.
+                          </p>
 
                           {pendingFile && (
                             <div className="w-full bg-[#F6F5ED] rounded-xl px-4 py-3 flex items-center justify-between gap-2 text-left">
