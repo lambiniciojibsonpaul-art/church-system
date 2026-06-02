@@ -12,6 +12,17 @@ const CONTACT_RE = /^\d{11}$/;
 const NAME_MAX = 60;
 const ALLOWED_ROLES = new Set(['parishioner', 'staff', 'minister', 'priest', 'admin', 'superadmin', 'ministry']);
 
+function validatePassword(password: string): string | null {
+  if (password.length < 8) return "Password must be at least 8 characters.";
+  if (!/[A-Z]/.test(password)) return "Password must include an uppercase letter.";
+  if (!/[a-z]/.test(password)) return "Password must include a lowercase letter.";
+  if (!/\d/.test(password)) return "Password must include a number.";
+  if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/.test(password)) {
+    return "Password must include a special character.";
+  }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -33,6 +44,14 @@ serve(async (req) => {
     const last_name = String(body.last_name || '').trim();
     const contact_number = String(body.contact_number || '').trim();
     const ministries = body.ministries;
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return new Response(
+        JSON.stringify({ error: passwordError }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
 
     if (!EMAIL_RE.test(email)) {
       return new Response(

@@ -7,6 +7,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]+$/;
 const CONTACT_RE = /^\d{11}$/;
 const NAME_MAX = 60;
+const PASSWORD_RE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]).{8,}$/;
 
 // Custom searchable dropdown for the ministry sort filter in the users panel
 function MinistryFilterDropdown({ value, onChange, options = [] }) {
@@ -309,8 +310,8 @@ function ManageUsers() {
       return;
     }
 
-    if (createForm.password.length < 6) {
-      setCreateError("Password must be at least 6 characters.");
+    if (!PASSWORD_RE.test(createForm.password)) {
+      setCreateError("Password must be at least 8 characters with uppercase, lowercase, number, and special character.");
       setCreateLoading(false);
       return;
     }

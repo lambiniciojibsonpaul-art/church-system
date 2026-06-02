@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../supabaseClient";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PASSWORD_RE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]).{8,}$/;
 
 function AdminManageUsers() {
   const [formData, setFormData] = useState({ 
@@ -22,8 +23,8 @@ function AdminManageUsers() {
       setMessage({ type: "error", text: "Please enter a valid email address." });
       return;
     }
-    if (formData.password.length < 6) {
-      setMessage({ type: "error", text: "Password must be at least 6 characters." });
+    if (!PASSWORD_RE.test(formData.password)) {
+      setMessage({ type: "error", text: "Password must be at least 8 characters with uppercase, lowercase, number, and special character." });
       return;
     }
 
