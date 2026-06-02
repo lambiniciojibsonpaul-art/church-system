@@ -18,6 +18,48 @@ const ALLOWED_TABLES = new Set([
   "attendance",
 ])
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]+$/;
+const CONTACT_RE = /^\d{11}$/;
+const NAME_PART_MAX = 60;
+const NAME_FULL_MAX = 120;
+
+function validatePayload(payload: Record<string, unknown>): string | null {
+  for (const [key, rawValue] of Object.entries(payload)) {
+    if (rawValue === null || rawValue === undefined) continue;
+    if (typeof rawValue !== 'string') continue;
+
+    const value = rawValue.trim();
+    if (!value) continue;
+    const k = key.toLowerCase();
+
+    if (k.includes('email') && !EMAIL_RE.test(value)) {
+      return `Invalid email in field "${key}"`;
+    }
+
+    if ((k.includes('contact') || k.includes('phone')) && !CONTACT_RE.test(value.replace(/\s+/g, ''))) {
+      return `Contact number in field "${key}" must be exactly 11 digits`;
+    }
+
+    const isNameField =
+      k.includes('name') ||
+      k.includes('requested_by') ||
+      k.includes('submitter_signature') ||
+      k.includes('celebrant');
+
+    if (isNameField && !NAME_RE.test(value)) {
+      return `Invalid name text in field "${key}"`;
+    }
+    if (isNameField) {
+      const maxLen = k.includes('full_name') || k.includes('signature') ? NAME_FULL_MAX : NAME_PART_MAX;
+      if (value.length > maxLen) {
+        return `Field "${key}" exceeds max length (${maxLen})`;
+      }
+    }
+  }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -63,6 +105,14 @@ serve(async (req) => {
     const supabase = createClient(sUrl, sKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
+
+    const validationError = validatePayload(payload)
+    if (validationError) {
+      return new Response(JSON.stringify({ error: validationError }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      })
+    }
 
     // Duplicate guest check-in guard
     if (table === "attendance" && payload.is_guest && payload.guest_name && payload.event_id) {

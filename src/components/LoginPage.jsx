@@ -19,6 +19,7 @@ const ROLE_DESTINATIONS = {
   minister:    "/events",
   parishioner: "/",
 };
+const NAME_MAX = 60;
 
 function getRoleDest(role) {
   return ROLE_DESTINATIONS[String(role || "").toLowerCase()] ?? "/";
@@ -74,6 +75,9 @@ function validatePassword(password) {
 function cleanContactNumber(raw) {
   return (raw || "").trim();
 }
+function isExact11Digits(raw) {
+  return /^\d{11}$/.test((raw || "").trim());
+}
 
 // ----- component ------------------------------------------------------------
 
@@ -82,6 +86,7 @@ function LoginPage() {
   const location = useLocation();
   const redirectAfterLogin = new URLSearchParams(location.search).get("redirect") || null;
   const [mode, setMode] = useState("login");
+  const emailRedirectTo = `${window.location.origin}/#/login`;
 
   // ----- LOGIN STATE --------------------------------------------------------
   const [formData, setFormData] = useState({ email: "", password: "" });
@@ -324,7 +329,7 @@ function LoginPage() {
     }
 
     if (name === "firstName" || name === "lastName") {
-      const lettersOnly = value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "");
+      const lettersOnly = value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "").slice(0, NAME_MAX);
       setRegisterData((prev) => ({ ...prev, [name]: lettersOnly }));
       return;
     }
@@ -360,6 +365,10 @@ function LoginPage() {
       setRegisterError("Please enter your full name.");
       return;
     }
+    if (registerData.firstName.trim().length > NAME_MAX || registerData.lastName.trim().length > NAME_MAX) {
+      setRegisterError(`First and last name must be ${NAME_MAX} characters or less.`);
+      return;
+    }
     if (!registerData.email.includes("@")) {
       setRegisterError("Please enter a valid email address.");
       return;
@@ -377,6 +386,10 @@ function LoginPage() {
       setRegisterError("Please enter a contact number.");
       return;
     }
+    if (!isExact11Digits(contact)) {
+      setRegisterError("Contact number must be exactly 11 digits.");
+      return;
+    }
 
     setRegisterLoading(true);
     try {
@@ -386,6 +399,7 @@ function LoginPage() {
         email: registerData.email,
         password: registerData.password,
         options: {
+          emailRedirectTo,
           data: {
             first_name:      registerData.firstName.trim(),
             last_name:       registerData.lastName.trim(),
@@ -447,7 +461,11 @@ function LoginPage() {
     setRegisterError(null);
     setRegisterLoading(true);
     try {
-      const { error } = await supabase.auth.resend({ type: "signup", email: registeredEmail });
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: registeredEmail,
+        options: { emailRedirectTo },
+      });
       if (error) throw error;
     } catch (err) {
       setRegisterError("Could not resend confirmation: " + err.message);
@@ -732,13 +750,13 @@ function LoginPage() {
                 <div className="space-y-5">
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">First Name</label>
-                    <input name="firstName" type="text" required value={registerData.firstName} onChange={handleRegisterChange}
+                    <input name="firstName" type="text" required maxLength={NAME_MAX} value={registerData.firstName} onChange={handleRegisterChange}
                       className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
                       placeholder="Juan" />
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Last Name</label>
-                    <input name="lastName" type="text" required value={registerData.lastName} onChange={handleRegisterChange}
+                    <input name="lastName" type="text" required maxLength={NAME_MAX} value={registerData.lastName} onChange={handleRegisterChange}
                       className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full"
                       placeholder="Dela Cruz" />
                   </div>

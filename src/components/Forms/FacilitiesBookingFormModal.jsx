@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { restInsert, restSelect } from "../../supabaseRest";
+import { restInsert } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
@@ -101,22 +101,12 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
     const finalFacility = formData.facility === "Other" ? formData.facility_other : formData.facility;
     setLoading(true);
     try {
-      const requestorFullName = [
-        formData.requestor_first_name,
-        formData.requestor_middle_name,
-        formData.requestor_surname,
-      ].filter(Boolean).join(" ");
-      const {
-        requestor_first_name,
-        requestor_middle_name,
-        requestor_surname,
-        ...restForm
-      } = formData;
+      const payload = { ...formData };
+      delete payload.declaration_consent;
       await submitRequest({
         table: "facilities_bookings",
         payload: {
-          ...restForm,
-          requestor_name: requestorFullName || null,
+          ...payload,
           facility: finalFacility,
           expected_attendees: formData.expected_attendees === "" ? null : Number(formData.expected_attendees),
         },

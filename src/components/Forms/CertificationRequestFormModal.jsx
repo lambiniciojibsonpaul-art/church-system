@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { restInsert, restSelect } from "../../supabaseRest";
+import { restInsert } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
@@ -103,39 +103,20 @@ function CertificationRequestFormModal({ onClose, guestInfo = null, onGuest }) {
     try {
       const finalCert = formData.certificate_type === "Other" ? formData.certificate_other : formData.certificate_type;
       const finalPurpose = formData.purpose === "Other" ? formData.purpose_other : formData.purpose;
-      const requestorFullName = [
-        formData.requestor_first_name,
-        formData.requestor_middle_name,
-        formData.requestor_surname,
-      ].filter(Boolean).join(" ");
-      const recordHolderFullName = [
-        formData.record_holder_first_name,
-        formData.record_holder_middle_name,
-        formData.record_holder_surname,
-      ].filter(Boolean).join(" ");
       const fatherFull = [formData.father_first_name, formData.father_middle_name, formData.father_last_name].filter(Boolean).join(" ");
       const motherFull = [formData.mother_maiden_first, formData.mother_maiden_middle, formData.mother_maiden_last].filter(Boolean).join(" ");
-      const {
-        requestor_first_name,
-        requestor_middle_name,
-        requestor_surname,
-        record_holder_first_name,
-        record_holder_middle_name,
-        record_holder_surname,
-        father_first_name,
-        father_middle_name,
-        father_last_name,
-        mother_maiden_first,
-        mother_maiden_middle,
-        mother_maiden_last,
-        ...restCert
-      } = formData;
+      const payload = { ...formData };
+      delete payload.father_first_name;
+      delete payload.father_middle_name;
+      delete payload.father_last_name;
+      delete payload.mother_maiden_first;
+      delete payload.mother_maiden_middle;
+      delete payload.mother_maiden_last;
+      delete payload.declaration_consent;
       await submitRequest({
         table: "certification_requests",
         payload: {
-          ...restCert,
-          requestor_name: requestorFullName || null,
-          record_holder_name: recordHolderFullName || null,
+          ...payload,
           father_name: fatherFull,
           mother_maiden_name: motherFull,
           certificate_type: finalCert,

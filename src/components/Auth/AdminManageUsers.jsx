@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../supabaseClient";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function AdminManageUsers() {
   const [formData, setFormData] = useState({ 
     email: "", 
@@ -15,12 +17,22 @@ function AdminManageUsers() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const email = formData.email.trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) {
+      setMessage({ type: "error", text: "Please enter a valid email address." });
+      return;
+    }
+    if (formData.password.length < 6) {
+      setMessage({ type: "error", text: "Password must be at least 6 characters." });
+      return;
+    }
+
     setLoading(true);
     setMessage({ type: "", text: "" });
 
     try {
-      const { data, error } = await supabase.functions.invoke("create-user", {
-        body: formData,
+      const { error } = await supabase.functions.invoke("create-user", {
+        body: { ...formData, email },
       });
 
       if (error) throw error;

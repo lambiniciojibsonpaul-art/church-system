@@ -6,6 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]+$/;
+const CONTACT_RE = /^\d{11}$/;
+const NAME_MAX = 60;
+const ALLOWED_ROLES = new Set(['parishioner', 'staff', 'minister', 'priest', 'admin', 'superadmin', 'ministry']);
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -20,7 +26,53 @@ serve(async (req) => {
       );
     }
 
-    const { email, password, role, first_name, last_name, contact_number, ministries } = body;
+    const email = String(body.email || '').trim().toLowerCase();
+    const password = String(body.password || '');
+    const roleInput = String(body.role || 'parishioner').trim().toLowerCase();
+    const first_name = String(body.first_name || '').trim();
+    const last_name = String(body.last_name || '').trim();
+    const contact_number = String(body.contact_number || '').trim();
+    const ministries = body.ministries;
+
+    if (!EMAIL_RE.test(email)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid email format." }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    if (first_name && !NAME_RE.test(first_name)) {
+      return new Response(
+        JSON.stringify({ error: "First name must contain letters only." }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+    if (first_name.length > NAME_MAX) {
+      return new Response(
+        JSON.stringify({ error: `First name must be ${NAME_MAX} characters or less.` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    if (last_name && !NAME_RE.test(last_name)) {
+      return new Response(
+        JSON.stringify({ error: "Last name must contain letters only." }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+    if (last_name.length > NAME_MAX) {
+      return new Response(
+        JSON.stringify({ error: `Last name must be ${NAME_MAX} characters or less.` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    if (contact_number && !CONTACT_RE.test(contact_number)) {
+      return new Response(
+        JSON.stringify({ error: "Contact number must be exactly 11 digits." }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
 
     const sUrl = Deno.env.get('SUPABASE_URL');
     const sKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -49,7 +101,7 @@ serve(async (req) => {
     if (authError) throw authError;
 
     const newUserId = data.user.id;
-    const normalizedRole = role ? role.toLowerCase() : 'parishioner';
+    const normalizedRole = ALLOWED_ROLES.has(roleInput) ? roleInput : 'parishioner';
 
     // Set role
     const { error: roleError } = await supabaseAdmin

@@ -137,16 +137,13 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
     setLoading(true);
     try {
       const requestedByFull = [formData.requested_by_first, formData.requested_by_middle, formData.requested_by_last].filter(Boolean).join(" ");
-      
-      // ✨ FIX: Add documentPaths and declaration_consent to the exclusion list
-      const { 
-        requested_by_first, 
-        requested_by_middle, 
-        requested_by_last, 
-        documentPaths, 
-        declaration_consent, 
-        ...restForm 
-      } = formData;
+      const documentPaths = formData.documentPaths;
+      const restForm = { ...formData };
+      delete restForm.requested_by_first;
+      delete restForm.requested_by_middle;
+      delete restForm.requested_by_last;
+      delete restForm.documentPaths;
+      delete restForm.declaration_consent;
 
       await submitRequest({
         table: "sacraments_liturgical",

@@ -3,6 +3,10 @@ import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/useAuth";
 
 const BUCKET = "user-documents";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]+$/;
+const CONTACT_RE = /^\d{11}$/;
+const NAME_MAX = 60;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatBytes(bytes) {
@@ -31,8 +35,29 @@ function CreateUserModal({ onClose, onSuccess }) {
     e.preventDefault();
     setError(null);
 
-    if (!form.first_name.trim() && !form.last_name.trim()) {
-      setError("Please enter at least a first or last name.");
+    const firstName = form.first_name.trim();
+    const lastName = form.last_name.trim();
+    const email = form.email.trim().toLowerCase();
+    const contact = form.contact_number.trim();
+
+    if (!firstName || !lastName) {
+      setError("First name and last name are required.");
+      return;
+    }
+    if (!NAME_RE.test(firstName) || !NAME_RE.test(lastName)) {
+      setError("Names must contain letters only.");
+      return;
+    }
+    if (firstName.length > NAME_MAX || lastName.length > NAME_MAX) {
+      setError(`First name and last name must be ${NAME_MAX} characters or less.`);
+      return;
+    }
+    if (email && !EMAIL_RE.test(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    if (contact && !CONTACT_RE.test(contact)) {
+      setError("Contact number must be exactly 11 digits.");
       return;
     }
 
@@ -41,10 +66,10 @@ function CreateUserModal({ onClose, onSuccess }) {
       const newId = crypto.randomUUID();
       const { error: insertErr } = await supabase.from("profiles").upsert({
         id: newId,
-        first_name: form.first_name.trim() || null,
-        last_name: form.last_name.trim() || null,
-        email: form.email.trim() || null,
-        contact_number: form.contact_number.trim() || null,
+        first_name: firstName || null,
+        last_name: lastName || null,
+        email: email || null,
+        contact_number: contact || null,
         is_manual_entry: true,
       }, { onConflict: "id", ignoreDuplicates: false });
 
@@ -89,20 +114,22 @@ function CreateUserModal({ onClose, onSuccess }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">First Name</label>
-              <input
+                <input
                 type="text"
+                maxLength={NAME_MAX}
                 value={form.first_name}
-                onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+                onChange={(e) => setForm({ ...form, first_name: e.target.value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿÑñ' .-]/g, "") })}
                 className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
                 placeholder="Juan"
               />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Last Name</label>
-              <input
+                <input
                 type="text"
+                maxLength={NAME_MAX}
                 value={form.last_name}
-                onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+                onChange={(e) => setForm({ ...form, last_name: e.target.value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿÑñ' .-]/g, "") })}
                 className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
                 placeholder="Dela Cruz"
               />
@@ -136,7 +163,7 @@ function CreateUserModal({ onClose, onSuccess }) {
               }}
               className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
               placeholder="09XX XXX XXXX"
-              maxLength={15}
+              maxLength={11}
             />
           </div>
 
@@ -199,8 +226,29 @@ function EditUserModal({ user, getUserName, onClose, onSuccess }) {
     e.preventDefault();
     setError(null);
 
-    if (!form.first_name.trim() && !form.last_name.trim()) {
-      setError("Please enter at least a first or last name.");
+    const firstName = form.first_name.trim();
+    const lastName = form.last_name.trim();
+    const email = form.email.trim().toLowerCase();
+    const contact = form.contact_number.trim();
+
+    if (!firstName || !lastName) {
+      setError("First name and last name are required.");
+      return;
+    }
+    if (!NAME_RE.test(firstName) || !NAME_RE.test(lastName)) {
+      setError("Names must contain letters only.");
+      return;
+    }
+    if (firstName.length > NAME_MAX || lastName.length > NAME_MAX) {
+      setError(`First name and last name must be ${NAME_MAX} characters or less.`);
+      return;
+    }
+    if (email && !EMAIL_RE.test(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    if (contact && !CONTACT_RE.test(contact)) {
+      setError("Contact number must be exactly 11 digits.");
       return;
     }
 
@@ -209,10 +257,10 @@ function EditUserModal({ user, getUserName, onClose, onSuccess }) {
       const { error: updateErr } = await supabase
         .from("profiles")
         .update({
-          first_name: form.first_name.trim() || null,
-          last_name: form.last_name.trim() || null,
-          email: form.email.trim() || null,
-          contact_number: form.contact_number.trim() || null,
+          first_name: firstName || null,
+          last_name: lastName || null,
+          email: email || null,
+          contact_number: contact || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", user.id);
@@ -276,8 +324,9 @@ function EditUserModal({ user, getUserName, onClose, onSuccess }) {
               </label>
               <input
                 type="text"
+                maxLength={NAME_MAX}
                 value={form.first_name}
-                onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+                onChange={(e) => setForm({ ...form, first_name: e.target.value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿÑñ' .-]/g, "") })}
                 className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
                 placeholder="Juan"
               />
@@ -288,8 +337,9 @@ function EditUserModal({ user, getUserName, onClose, onSuccess }) {
               </label>
               <input
                 type="text"
+                maxLength={NAME_MAX}
                 value={form.last_name}
-                onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+                onChange={(e) => setForm({ ...form, last_name: e.target.value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿÑñ' .-]/g, "") })}
                 className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
                 placeholder="Dela Cruz"
               />
@@ -327,7 +377,7 @@ function EditUserModal({ user, getUserName, onClose, onSuccess }) {
               }}
               className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] focus:border-[#B59E74] text-sm bg-white placeholder-gray-300"
               placeholder="09XX XXX XXXX"
-              maxLength={15}
+              maxLength={11}
             />
           </div>
 

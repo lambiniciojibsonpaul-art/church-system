@@ -6,6 +6,11 @@ import DocumentUploader from "../DocumentUploader";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter } from "./formHelpers";
 
+function isMissingColumnError(err, columnName) {
+  const msg = String(err?.message || err || "").toLowerCase();
+  return msg.includes(`could not find the '${String(columnName).toLowerCase()}' column`);
+}
+
 // Helper function to generate time slots between 8:30 AM and 5:30 PM
 function generateTimeSlots() {
   const slots = [];
@@ -146,16 +151,41 @@ function HolyCommunionFormModal({ onClose, guestInfo = null, onGuest }) {
         // ✨ Add documentPaths to the payload
         attached_documents: formData.documentPaths.length > 0 ? formData.documentPaths : null,
       };
-      await submitRequest({
-        table: "holy_communions",
-        payload: safePayload,
-        user,
-        guestInfo,
-        serviceName: "holy communion",
-        summary: `First Holy Communion request for ${formData.child_first_name} ${formData.child_surname}.`,
-        restInsert,
-        sendRequestEmail,
-      });
+      try {
+        await submitRequest({
+          table: "holy_communions",
+          payload: safePayload,
+          user,
+          guestInfo,
+          serviceName: "holy communion",
+          summary: `First Holy Communion request for ${formData.child_first_name} ${formData.child_surname}.`,
+          restInsert,
+          sendRequestEmail,
+        });
+      } catch (insertErr) {
+        // Backward compatibility: some deployments don't yet have `attached_documents`.
+        if (!isMissingColumnError(insertErr, "attached_documents")) throw insertErr;
+
+        const fallbackPayload = {
+          ...safePayload,
+          other_requirements: [
+            safePayload.other_requirements || "",
+            formData.documentPaths?.length ? `Uploaded documents: ${formData.documentPaths.join(", ")}` : "",
+          ].filter(Boolean).join("\n"),
+        };
+        delete fallbackPayload.attached_documents;
+
+        await submitRequest({
+          table: "holy_communions",
+          payload: fallbackPayload,
+          user,
+          guestInfo,
+          serviceName: "holy communion",
+          summary: `First Holy Communion request for ${formData.child_first_name} ${formData.child_surname}.`,
+          restInsert,
+          sendRequestEmail,
+        });
+      }
       setSuccess(true);
       setTimeout(onClose, 2500);
     } catch (err) {

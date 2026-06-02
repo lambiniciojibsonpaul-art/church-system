@@ -3,6 +3,11 @@ import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/useAuth";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]+$/;
+const CONTACT_RE = /^\d{11}$/;
+const NAME_MAX = 60;
+
 // Custom searchable dropdown for the ministry sort filter in the users panel
 function MinistryFilterDropdown({ value, onChange, options = [] }) {
   const [open, setOpen]     = useState(false);
@@ -273,6 +278,37 @@ function ManageUsers() {
     setCreateSuccess(false);
     setCreateLoading(true);
 
+    const firstName = createForm.first_name.trim();
+    const lastName = createForm.last_name.trim();
+    const email = createForm.email.trim().toLowerCase();
+    const contact = createForm.contact_number.trim();
+
+    if (!firstName || !lastName) {
+      setCreateError("First name and last name are required.");
+      setCreateLoading(false);
+      return;
+    }
+    if (!NAME_RE.test(firstName) || !NAME_RE.test(lastName)) {
+      setCreateError("Names must contain letters only.");
+      setCreateLoading(false);
+      return;
+    }
+    if (firstName.length > NAME_MAX || lastName.length > NAME_MAX) {
+      setCreateError(`First and last name must be ${NAME_MAX} characters or less.`);
+      setCreateLoading(false);
+      return;
+    }
+    if (!EMAIL_RE.test(email)) {
+      setCreateError("Please enter a valid email address.");
+      setCreateLoading(false);
+      return;
+    }
+    if (contact && !CONTACT_RE.test(contact)) {
+      setCreateError("Contact number must be exactly 11 digits.");
+      setCreateLoading(false);
+      return;
+    }
+
     if (createForm.password.length < 6) {
       setCreateError("Password must be at least 6 characters.");
       setCreateLoading(false);
@@ -288,12 +324,12 @@ function ManageUsers() {
       // Step 1: Create auth user + assign role (edge function, service-role key)
       const { data: edgeData, error: edgeErr } = await supabase.functions.invoke("create-user", {
         body: {
-          email: createForm.email,
+          email,
           password: createForm.password,
           role: createForm.role,
-          first_name: createForm.first_name,
-          last_name: createForm.last_name,
-          contact_number: createForm.contact_number,
+          first_name: firstName,
+          last_name: lastName,
+          contact_number: contact,
           ministries: createForm.role === "minister" ? createForm.ministries : [],
         },
       });
@@ -309,10 +345,10 @@ function ManageUsers() {
       // This is the primary save path and does not depend on edge function version.
       const profilePayload = {
         id:             newUserId,
-        email:          createForm.email,
-        first_name:     createForm.first_name,
-        last_name:      createForm.last_name,
-        contact_number: createForm.contact_number,
+        email,
+        first_name:     firstName,
+        last_name:      lastName,
+        contact_number: contact,
       };
       if (createForm.role === "minister" && createForm.ministries.length > 0) {
         profilePayload.ministries = createForm.ministries;
@@ -326,14 +362,14 @@ function ManageUsers() {
 
       // Step 3: Ensure priest record exists for priest role
       if (createForm.role === "priest") {
-        const fullName = `${createForm.first_name} ${createForm.last_name}`.trim();
+        const fullName = `${firstName} ${lastName}`.trim();
         const { error: priestErr } = await supabase
           .from("priests")
           .upsert({
             user_id: newUserId,
             name: fullName,
-            first_name: createForm.first_name || null,
-            last_name: createForm.last_name || null,
+            first_name: firstName || null,
+            last_name: lastName || null,
             is_active: true,
           }, { onConflict: "user_id" });
         if (priestErr) console.warn("[ManageUsers] priests table upsert failed:", priestErr.message);
@@ -509,12 +545,33 @@ function ManageUsers() {
       return;
     }
 
+    const firstName = editForm.first_name.trim();
+    const lastName = editForm.last_name.trim();
+    const contact = editForm.contact_number.trim();
+
+    if (!firstName || !lastName) {
+      alert("First name and last name are required.");
+      return;
+    }
+    if (!NAME_RE.test(firstName) || !NAME_RE.test(lastName)) {
+      alert("Names must contain letters only.");
+      return;
+    }
+    if (firstName.length > NAME_MAX || lastName.length > NAME_MAX) {
+      alert(`First and last name must be ${NAME_MAX} characters or less.`);
+      return;
+    }
+    if (contact && !CONTACT_RE.test(contact)) {
+      alert("Contact number must be exactly 11 digits.");
+      return;
+    }
+
     setSaving(true);
     try {
       const updatePayload = {
-        first_name: editForm.first_name,
-        last_name: editForm.last_name,
-        contact_number: editForm.contact_number,
+        first_name: firstName,
+        last_name: lastName,
+        contact_number: contact,
       };
       if (editingUser.role === "minister") {
         updatePayload.ministries = editForm.ministries;
@@ -545,7 +602,7 @@ function ManageUsers() {
           photoUrl = publicData?.publicUrl || photoUrl;
         }
 
-        const fullName = `${editForm.first_name} ${editForm.last_name}`.trim();
+        const fullName = `${firstName} ${lastName}`.trim();
 
         if (editForm.priest_is_leadership) {
           await supabase
@@ -561,8 +618,8 @@ function ManageUsers() {
             user_id: editingUser.id,
             is_active: true,
             name: fullName,
-            first_name: editForm.first_name || null,
-            last_name: editForm.last_name || null,
+            first_name: firstName || null,
+            last_name: lastName || null,
             subtitle: editForm.priest_subtitle?.trim() || null,
             photo_url: photoUrl || null,
             is_leadership: !!editForm.priest_is_leadership,
@@ -753,11 +810,11 @@ function ManageUsers() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">First Name *</label>
-                    <input type="text" required value={createForm.first_name} onChange={e => setCreateForm({...createForm, first_name: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.\-]/g, "")})} className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm" placeholder="Juan"/>
+                    <input type="text" required maxLength={NAME_MAX} value={createForm.first_name} onChange={e => setCreateForm({...createForm, first_name: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.-]/g, "")})} className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm" placeholder="Juan"/>
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Last Name *</label>
-                    <input type="text" required value={createForm.last_name} onChange={e => setCreateForm({...createForm, last_name: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.\-]/g, "")})} className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm" placeholder="Dela Cruz"/>
+                    <input type="text" required maxLength={NAME_MAX} value={createForm.last_name} onChange={e => setCreateForm({...createForm, last_name: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.-]/g, "")})} className="p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#B59E74] text-sm" placeholder="Dela Cruz"/>
                   </div>
                 </div>
 
@@ -1152,7 +1209,8 @@ function ManageUsers() {
                   type="text"
                   required
                   value={editForm.first_name}
-                  onChange={(e) => setEditForm({...editForm, first_name: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.\-]/g, "")})}
+                  maxLength={NAME_MAX}
+                  onChange={(e) => setEditForm({...editForm, first_name: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.-]/g, "")})}
                   className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] w-full text-sm"
                 />
               </div>
@@ -1163,7 +1221,8 @@ function ManageUsers() {
                   type="text"
                   required
                   value={editForm.last_name}
-                  onChange={(e) => setEditForm({...editForm, last_name: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.\-]/g, "")})}
+                  maxLength={NAME_MAX}
+                  onChange={(e) => setEditForm({...editForm, last_name: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.-]/g, "")})}
                   className="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] w-full text-sm"
                 />
               </div>

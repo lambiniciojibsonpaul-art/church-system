@@ -3,6 +3,8 @@
 // the form bodies. The actual submit / state logic stays per-form.
 
 import { useEffect, useState } from "react";
+const NAME_PART_MAX = 60;
+const NAME_FULL_MAX = 120;
 import { restSelect } from "../../supabaseRest";
 import { supabase } from "../../supabaseClient"; // ✨ NEW: Needed to fetch staff IDs and insert notifications
 
@@ -56,7 +58,7 @@ export function applyFieldFilter(name, value) {
   }
   // Letters-only fields — split name parts (first/middle/last/maiden)
   if (/first_name|last_name|middle_name|_first$|_middle$|_last$|maiden_first|maiden_middle|maiden_last/i.test(name)) {
-    return value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "");
+    return value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "").slice(0, NAME_PART_MAX);
   }
   // Letters-only fields (person names)
   if (
@@ -65,7 +67,8 @@ export function applyFieldFilter(name, value) {
     /_surname$/.test(name) ||
     /^(full_name|father_name|mother_maiden_name|fatherName|motherMaidenName|godfather_name|godmother_name|godfatherName|godmotherName|requested_by|submitter_signature|submitterName|sponsor\d+_name)$/.test(name)
   ) {
-    return value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.\-]/g, "");
+    const max = /full_name|submitter_signature/i.test(name) ? NAME_FULL_MAX : NAME_PART_MAX;
+    return value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.-]/g, "").slice(0, max);
   }
   return value;
 }
@@ -81,6 +84,15 @@ export function Field({
   placeholder,
   ...rest
 }) {
+  const loweredName = String(name || "").toLowerCase();
+  const isContactField = /contact|phone/.test(loweredName);
+  const isNameField = /name|requested_by|submitter_signature|celebrant/.test(loweredName);
+  const mergedProps = {
+    ...rest,
+    ...(isContactField ? { maxLength: 11 } : {}),
+    ...(isNameField ? { maxLength: /full_name|signature/.test(loweredName) ? NAME_FULL_MAX : NAME_PART_MAX } : {}),
+  };
+
   const baseClass =
     "p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700 w-full";
 
@@ -99,7 +111,7 @@ export function Field({
           placeholder={placeholder}
           rows={3}
           className={baseClass}
-          {...rest}
+          {...mergedProps}
         />
       ) : type === "select" ? (
         <select
@@ -108,7 +120,7 @@ export function Field({
           onChange={onChange}
           required={required}
           className={baseClass}
-          {...rest}
+          {...mergedProps}
         >
           {placeholder && (
             <option value="" disabled>
@@ -130,7 +142,7 @@ export function Field({
           required={required}
           placeholder={placeholder}
           className={baseClass}
-          {...rest}
+          {...mergedProps}
         />
       )}
     </div>
@@ -280,6 +292,48 @@ export async function submitRequest({
   restInsert,
   sendRequestEmail,
 }) {
+  const CONTACT_RE = /^\d{11}$/;
+  const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]+$/;
+  const validateFields = (obj) => {
+    for (const [key, raw] of Object.entries(obj || {})) {
+      if (raw === null || raw === undefined) continue;
+      if (typeof raw !== "string") continue;
+      const value = raw.trim();
+      if (!value) continue;
+      const k = key.toLowerCase();
+
+      if ((k.includes("contact") || k.includes("phone")) && !CONTACT_RE.test(value)) {
+        return `${key.replace(/_/g, " ")} must be exactly 11 digits.`;
+      }
+      const isNameField =
+        k.includes("name") ||
+        k.includes("requested_by") ||
+        k.includes("submitter_signature") ||
+        k.includes("celebrant");
+      if (isNameField && !NAME_RE.test(value)) {
+        return `${key.replace(/_/g, " ")} contains invalid characters.`;
+      }
+      if (isNameField) {
+        const max = k.includes("full_name") || k.includes("signature") ? NAME_FULL_MAX : NAME_PART_MAX;
+        if (value.length > max) {
+          return `${key.replace(/_/g, " ")} must be ${max} characters or less.`;
+        }
+      }
+    }
+    return null;
+  };
+
+  const payloadValidationError = validateFields(payload);
+  if (payloadValidationError) throw new Error(payloadValidationError);
+  if (guestInfo) {
+    const guestValidationError = validateFields({
+      first_name: guestInfo.firstName,
+      last_name: guestInfo.lastName,
+      contact_number: guestInfo.contactNumber,
+    });
+    if (guestValidationError) throw new Error(guestValidationError);
+  }
+
   const cleanPayload = Object.entries(payload).reduce((acc, [key, value]) => {
     if (key === "declaration_consent" || key === "submitter_signature") return acc;
     if (value === "" || value === null || value === undefined) return acc;

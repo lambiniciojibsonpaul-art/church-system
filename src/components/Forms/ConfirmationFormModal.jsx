@@ -6,6 +6,11 @@ import DocumentUploader from "../DocumentUploader";
 import SignInPrompt from "../SignInPrompt";
 import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter } from "./formHelpers";
 
+function isMissingColumnError(err, columnName) {
+  const msg = String(err?.message || err || "").toLowerCase();
+  return msg.includes(`could not find the '${String(columnName).toLowerCase()}' column`);
+}
+
 // Helper function to generate time slots between 8:30 AM and 5:30 PM
 function generateTimeSlots() {
   const slots = [];
@@ -146,6 +151,11 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
     }
   };
 
+  const handleUploadComplete = (uploadedFiles) => {
+    const paths = uploadedFiles.map((file) => file.path);
+    setFormData((prev) => ({ ...prev, documentPaths: paths }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -157,33 +167,58 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
     try {
       const fatherFull = [formData.father_first_name, formData.father_middle_name, formData.father_last_name].filter(Boolean).join(" ");
       const motherFull = [formData.mother_first_name, formData.mother_middle_name, formData.mother_last_name].filter(Boolean).join(" ");
-      const {
-        father_first_name,
-        father_middle_name,
-        father_last_name,
-        mother_first_name,
-        mother_middle_name,
-        mother_last_name,
-        documentPaths,
-        declaration_consent,
-        ...restFormData
-      } = formData;
-      await submitRequest({
-        table: "confirmations",
-        payload: {
-          ...restFormData,
-          preferred_priest: formData.preferred_priest || null,
-          father_name: fatherFull || null,
-          mother_maiden_name: motherFull || null,
-          attached_documents: (documentPaths && documentPaths.length > 0) ? documentPaths : null,
-        },
-        user,
-        guestInfo,
-        serviceName: "confirmation",
-        summary: `Confirmation request for ${formData.child_first_name} ${formData.child_surname}.`,
-        restInsert,
-        sendRequestEmail,
-      });
+      const documentPaths = formData.documentPaths;
+      const restFormData = { ...formData };
+      delete restFormData.father_first_name;
+      delete restFormData.father_middle_name;
+      delete restFormData.father_last_name;
+      delete restFormData.mother_first_name;
+      delete restFormData.mother_middle_name;
+      delete restFormData.mother_last_name;
+      delete restFormData.documentPaths;
+      delete restFormData.declaration_consent;
+      const basePayload = {
+        ...restFormData,
+        preferred_priest: formData.preferred_priest || null,
+        father_name: fatherFull || null,
+        mother_maiden_name: motherFull || null,
+        attached_documents: (documentPaths && documentPaths.length > 0) ? documentPaths : null,
+      };
+
+      try {
+        await submitRequest({
+          table: "confirmations",
+          payload: basePayload,
+          user,
+          guestInfo,
+          serviceName: "confirmation",
+          summary: `Confirmation request for ${formData.child_first_name} ${formData.child_surname}.`,
+          restInsert,
+          sendRequestEmail,
+        });
+      } catch (insertErr) {
+        if (!isMissingColumnError(insertErr, "attached_documents")) throw insertErr;
+
+        const fallbackPayload = {
+          ...basePayload,
+          additional_sponsors: [
+            basePayload.additional_sponsors || "",
+            (documentPaths && documentPaths.length > 0) ? `Uploaded documents: ${documentPaths.join(", ")}` : "",
+          ].filter(Boolean).join("\n"),
+        };
+        delete fallbackPayload.attached_documents;
+
+        await submitRequest({
+          table: "confirmations",
+          payload: fallbackPayload,
+          user,
+          guestInfo,
+          serviceName: "confirmation",
+          summary: `Confirmation request for ${formData.child_first_name} ${formData.child_surname}.`,
+          restInsert,
+          sendRequestEmail,
+        });
+      }
       setSuccess(true);
       setTimeout(onClose, 2500);
     } catch (err) {
@@ -439,21 +474,11 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
               </div>
             </div>
 
-            {/* Document Upload */}
-            <div className="bg-[#B59E74]/10 rounded-xl border-2 border-dashed border-[#B59E74]/50 p-6 flex flex-col items-center justify-center text-center">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-[#B59E74] mb-3">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
-              </svg>
-              <h4 className="text-sm font-bold text-gray-800 uppercase tracking-widest mb-1">Submit Your Documents</h4>
-              <p className="text-xs text-gray-500 mb-4 max-w-xs">Please compile your scanned requirements and upload them to our secure Parish Google Drive folder.</p>
-              <a
-                href="https://drive.google.com/drive/folders/1K3j5gWyYykh6lTRJB0LjchlcT7As8Jox?usp=sharing"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-[#B59E74] hover:bg-[#9c8760] text-white px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-2"
-              >
-                <span>📁</span> Open Upload Folder
-              </a>
+            <div className="mt-6 flex-grow flex flex-col justify-end">
+              <DocumentUploader
+                folderPath="confirmations"
+                onUploadComplete={handleUploadComplete}
+              />
             </div>
 
             {/* Declaration & Signature */}

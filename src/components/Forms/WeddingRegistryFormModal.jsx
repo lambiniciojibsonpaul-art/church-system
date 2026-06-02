@@ -130,8 +130,11 @@ function WeddingRegistryFormModal({ onClose, guestInfo = null, onGuest }) {
     }
     setLoading(true);
     try {
-      // ✨ FIX: Strip out the UI-only states (documentPaths, declaration_consent) from the DB payload
-      const { documentPaths, declaration_consent, ...dbPayload } = formData;
+      // Strip out UI-only states from DB payload
+      const documentPaths = formData.documentPaths;
+      const dbPayload = { ...formData };
+      delete dbPayload.documentPaths;
+      delete dbPayload.declaration_consent;
 
       await submitRequest({
         table: "weddings",

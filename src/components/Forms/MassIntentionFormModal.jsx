@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { restInsert, restSelect } from "../../supabaseRest";
+import { restInsert } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
@@ -93,7 +93,11 @@ function MassIntentionFormModal({ onClose, guestInfo = null, onGuest }) {
     setLoading(true);
     try {
       const fullNameCombined = [formData.full_name_first, formData.full_name_middle, formData.full_name_last].filter(Boolean).join(" ");
-      const { full_name_first, full_name_middle, full_name_last, ...restForm } = formData;
+      const restForm = { ...formData };
+      delete restForm.full_name_first;
+      delete restForm.full_name_middle;
+      delete restForm.full_name_last;
+      delete restForm.declaration_consent;
       await submitRequest({
         table: "mass_intentions",
         payload: { ...restForm, full_name: fullNameCombined },
