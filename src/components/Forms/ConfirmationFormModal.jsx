@@ -4,7 +4,7 @@ import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import DocumentUploader from "../DocumentUploader";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter, useScrollToError } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter, useScrollToError, validateDateTimeOrder, getValidEndTimeSlots } from "./formHelpers";
 
 function isMissingColumnError(err, columnName) {
   const msg = String(err?.message || err || "").toLowerCase();
@@ -117,7 +117,13 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) }));
+    setFormData(prev => {
+      const next = { ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) };
+      if (name === "time_of_confirmation" && next.end_time && next.end_time <= next.time_of_confirmation) {
+        next.end_time = "";
+      }
+      return next;
+    });
   };
 
   // --- DYNAMIC SPONSOR LIST LOGIC ---
@@ -162,6 +168,18 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
     setError(null);
     if (!formData.declaration_consent) {
       setError("Please confirm the declaration before submitting.");
+      return;
+    }
+    const scheduleError = validateDateTimeOrder({
+      startDate: formData.date_of_confirmation,
+      startTime: formData.time_of_confirmation,
+      endDate: formData.date_of_confirmation,
+      endTime: formData.end_time,
+      startLabel: "confirmation time",
+      endLabel: "end time",
+    });
+    if (scheduleError) {
+      setError(scheduleError);
       return;
     }
     setLoading(true);
@@ -284,7 +302,7 @@ function ConfirmationFormModal({ onClose, guestInfo = null, onGuest }) {
                 <label className="text-sm font-bold text-gray-600">End Time <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Katapusan)</span></label>
                 <select name="end_time" value={formData.end_time} onChange={handleChange} className={inputClass}>
                   <option value="">— Optional —</option>
-                  {TIME_SLOTS.map((slot) => (
+                  {getValidEndTimeSlots(TIME_SLOTS, formData.time_of_confirmation).map((slot) => (
                     <option key={slot.value} value={slot.value}>{slot.label}</option>
                   ))}
                 </select>

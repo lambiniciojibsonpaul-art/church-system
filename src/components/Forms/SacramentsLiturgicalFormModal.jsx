@@ -4,7 +4,7 @@ import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import DocumentUploader from "../DocumentUploader";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter, useScrollToError } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter, useScrollToError, validateDateTimeOrder, getValidEndTimeSlots } from "./formHelpers";
 
 // Helper function to generate time slots between 8:30 AM and 5:30 PM
 function generateTimeSlots() {
@@ -108,7 +108,13 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) }));
+    setFormData(prev => {
+      const next = { ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) };
+      if (name === "request_time" && next.end_time && next.end_time <= next.request_time) {
+        next.end_time = "";
+      }
+      return next;
+    });
   };
 
   const handleRequestTypeChange = (value) =>
@@ -133,6 +139,18 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
     }
     if (!formData.declaration_consent) {
       setError("Please confirm the declaration before submitting.");
+      return;
+    }
+    const scheduleError = validateDateTimeOrder({
+      startDate: formData.request_date,
+      startTime: formData.request_time,
+      endDate: formData.request_date,
+      endTime: formData.end_time,
+      startLabel: "request time",
+      endLabel: "end time",
+    });
+    if (scheduleError) {
+      setError(scheduleError);
       return;
     }
     setLoading(true);
@@ -270,7 +288,7 @@ function SacramentsLiturgicalFormModal({ onClose, guestInfo = null, onGuest }) {
                   <label className="text-xs font-bold text-gray-600">End Time <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Katapusan)</span></label>
                   <select name="end_time" value={formData.end_time} onChange={handleChange} className={inputClass}>
                     <option value="">— Optional —</option>
-                    {TIME_SLOTS.map((slot) => (
+                    {getValidEndTimeSlots(TIME_SLOTS, formData.request_time).map((slot) => (
                       <option key={slot.value} value={slot.value}>{slot.label}</option>
                     ))}
                   </select>

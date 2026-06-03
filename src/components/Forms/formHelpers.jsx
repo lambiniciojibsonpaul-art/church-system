@@ -1,12 +1,14 @@
 // Shared building blocks used by every sacrament request modal.
-// Keep this lightweight — just presentational components used inside
+// Keep this lightweight - just presentational components used inside
 // the form bodies. The actual submit / state logic stays per-form.
 
 import { useEffect, useState } from "react";
 const NAME_PART_MAX = 60;
 const NAME_FULL_MAX = 120;
+const ADDRESS_MAX = 255;
+const PLACE_MAX = 120;
 import { restSelect } from "../../supabaseRest";
-import { supabase } from "../../supabaseClient"; // ✨ NEW: Needed to fetch staff IDs and insert notifications
+import { supabase } from "../../supabaseClient"; // Needed to fetch staff IDs and insert notifications
 
 /**
  * Fetches the logged-in parishioner's profile once and returns their
@@ -43,36 +45,90 @@ export function useProfileAutofill(user) {
 
 /**
  * Sanitizes a form field value based on its name.
- * - Person name fields → letters, spaces, hyphens, apostrophes, dots only
- * - Phone / count fields → digits only
- * - All other fields → unchanged
+ * - Person name fields -> letters, spaces, hyphens, apostrophes, dots only
+ * - Phone / count fields -> digits only
+ * - All other fields -> unchanged
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function applyFieldFilter(name, value) {
+  const fieldName = String(name || "");
+  const lettersOnly = (input, max = PLACE_MAX) =>
+    input.replace(/[^a-zA-Z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF\u00D1\u00F1\s'.-]/g, "").slice(0, max);
+
   // Numbers-only fields
-  if (/contact_number|contactNumbers|groom_contact|bride_contact/i.test(name)) {
+  if (/contact_number|contactNumbers|groom_contact|bride_contact/i.test(fieldName)) {
     return value.replace(/\D/g, "").slice(0, 11);
   }
-  if (/expected_attendees|number_of_copies|groom_age|bride_age/i.test(name)) {
+  if (/expected_attendees|number_of_copies|groom_age|bride_age/i.test(fieldName)) {
     return value.replace(/\D/g, "");
   }
-  // Letters-only fields — split name parts (first/middle/last/maiden)
-  if (/first_name|last_name|middle_name|_first$|_middle$|_last$|maiden_first|maiden_middle|maiden_last/i.test(name)) {
-    return value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "").slice(0, NAME_PART_MAX);
+
+  // Address fields can include numbers and punctuation, but should not be unbounded.
+  if (/address/i.test(fieldName)) {
+    return value.slice(0, ADDRESS_MAX);
+  }
+
+  // Place / parish / organization fields requested by the panelist: letters only.
+  if (
+    /place_of_birth|childBirthplace|birthplace|baptism_parish|residence_parish|record_parish|church_parish|organization|request_specify|specify_intention/i.test(fieldName)
+  ) {
+    return lettersOnly(value);
+  }
+
+  // Letters-only fields: split name parts (first/middle/last/maiden)
+  if (/first_name|last_name|middle_name|_first$|_middle$|_last$|maiden_first|maiden_middle|maiden_last/i.test(fieldName)) {
+    return lettersOnly(value, NAME_PART_MAX);
   }
   // Letters-only fields (person names)
   if (
-    /(^|_)(first|middle|last)_name$/.test(name) ||   // snake_case: child_first_name, etc.
-    /(First|Middle|Last)Name$/.test(name) ||           // camelCase: childFirstName, etc.
-    /_surname$/.test(name) ||
-    /^(full_name|father_name|mother_maiden_name|fatherName|motherMaidenName|godfather_name|godmother_name|godfatherName|godmotherName|requested_by|submitter_signature|submitterName|sponsor\d+_name)$/.test(name)
+    /(^|_)(first|middle|last)_name$/.test(fieldName) ||
+    /(First|Middle|Last)Name$/.test(fieldName) ||
+    /_surname$/.test(fieldName) ||
+    /^(full_name|father_name|mother_maiden_name|fatherName|motherMaidenName|godfather_name|godmother_name|godfatherName|godmotherName|requested_by|submitter_signature|submitterName|sponsor\d+_name)$/.test(fieldName)
   ) {
-    const max = /full_name|submitter_signature/i.test(name) ? NAME_FULL_MAX : NAME_PART_MAX;
-    return value.replace(/[^a-zA-ZÀ-ÿñÑ\s'.-]/g, "").slice(0, max);
+    const max = /full_name|submitter_signature/i.test(fieldName) ? NAME_FULL_MAX : NAME_PART_MAX;
+    return lettersOnly(value, max);
   }
   return value;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
+export function validateDateTimeOrder({
+  startDate,
+  startTime,
+  endDate,
+  endTime,
+  startLabel = "start time",
+  endLabel = "end time",
+}) {
+  if (!startTime || !endTime) return null;
+
+  const normalizedStartDate = startDate || endDate || "";
+  const normalizedEndDate = endDate || startDate || "";
+  if (normalizedStartDate && normalizedEndDate) {
+    const start = new Date(`${normalizedStartDate}T${startTime}`);
+    const end = new Date(`${normalizedEndDate}T${endTime}`);
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end <= start) {
+      return `${endLabel} must be later than ${startLabel}. Please choose a later end time.`;
+    }
+  } else if (endTime <= startTime) {
+    return `${endLabel} must be later than ${startLabel}. Please choose a later end time.`;
+  }
+
+  return null;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function isEndTimeDisabled(slotValue, startTime, startDate, endDate) {
+  if (!slotValue || !startTime) return false;
+  const sameDay = !startDate || !endDate || startDate === endDate;
+  return sameDay && slotValue <= startTime;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function getValidEndTimeSlots(slots, startTime, startDate, endDate) {
+  return (slots || []).filter((slot) => !isEndTimeDisabled(slot.value, startTime, startDate, endDate));
+}
 export function Field({
   label,
   name,
@@ -159,7 +215,7 @@ export function SuccessPanel({
 }) {
   return (
     <div className="p-12 text-center space-y-4">
-      <div className="text-6xl">✅</div>
+      <div className="text-4xl font-serif text-[#B59E74]">OK</div>
       <h3 className="text-2xl font-serif text-[#B59E74] uppercase tracking-widest">
         Request Submitted
       </h3>
@@ -167,7 +223,7 @@ export function SuccessPanel({
         {message}
       </p>
       <p className="text-xs text-gray-400 italic">
-        God bless you. — San Pedro Bautista Parish
+        God bless you. - San Pedro Bautista Parish
       </p>
     </div>
   );
@@ -192,7 +248,7 @@ export function ModalHeader({ title, subtitle, onClose }) {
         className="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100 text-gray-600 shrink-0"
         aria-label="Close"
       >
-        ✕
+        {"\u2715"}
       </button>
     </div>
   );
@@ -356,7 +412,8 @@ export async function submitRequest({
   restInsert,
 }) {
   const CONTACT_RE = /^\d{11}$/;
-  const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]+$/;
+  const NAME_RE = /^[A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF\u00D1\u00F1' .-]+$/;
+  const PLACE_RE = /^[A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF\u00D1\u00F1' .-]+$/;
   const PRICE_RE = /^\d+(\.\d{1,2})?$/;
   const validateFields = (obj) => {
     for (const [key, raw] of Object.entries(obj || {})) {
@@ -376,6 +433,24 @@ export async function submitRequest({
       }
 
       if (!value) continue;
+
+      if (k.includes("address") && value.length > ADDRESS_MAX) {
+        return `${key.replace(/_/g, " ")} must be ${ADDRESS_MAX} characters or less.`;
+      }
+
+      const isPlaceField =
+        k.includes("place_of_birth") ||
+        k.includes("birthplace") ||
+        k.includes("baptism_parish") ||
+        k.includes("residence_parish") ||
+        k.includes("record_parish") ||
+        k.includes("church_parish") ||
+        k.includes("organization") ||
+        k.includes("request_specify") ||
+        k.includes("specify_intention");
+      if (isPlaceField && !PLACE_RE.test(value)) {
+        return `${key.replace(/_/g, " ")} must contain letters only.`;
+      }
 
       if ((k.includes("contact") || k.includes("phone")) && !CONTACT_RE.test(value)) {
         return `${key.replace(/_/g, " ")} must be exactly 11 digits.`;
@@ -400,6 +475,56 @@ export async function submitRequest({
 
   const payloadValidationError = validateFields(payload);
   if (payloadValidationError) throw new Error(payloadValidationError);
+  const scheduleValidationError =
+    validateDateTimeOrder({
+      startDate: payload.start_date,
+      startTime: payload.start_time,
+      endDate: payload.end_date || payload.start_date,
+      endTime: payload.end_time,
+      startLabel: "start time",
+      endLabel: "end time",
+    }) ||
+    validateDateTimeOrder({
+      startDate: payload.preferred_date,
+      startTime: payload.preferred_time,
+      endDate: payload.preferred_date,
+      endTime: payload.end_time,
+      startLabel: "start time",
+      endLabel: "end time",
+    }) ||
+    validateDateTimeOrder({
+      startDate: payload.wedding_date,
+      startTime: payload.wedding_time,
+      endDate: payload.wedding_date,
+      endTime: payload.end_time,
+      startLabel: "wedding time",
+      endLabel: "end time",
+    }) ||
+    validateDateTimeOrder({
+      startDate: payload.date_of_communion,
+      startTime: payload.time_of_communion,
+      endDate: payload.date_of_communion,
+      endTime: payload.end_time,
+      startLabel: "communion time",
+      endLabel: "end time",
+    }) ||
+    validateDateTimeOrder({
+      startDate: payload.date_of_confirmation,
+      startTime: payload.time_of_confirmation,
+      endDate: payload.date_of_confirmation,
+      endTime: payload.end_time,
+      startLabel: "confirmation time",
+      endLabel: "end time",
+    }) ||
+    validateDateTimeOrder({
+      startDate: payload.request_date,
+      startTime: payload.request_time,
+      endDate: payload.request_date,
+      endTime: payload.end_time,
+      startLabel: "request time",
+      endLabel: "end time",
+    });
+  if (scheduleValidationError) throw new Error(scheduleValidationError);
   if (guestInfo) {
     const guestValidationError = validateFields({
       first_name: guestInfo.firstName,

@@ -3,7 +3,7 @@ import { restInsert } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter, useScrollToError } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, submitRequest, useProfileAutofill, applyFieldFilter, useScrollToError, validateDateTimeOrder, getValidEndTimeSlots } from "./formHelpers";
 
 // Helper function to generate time slots between 8:30 AM and 5:30 PM
 function generateTimeSlots() {
@@ -89,7 +89,18 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) }));
+    setFormData(prev => {
+      const next = { ...prev, [name]: type === "checkbox" ? checked : applyFieldFilter(name, value) };
+      if (
+        (name === "start_time" || name === "start_date" || name === "end_date") &&
+        next.end_time &&
+        (!next.start_date || !next.end_date || next.start_date === next.end_date) &&
+        next.end_time <= next.start_time
+      ) {
+        next.end_time = "";
+      }
+      return next;
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -97,6 +108,18 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
     setError(null);
     if (!formData.declaration_consent) {
       setError("Please confirm the declaration before submitting.");
+      return;
+    }
+    const scheduleError = validateDateTimeOrder({
+      startDate: formData.start_date,
+      startTime: formData.start_time,
+      endDate: formData.end_date,
+      endTime: formData.end_time,
+      startLabel: "start schedule",
+      endLabel: "end schedule",
+    });
+    if (scheduleError) {
+      setError(scheduleError);
       return;
     }
     const finalFacility = formData.facility === "Other" ? formData.facility_other : formData.facility;
@@ -266,7 +289,9 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                     <label className="text-xs font-bold text-gray-600">Start Time <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Simula)</span></label>
                     <select name="start_time" value={formData.start_time} onChange={handleChange} required className={inputClass}>
                       <option value="" disabled>Select Time</option>
-                      {TIME_SLOTS.map((slot) => <option key={slot.value} value={slot.value}>{slot.label}</option>)}
+                      {TIME_SLOTS.map((slot) => (
+                        <option key={slot.value} value={slot.value}>{slot.label}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="flex flex-col gap-1">
@@ -277,7 +302,7 @@ function FacilitiesBookingFormModal({ onClose, guestInfo = null, onGuest }) {
                     <label className="text-xs font-bold text-gray-600">End Time <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Katapusan)</span></label>
                     <select name="end_time" value={formData.end_time} onChange={handleChange} required className={inputClass}>
                       <option value="" disabled>Select Time</option>
-                      {TIME_SLOTS.map((slot) => <option key={slot.value} value={slot.value}>{slot.label}</option>)}
+                      {getValidEndTimeSlots(TIME_SLOTS, formData.start_time, formData.start_date, formData.end_date).map((slot) => <option key={slot.value} value={slot.value}>{slot.label}</option>)}
                     </select>
                   </div>
                 </div>

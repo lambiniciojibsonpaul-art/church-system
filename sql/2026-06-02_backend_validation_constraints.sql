@@ -302,6 +302,164 @@ begin
   end loop;
 end $$;
 
+-- Additional panelist-requested guardrails:
+-- 1) End schedule must be later than start schedule when an end time exists.
+-- 2) Place/parish/organization/intention-specify fields must be letters only.
+-- 3) Address fields are capped at 255 characters.
+do $$
+declare
+  rec record;
+  constraint_name text;
+  place_columns text[] := array[
+    'organization',
+    'organization_ministry_group',
+    'place_of_birth',
+    'child_birthplace',
+    'baptism_parish',
+    'residence_parish',
+    'record_parish',
+    'church_parish',
+    'request_specify',
+    'specify_intention'
+  ];
+  address_columns text[] := array[
+    'address',
+    'complete_address',
+    'groom_address',
+    'bride_address',
+    'sponsor1_address',
+    'sponsor2_address',
+    'location'
+  ];
+begin
+  -- Facilities booking: full start date/time and end date/time range.
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'facilities_bookings')
+     and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'facilities_bookings' and column_name = 'start_date')
+     and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'facilities_bookings' and column_name = 'start_time')
+     and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'facilities_bookings' and column_name = 'end_date')
+     and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'facilities_bookings' and column_name = 'end_time') then
+    constraint_name := 'chk_' || substr(md5('facilities_bookings_schedule_order'), 1, 24);
+    if not exists (
+      select 1 from pg_constraint
+      where conname = constraint_name
+        and conrelid = 'public.facilities_bookings'::regclass
+    ) then
+      execute format(
+        'alter table public.facilities_bookings add constraint %I check (start_date is null or start_time is null or end_date is null or end_time is null or ((end_date::date + end_time::time) > (start_date::date + start_time::time))) not valid',
+        constraint_name
+      );
+    end if;
+  end if;
+
+  -- Admin events: support multi-day schedules, so compare full date + time.
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'events')
+     and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'events' and column_name = 'event_date')
+     and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'events' and column_name = 'event_time')
+     and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'events' and column_name = 'event_end_date')
+     and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'events' and column_name = 'end_time') then
+    constraint_name := 'chk_' || substr(md5('events_schedule_order'), 1, 24);
+    if not exists (
+      select 1 from pg_constraint
+      where conname = constraint_name
+        and conrelid = 'public.events'::regclass
+    ) then
+      execute format(
+        'alter table public.events add constraint %I check (event_date is null or event_time is null or end_time is null or btrim(end_time::text) = '''' or (((coalesce(event_end_date, event_date))::date + end_time::time) > (event_date::date + event_time::time))) not valid',
+        constraint_name
+      );
+    end if;
+  end if;
+
+  -- One-day services with an optional end_time.
+  for rec in
+    select *
+    from (values
+      ('baptisms', 'preferred_date', 'preferred_time', 'end_time'),
+      ('confirmations', 'date_of_confirmation', 'time_of_confirmation', 'end_time'),
+      ('holy_communions', 'date_of_communion', 'time_of_communion', 'end_time'),
+      ('weddings', 'wedding_date', 'wedding_time', 'end_time'),
+      ('sacraments_liturgical', 'request_date', 'request_time', 'end_time')
+    ) as x(table_name, date_col, start_col, end_col)
+  loop
+    if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = rec.table_name)
+       and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = rec.table_name and column_name = rec.date_col)
+       and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = rec.table_name and column_name = rec.start_col)
+       and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = rec.table_name and column_name = rec.end_col) then
+      constraint_name := 'chk_' || substr(md5(rec.table_name || '_time_order'), 1, 24);
+      if not exists (
+        select 1 from pg_constraint
+        where conname = constraint_name
+          and conrelid = format('public.%I', rec.table_name)::regclass
+      ) then
+        execute format(
+          'alter table public.%I add constraint %I check (%I is null or %I is null or %I is null or btrim(%I::text) = '''' or (%I::time > %I::time)) not valid',
+          rec.table_name,
+          constraint_name,
+          rec.date_col,
+          rec.start_col,
+          rec.end_col,
+          rec.end_col,
+          rec.end_col,
+          rec.start_col
+        );
+      end if;
+    end if;
+  end loop;
+
+  -- Letters-only place/parish/organization/specify fields.
+  for rec in
+    select table_name, column_name
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name in ('baptisms', 'confirmations', 'holy_communions', 'mass_intentions', 'facilities_bookings', 'certification_requests', 'sacraments_liturgical')
+      and data_type in ('text', 'character varying')
+      and column_name = any(place_columns)
+  loop
+    constraint_name := 'chk_' || substr(md5(rec.table_name || '_' || rec.column_name || '_letters_only'), 1, 24);
+    if not exists (
+      select 1 from pg_constraint
+      where conname = constraint_name
+        and conrelid = format('public.%I', rec.table_name)::regclass
+    ) then
+      execute format(
+        'alter table public.%I add constraint %I check (%I is null or btrim(%I) = '''' or (char_length(%I) <= 120 and %I ~ %L)) not valid',
+        rec.table_name,
+        constraint_name,
+        rec.column_name,
+        rec.column_name,
+        rec.column_name,
+        rec.column_name,
+        '^[[:alpha:]Ññ'' .-]+$'
+      );
+    end if;
+  end loop;
+
+  -- Address-like fields: allow normal address characters, but cap length.
+  for rec in
+    select table_name, column_name
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name in ('baptisms', 'confirmations', 'holy_communions', 'weddings', 'mass_intentions', 'facilities_bookings', 'certification_requests', 'sacraments_liturgical', 'events')
+      and data_type in ('text', 'character varying')
+      and column_name = any(address_columns)
+  loop
+    constraint_name := 'chk_' || substr(md5(rec.table_name || '_' || rec.column_name || '_address_len_255'), 1, 24);
+    if not exists (
+      select 1 from pg_constraint
+      where conname = constraint_name
+        and conrelid = format('public.%I', rec.table_name)::regclass
+    ) then
+      execute format(
+        'alter table public.%I add constraint %I check (%I is null or char_length(%I) <= 255) not valid',
+        rec.table_name,
+        constraint_name,
+        rec.column_name,
+        rec.column_name
+      );
+    end if;
+  end loop;
+end $$;
+
 -- Storage guardrail for uploaded request and archived documents.
 -- This makes direct/browser-bypassed uploads fail unless the file is
 -- JPEG/PNG/PDF and 50MB or smaller. If a bucket does not exist yet,

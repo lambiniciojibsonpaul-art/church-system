@@ -60,6 +60,27 @@ function friendlyDatabaseError(raw, table, payload = {}) {
   const rows = Array.isArray(payload) ? payload : [payload];
   const values = Object.assign({}, ...rows.filter(Boolean));
   const entries = Object.entries(values);
+  const invalidSchedule = (() => {
+    const pick = (...keys) => keys.map((key) => values[key]).find((value) => value !== undefined && value !== null && String(value).trim() !== "");
+    const checks = [
+      [values.start_date, values.start_time, values.end_date || values.start_date, values.end_time],
+      [values.event_date, values.event_time, values.event_end_date || values.event_date, values.end_time],
+      [values.preferred_date, values.preferred_time, values.preferred_date, values.end_time],
+      [values.wedding_date, values.wedding_time, values.wedding_date, values.end_time],
+      [values.date_of_communion, values.time_of_communion, values.date_of_communion, values.end_time],
+      [values.date_of_confirmation, values.time_of_confirmation, values.date_of_confirmation, values.end_time],
+      [values.request_date, values.request_time, values.request_date, values.end_time],
+      [values.preferredDate, values.preferredTime, values.preferredDate, values.preferredEndTime],
+    ];
+    const direct = [pick("eventStartDate"), pick("eventTime"), pick("eventEndDate", "eventStartDate"), pick("endTime")];
+    checks.push(direct);
+    return checks.some(([startDate, startTime, endDate, endTime]) => {
+      if (!startTime || !endTime) return false;
+      const start = new Date(`${startDate || endDate || "1970-01-01"}T${startTime}`);
+      const end = new Date(`${endDate || startDate || "1970-01-01"}T${endTime}`);
+      return !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end <= start;
+    });
+  })();
 
   if (/violates check constraint|new row for relation/i.test(message)) {
     const hasInvalidContact = entries.some(([key, value]) =>
@@ -85,6 +106,23 @@ function friendlyDatabaseError(raw, table, payload = {}) {
       (value === null || value === undefined || String(value).trim() === "" || !/^\d+(\.\d{1,2})?$/.test(String(value).trim()))
     );
     if (hasInvalidMoney) return "Amount is required and cannot be negative. Please enter 0 or a valid amount.";
+
+    if (invalidSchedule) return "End time must be later than the start time. Please choose a later end time.";
+
+    const hasInvalidLettersOnlyField = entries.some(([key, value]) =>
+      /organization|place_of_birth|birthplace|baptism_parish|residence_parish|record_parish|church_parish|request_specify|specify_intention/i.test(key) &&
+      typeof value === "string" &&
+      value.trim() !== "" &&
+      !/^[A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF\u00D1\u00F1' .-]+$/.test(value.trim())
+    );
+    if (hasInvalidLettersOnlyField) return "This field can only contain letters, spaces, apostrophes, dots, or hyphens.";
+
+    const hasTooLongAddress = entries.some(([key, value]) =>
+      /address|location/i.test(key) &&
+      typeof value === "string" &&
+      value.length > 255
+    );
+    if (hasTooLongAddress) return "Address fields must be 255 characters or less.";
 
     const hasInvalidNumber = entries.some(([key, value]) =>
       /expected_attendees|number_of_copies|current_age|groom_age|bride_age/i.test(key) &&
@@ -120,7 +158,7 @@ function friendlyDatabaseError(raw, table, payload = {}) {
       /name|surname|requested_by|submitter_signature|celebrant/i.test(key) &&
       typeof value === "string" &&
       value.trim() !== "" &&
-      (!/^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]+$/.test(value.trim()) || value.trim().length > (/full_name|signature/i.test(key) ? 120 : 60))
+      (!/^[A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF\u00D1\u00F1' .-]+$/.test(value.trim()) || value.trim().length > (/full_name|signature/i.test(key) ? 120 : 60))
     );
     if (hasInvalidName) return "Name fields can only contain letters, spaces, apostrophes, dots, or hyphens and must stay within the character limit.";
 

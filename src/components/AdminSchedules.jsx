@@ -8,6 +8,17 @@ import { restSelect, restInsert, restUpdate, restDelete } from "../supabaseRest"
 import { useAuth } from "../contexts/useAuth";
 import { supabase } from "../supabaseClient";
 import { detectEventConflicts, formatConflictWarning } from "../utils/timeConflict";
+import { validateDateTimeOrder } from "./Forms/formHelpers";
+
+function getMinimumEndTime(startTime, startDate, endDate) {
+  if (!startTime) return undefined;
+  if (startDate && endDate && startDate !== endDate) return undefined;
+  const [hour, minute] = startTime.split(":").map(Number);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return undefined;
+  const total = hour * 60 + minute + 1;
+  if (total >= 24 * 60) return undefined;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
 
 // Gold teardrop pin — avoids Vite asset path issues with default Leaflet icons
 const PIN_ICON = new L.DivIcon({
@@ -593,6 +604,19 @@ function AdminSchedules() {
 
     if (formData.eventEndDate && formData.eventEndDate < formData.eventStartDate) {
       alert("Error: End date cannot be before the start date.");
+      return;
+    }
+
+    const scheduleError = validateDateTimeOrder({
+      startDate: formData.eventStartDate,
+      startTime: formData.eventTime,
+      endDate: formData.eventEndDate || formData.eventStartDate,
+      endTime: formData.endTime,
+      startLabel: "start schedule",
+      endLabel: "end schedule",
+    });
+    if (scheduleError) {
+      alert(scheduleError);
       return;
     }
 
@@ -1201,6 +1225,7 @@ function AdminSchedules() {
                   <input
                     type="time" name="endTime"
                     value={formData.endTime} onChange={handleChange}
+                    min={getMinimumEndTime(formData.eventTime, formData.eventStartDate, formData.eventEndDate || formData.eventStartDate)}
                     className="p-3 rounded-xl border border-gray-300 outline-none focus:ring-2 focus:ring-[#B59E74]"
                   />
                 </div>

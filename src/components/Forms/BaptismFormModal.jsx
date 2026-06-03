@@ -3,9 +3,9 @@ import { restInsert, restSelect } from "../../supabaseRest";
 import { useAuth } from "../../contexts/useAuth";
 import { sendRequestEmail } from "../../emailNotifications";
 import { supabase } from "../../supabaseClient";
-import DocumentUploader from "../DocumentUploader"; // ✨ Your new component
+import DocumentUploader from "../DocumentUploader"; // Document upload component
 import SignInPrompt from "../SignInPrompt";
-import { DeclarationBlock, SuccessPanel, useProfileAutofill, applyFieldFilter, useScrollToError } from "./formHelpers";
+import { DeclarationBlock, SuccessPanel, useProfileAutofill, applyFieldFilter, useScrollToError, validateDateTimeOrder, getValidEndTimeSlots } from "./formHelpers";
 
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -108,7 +108,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
     submitterName: "",
     submitter_signature: "",
     declaration_consent: false,
-    documentPaths: [], // ✨ State to hold the uploaded file paths
+    documentPaths: [], // Uploaded file paths
   });
 
   const autofill = useProfileAutofill(user);
@@ -161,12 +161,13 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
       setFormData(prev => ({ ...prev, [name]: checked }));
       return;
     }
-    // Letters-only filter for split name fields
-    if (/FirstName$|MiddleName$|LastName$|MaidenLastName$/.test(name)) {
-      setFormData(prev => ({ ...prev, [name]: value.replace(/[^a-zA-ZÀ-ÖØ-öø-ÿ\s'-]/g, "") }));
-      return;
-    }
-    setFormData(prev => ({ ...prev, [name]: applyFieldFilter(name, value) }));
+    setFormData(prev => {
+      const next = { ...prev, [name]: applyFieldFilter(name, value) };
+      if (name === "preferredTime" && next.preferredEndTime && next.preferredEndTime <= next.preferredTime) {
+        next.preferredEndTime = "";
+      }
+      return next;
+    });
   };
 
   const sponsorsList = formData.additionalSponsors 
@@ -193,7 +194,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
     }
   };
 
-  // ✨ NEW: Handles receiving the uploaded file paths from DocumentUploader
+  // Handles receiving the uploaded file paths from DocumentUploader.
   const handleUploadComplete = (uploadedFiles) => {
     const paths = uploadedFiles.map(file => file.path);
     setFormData(prev => ({ ...prev, documentPaths: paths }));
@@ -204,6 +205,18 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
     setError(null);
     if (!formData.declaration_consent) {
       setError("Please confirm the declaration before submitting.");
+      return;
+    }
+    const scheduleError = validateDateTimeOrder({
+      startDate: formData.preferredDate,
+      startTime: formData.preferredTime,
+      endDate: formData.preferredDate,
+      endTime: formData.preferredEndTime,
+      startLabel: "preferred time",
+      endLabel: "end time",
+    });
+    if (scheduleError) {
+      setError(scheduleError);
       return;
     }
     setLoading(true);
@@ -237,7 +250,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         additional_sponsors: formData.additionalSponsors,
         submitter_name: formData.submitter_signature,
         status: "Pending",
-        // ✨ Add documentPaths to the payload
+        // Add documentPaths to the payload.
         attached_documents: formData.documentPaths.length > 0 ? formData.documentPaths : null,
         ...(user ? {
           user_id: user.id,
@@ -260,7 +273,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         }
       };
 
-      // Guest path — use edge function (service role bypasses RLS)
+      // Guest path uses the edge function because service role bypasses RLS.
       if (guestInfo && !user) {
         await submitGuestViaEdgeFunction("baptisms", payload);
       } else {
@@ -319,8 +332,6 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
 
       if (rpcError) {
         console.error("notify_staff RPC error:", rpcError);
-      } else {
-        console.log("✅ notify_staff fired successfully");
       }
 
       setSuccess(true);
@@ -352,7 +363,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
         <div className="sticky top-0 bg-[#F6F5ED] px-8 py-6 z-10 flex justify-between items-center border-b border-gray-200 shadow-sm">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-full flex items-center justify-center border-2 border-[#B59E74] text-xl font-medium text-[#B59E74] shrink-0">
-              ⛪
+              {"\u26EA"}
             </div>
             <div>
               <h2 className="text-xl md:text-2xl font-sans font-medium text-gray-800 uppercase tracking-wide">
@@ -368,7 +379,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
             onClick={onClose}
             className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-600 shrink-0"
           >
-            ✕
+            {"\u2715"}
           </button>
         </div>
 
@@ -378,10 +389,10 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
           <form onSubmit={handleSubmit} className="p-8 space-y-10">
             {guestInfo && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
-                <span className="text-amber-500 text-lg shrink-0">👤</span>
+                <span className="text-amber-500 text-lg shrink-0">Guest</span>
                 <div>
                   <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Guest Submission</p>
-                  <p className="text-xs text-amber-600 mt-0.5">{guestInfo.firstName} {guestInfo.lastName} · {guestInfo.contactNumber}</p>
+                  <p className="text-xs text-amber-600 mt-0.5">{guestInfo.firstName} {guestInfo.lastName} - {guestInfo.contactNumber}</p>
                 </div>
               </div>
             )}
@@ -425,8 +436,8 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                   <label className="text-xs font-bold text-gray-600">End Time <span className="text-[11px] text-gray-400 normal-case font-normal">(Oras ng Katapusan)</span></label>
                   <select name="preferredEndTime" value={formData.preferredEndTime} onChange={handleChange}
                     className="p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#B59E74] bg-white text-gray-700">
-                    <option value="">— Optional —</option>
-                    {TIME_SLOTS.map((slot) => (
+                    <option value="">- Optional -</option>
+                    {getValidEndTimeSlots(TIME_SLOTS, formData.preferredTime).map((slot) => (
                       <option key={slot.value} value={slot.value}>{slot.label}</option>
                     ))}
                   </select>
@@ -586,7 +597,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                       <div key={index} className="flex items-center gap-2 bg-[#F6F5ED] border border-[#B59E74]/30 text-[#B59E74] px-3 py-1.5 rounded-full text-sm font-medium">
                         <span>{sponsor}</span>
                         <button type="button" onClick={() => handleRemoveSponsor(index)}
-                          className="text-[#B59E74] hover:text-red-500 font-bold focus:outline-none" title="Remove sponsor">✕</button>
+                          className="text-[#B59E74] hover:text-red-500 font-bold focus:outline-none" title="Remove sponsor">{"\u2715"}</button>
                       </div>
                     ))}
                   </div>
@@ -624,7 +635,7 @@ function BaptismFormModal({ onClose, guestInfo = null, onGuest }) {
                   <span className="text-xs font-normal">Be on time: 30 minutes before schedule.</span>
                 </div>
                 
-                {/* ✨ THE MAGIC: Replaced Google Drive Link with DocumentUploader */}
+                {/* Replaced Google Drive link with DocumentUploader. */}
                 <div className="mt-6 flex-grow flex flex-col justify-end">
                   <DocumentUploader 
                     folderPath="baptisms" 
